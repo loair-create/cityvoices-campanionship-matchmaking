@@ -37,8 +37,15 @@
   </style>
 </head>
 <body class="bg-gray-100 h-screen overflow-hidden">
-  <div id="root"></div>
+  <div id="root"><div style="padding:24px;font-family:sans-serif;text-align:center;color:#134e4a;">Loading Companionship Dashboard...</div></div>
 
+  <script>
+    (function() {
+      if (typeof React === 'undefined' || typeof ReactDOM === 'undefined') {
+        document.getElementById('root').innerHTML = '<div style="padding:24px;font-family:sans-serif;color:#b91c1c;">Could not load React. Check that you are opening this app from the deployment URL or from the Apps Script editor (Run &gt; Test as web app).</div>';
+      }
+    })();
+  </script>
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef } = React;
 
@@ -190,7 +197,8 @@
       const configMap = config.reduce((acc, c) => ({...acc, [c.key]: c}), {});
 
       const addScore = (key, points, reason) => {
-        if (configMap[key]?.enabled) {
+        const item = configMap[key];
+        if (item && item.enabled) {
            score += points;
            reasons.push(reason);
         }
@@ -206,36 +214,40 @@
       const pc1 = (c1.preferredContact || '').toLowerCase();
       const pc2 = (c2.preferredContact || '').toLowerCase();
       if (pc1 && pc2 && pc1 === pc2) {
-        addScore('preferredContact', configMap['preferredContact']?.weight || 25, `Same preferred contact (${c1.preferredContact})`);
+        const w = (configMap['preferredContact'] && configMap['preferredContact'].weight) || 25;
+        addScore('preferredContact', w, 'Same preferred contact (' + c1.preferredContact + ')');
       }
 
       // 1. Geography
       if (c1.borough === c2.borough) {
-        addScore('borough', configMap['borough']?.weight || 12, `Same Borough (${c1.borough})`);
+        const w = (configMap['borough'] && configMap['borough'].weight) || 12;
+        addScore('borough', w, 'Same Borough (' + c1.borough + ')');
       } else if (c1.willingToTravel === "Yes" || c2.willingToTravel === "Yes") {
-        addScore('willingToTravel', configMap['willingToTravel']?.weight || 5, "Willing to travel");
+        addScore('willingToTravel', (configMap['willingToTravel'] && configMap['willingToTravel'].weight) || 5, "Willing to travel");
       }
 
       // 2. Identity
-      if (c1.age === c2.age) addScore('age', configMap['age']?.weight || 4, "Same age group");
-      if (c1.pronouns === c2.pronouns && c1.pronouns) addScore('pronouns', configMap['pronouns']?.weight || 3, "Same Pronouns");
-      if (c1.raceEthnicity === c2.raceEthnicity && c1.raceEthnicity) addScore('raceEthnicity', configMap['raceEthnicity']?.weight || 3, "Same Race/Ethnicity");
-      if (c1.gender === c2.gender) addScore('gender', configMap['gender']?.weight || 3, "Gender Match");
-      if (c1.lgbtq === "Yes" && c2.lgbtq === "Yes") addScore('lgbtq', configMap['lgbtq']?.weight || 9, "Both LGBTQ+");
+      if (c1.age === c2.age) addScore('age', (configMap['age'] && configMap['age'].weight) || 4, "Same age group");
+      if (c1.pronouns === c2.pronouns && c1.pronouns) addScore('pronouns', (configMap['pronouns'] && configMap['pronouns'].weight) || 3, "Same Pronouns");
+      if (c1.raceEthnicity === c2.raceEthnicity && c1.raceEthnicity) addScore('raceEthnicity', (configMap['raceEthnicity'] && configMap['raceEthnicity'].weight) || 3, "Same Race/Ethnicity");
+      if (c1.gender === c2.gender) addScore('gender', (configMap['gender'] && configMap['gender'].weight) || 3, "Gender Match");
+      if (c1.lgbtq === "Yes" && c2.lgbtq === "Yes") addScore('lgbtq', (configMap['lgbtq'] && configMap['lgbtq'].weight) || 9, "Both LGBTQ+");
 
       // 3. Lived Experiences
       const experiences = ['hasExperiencedDV', 'hasBeenIncarcerated', 'hasExperiencedHomelessness', 'receivingMentalHealthServices', 'isVeteran'];
       experiences.forEach(key => {
         if (c1[key] === "Yes" && c2[key] === "Yes") {
-           addScore(key, configMap[key]?.weight || 2, `Shared: ${configMap[key].label}`);
+           const item = configMap[key];
+           addScore(key, (item && item.weight) || 2, 'Shared: ' + (item && item.label));
         }
       });
 
       // 4. Availability
-      if (configMap['availability']?.enabled) {
+      const availItem = configMap['availability'];
+      if (availItem && availItem.enabled) {
         const overlaps = getOverlappingAvailability(c1, c2);
         if (overlaps.length > 0) {
-            const weight = configMap['availability'].weight || 25;
+            const weight = (configMap['availability'] && configMap['availability'].weight) || 25;
             const fraction = Math.min(1, overlaps.length / 3); 
             score += weight * fraction;
             reasons.push(`${overlaps.length} overlapping days`);
@@ -392,7 +404,8 @@
       const overlaps = getOverlappingAvailability(c1, c2);
 
       const renderRow = (key) => {
-        const label = DEFAULT_CRITERIA_CONFIG.find(c => c.key === key)?.label || key;
+        const found = DEFAULT_CRITERIA_CONFIG.find(c => c.key === key);
+        const label = (found && found.label) || key;
         const v1 = c1[key] || '-';
         const v2 = c2[key] || '-';
         const isMatch = String(v1).toLowerCase() === String(v2).toLowerCase() && v1 !== '-' && v1 !== 'No';
@@ -616,12 +629,22 @@
       const [search, setSearch] = useState("");
 
       useEffect(() => {
-        google.script.run.withSuccessHandler(data => {
-          setCompanions(data.companions);
-          setMatches(data.matches);
-          if (data.criteria) setConfig(data.criteria);
+        if (typeof google === 'undefined' || !google.script || !google.script.run) {
           setLoading(false);
-        }).getData();
+          return;
+        }
+        google.script.run
+          .withSuccessHandler(function(data) {
+            setCompanions(data.companions || []);
+            setMatches(data.matches || []);
+            if (data.criteria) setConfig(data.criteria);
+            setLoading(false);
+          })
+          .withFailureHandler(function(err) {
+            setLoading(false);
+            console.error(err);
+          })
+          .getData();
       }, []);
 
       // Just updates local state for immediate UI feedback
@@ -937,8 +960,18 @@
       );
     };
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
+    try {
+      var rootEl = document.getElementById('root');
+      if (typeof ReactDOM.createRoot === 'function') {
+        var root = ReactDOM.createRoot(rootEl);
+        root.render(React.createElement(App, null));
+      } else {
+        ReactDOM.render(React.createElement(App, null), rootEl);
+      }
+    } catch (err) {
+      var el = document.getElementById('root');
+      if (el) el.innerHTML = '<div style="padding:24px;font-family:sans-serif;color:#b91c1c;">Error loading app: ' + (err && err.message ? err.message : String(err)) + '</div>';
+    }
   </script>
 </body>
 </html>
