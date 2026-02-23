@@ -14,9 +14,9 @@
     .tab-btn { display: block; width: 100%; padding: 12px 16px; margin-bottom: 4px; border: none; border-radius: 6px; background: transparent; color: rgba(255,255,255,0.9); text-align: left; font-size: 14px; cursor: pointer; }
     .tab-btn:hover { background: rgba(255,255,255,0.1); }
     .tab-btn.active { background: #0f766e; font-weight: 600; }
-    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #f9fafb; }
-    .tab-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; padding: 24px; }
-    .tab-panel.active { display: flex; }
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #f9fafb; min-height: 0; }
+    .tab-panel { display: none; flex: 1; flex-direction: column; overflow: auto; padding: 24px; min-height: 0; }
+    .tab-panel.active { display: flex !important; }
     .page-title { font-size: 1.25rem; font-weight: 700; color: #111; margin: 0 0 16px 0; }
     .card { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e5e7eb; margin-bottom: 12px; overflow: hidden; }
     .card-header { padding: 16px; cursor: pointer; display: flex; align-items: center; gap: 12px; }
@@ -60,6 +60,19 @@
     .weight-sum { font-size: 14px; color: #6b7280; margin-bottom: 12px; }
     .weight-sum.invalid { color: #b91c1c; font-weight: 600; }
     .weight-sum.valid { color: #059669; }
+    .compare-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+    .compare-table th { background: #f3f4f6; padding: 10px 12px; text-align: left; }
+    .compare-table td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; }
+    .compare-table tr.match-row td { background: #d1fae5; color: #065f46; font-weight: 500; }
+    .compare-section { margin: 20px 0; }
+    .compare-section h3 { font-size: 1rem; margin: 0 0 12px 0; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; }
+    .essay-block { margin-bottom: 20px; padding: 16px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; }
+    .essay-block h4 { font-size: 13px; color: #6b7280; margin: 0 0 8px 0; }
+    .essay-cols { display: flex; gap: 20px; margin-top: 8px; }
+    .essay-col { flex: 1; min-width: 0; }
+    .essay-col strong { display: block; font-size: 11px; color: #6b7280; margin-bottom: 4px; }
+    .essay-col p { margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+    .modal-wide { max-width: 900px; }
   </style>
 </head>
 <body>
@@ -75,7 +88,7 @@
         <div class="loader"></div>
         <p style="color: #6b7280; margin-top: 12px;">Loading dashboard...</p>
       </div>
-      <div id="content" style="display: none; flex: 1; flex-direction: column; overflow: hidden;">
+      <div id="content" style="display: none; flex: 1; flex-direction: column; overflow: hidden; min-height: 0;">
         <div id="panel-directory" class="tab-panel"></div>
         <div id="panel-matches" class="tab-panel"></div>
         <div id="panel-criteria" class="tab-panel"></div>
@@ -88,7 +101,7 @@
       'use strict';
 
       var DEFAULT_CRITERIA = [
-        { key: 'preferredContact', label: 'Preferred Contact', weight: 25, category: 'Contact', enabled: true },
+        { key: 'preferredContact', label: 'Preferred Method of Contact', weight: 25, category: 'Contact', enabled: true },
         { key: 'availability', label: 'Availability', weight: 25, category: 'Logistics', enabled: true },
         { key: 'borough', label: 'Borough', weight: 12, category: 'Logistics', enabled: true },
         { key: 'willingToTravel', label: 'Willing to Travel', weight: 5, category: 'Logistics', enabled: true },
@@ -100,6 +113,14 @@
         { key: 'hasBeenIncarcerated', label: 'Incarceration', weight: 2, category: 'Experience', enabled: true },
         { key: 'isVeteran', label: 'Veteran', weight: 2, category: 'Experience', enabled: true }
       ];
+
+      var ESSAY_LABELS = {
+        hobbies: 'What are your hobbies?',
+        expectations: 'What do you want from a Companion?',
+        sharedExperiences: 'Life experiences in common?',
+        motivation: 'Why are you interested?',
+        creativity: 'How do you express creativity?'
+      };
 
       var state = {
         companions: [],
@@ -329,6 +350,7 @@
           row.innerHTML = '<div class="match-row">' +
             '<div class="match-info"><strong>' + escapeHtml(names) + '</strong> <span class="badge badge-green">' + pct + '%</span></div>' +
             '<div class="match-actions">' +
+              '<button type="button" class="btn btn-primary" onclick="window.openMatchDetailModal(\'' + m.id + '\')">View</button>' +
               '<select data-match-id="' + m.id + '" data-field="status">' + opts + '</select>' +
               '<input type="text" placeholder="Notes" value="' + escapeHtml(m.notes || '') + '" data-match-id="' + m.id + '" data-field="notes">' +
               '<button type="button" class="btn btn-danger" onclick="window.removeMatch(\'' + m.id + '\')">Delete</button>' +
@@ -358,6 +380,74 @@
           state.matches = state.matches.filter(function(m) { return m.id !== id; });
           renderMatches();
         }).deleteMatch(id);
+      }
+
+      function openMatchDetailModal(matchId) {
+        var m = state.matches.find(function(x) { return x.id === matchId; });
+        if (!m) return;
+        var c1 = state.companions.find(function(c) { return String(c.id) === String(m.companion1Id); });
+        var c2 = state.companions.find(function(c) { return String(c.id) === String(m.companion2Id); });
+        if (!c1 || !c2) return;
+        var pct = calculateMatchPercent(c1, c2);
+        var overlaps = getOverlappingDays(c1, c2);
+        var name1 = (c1.firstName || '') + ' ' + (c1.lastName || '');
+        var name2 = (c2.firstName || '') + ' ' + (c2.lastName || '');
+
+        function cmp(key, label) {
+          var v1 = c1[key] || '—';
+          var v2 = c2[key] || '—';
+          var same = String(v1).toLowerCase().trim() === String(v2).toLowerCase().trim() && v1 !== '—' && v1 !== '';
+          return '<tr class="' + (same ? 'match-row' : '') + '"><td style="font-weight:500;width:140px;">' + escapeHtml(label) + '</td><td>' + escapeHtml(v1) + '</td><td>' + escapeHtml(v2) + '</td></tr>';
+        }
+
+        var tableRows = cmp('preferredContact', 'Preferred contact') +
+          cmp('borough', 'Borough') +
+          cmp('neighborhood', 'Neighborhood') +
+          cmp('age', 'Age') +
+          cmp('pronouns', 'Pronouns') +
+          cmp('gender', 'Gender') +
+          cmp('raceEthnicity', 'Race/Ethnicity') +
+          cmp('lgbtq', 'LGBTQ+') +
+          cmp('willingToTravel', 'Willing to travel');
+        var avail1 = (c1.availability && Object.keys(c1.availability).map(function(d) { return (c1.availability[d] && c1.availability[d] !== 'Unavailable') ? d : null; }).filter(Boolean).join(', ')) || '—';
+        var avail2 = (c2.availability && Object.keys(c2.availability).map(function(d) { return (c2.availability[d] && c2.availability[d] !== 'Unavailable') ? d : null; }).filter(Boolean).join(', ')) || '—';
+        var availSame = avail1 === avail2;
+        tableRows += '<tr class="' + (availSame ? 'match-row' : '') + '"><td style="font-weight:500;">Availability</td><td>' + escapeHtml(avail1) + '</td><td>' + escapeHtml(avail2) + '</td></tr>';
+        tableRows += '<tr class="' + (overlaps.length ? 'match-row' : '') + '"><td style="font-weight:500;">Overlapping days</td><td colspan="2">' + (overlaps.length ? escapeHtml(overlaps.join(', ')) : 'None') + '</td></tr>';
+
+        var essayHtml = '';
+        var essayKeys = ['hobbies', 'expectations', 'sharedExperiences', 'motivation', 'creativity'];
+        essayKeys.forEach(function(k) {
+          var q = ESSAY_LABELS[k] || k;
+          var t1 = (c1.essays && c1.essays[k]) || '—';
+          var t2 = (c2.essays && c2.essays[k]) || '—';
+          essayHtml += '<div class="essay-block">' +
+            '<h4>' + escapeHtml(q) + '</h4>' +
+            '<div class="essay-cols">' +
+              '<div class="essay-col"><strong>' + escapeHtml(name1) + '</strong><p>' + escapeHtml(t1) + '</p></div>' +
+              '<div class="essay-col"><strong>' + escapeHtml(name2) + '</strong><p>' + escapeHtml(t2) + '</p></div>' +
+            '</div></div>';
+        });
+
+        var modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.id = 'match-detail-modal';
+        modal.innerHTML = '<div class="modal modal-wide">' +
+          '<div class="modal-header">' +
+            '<h2>' + escapeHtml(name1) + ' & ' + escapeHtml(name2) + ' — ' + pct + '% match</h2>' +
+            '<button type="button" class="btn btn-secondary" onclick="document.getElementById(\'match-detail-modal\').remove()">Close</button>' +
+          '</div>' +
+          '<div class="modal-body">' +
+            '<div class="compare-section">' +
+              '<h3>Application comparison (matches in green)</h3>' +
+              '<table class="compare-table">' +
+                '<thead><tr><th>Criteria</th><th>' + escapeHtml(name1) + '</th><th>' + escapeHtml(name2) + '</th></tr></thead><tbody>' + tableRows + '</tbody>' +
+              '</table></div>' +
+            '<div class="compare-section">' +
+              '<h3>Manual essay comparison</h3>' + essayHtml + '</div>' +
+          '</div></div>';
+        modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
       }
 
       function renderCriteria() {
@@ -404,6 +494,7 @@
       window.createMatch = createMatch;
       window.deleteCompanion = deleteCompanion;
       window.removeMatch = removeMatch;
+      window.openMatchDetailModal = openMatchDetailModal;
 
       loadData();
     })();
