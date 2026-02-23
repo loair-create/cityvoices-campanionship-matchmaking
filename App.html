@@ -9,8 +9,6 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <!-- Babel -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <!-- jsPDF for PDF export -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   
   <script>
     tailwind.config = {
@@ -96,64 +94,80 @@
 
     // --- UTILS ---
     const downloadCompanionPDF = (c) => {
-      try {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-        const margin = 40;
-        let y = margin;
-        const lineH = 18;
-        const addLine = (label, value) => {
-          if (y > 700) { doc.addPage(); y = margin; }
-          doc.setFontSize(9);
-          doc.setFont(undefined, 'normal');
-          doc.text(`${label}: ${value || 'N/A'}`, margin, y);
-          y += lineH;
-        };
-        doc.setFontSize(16);
-        doc.setFont(undefined, 'bold');
-        doc.text(`${c.firstName} ${c.lastName} – Companion Application`, margin, y);
-        y += lineH + 8;
-        doc.setFontSize(10);
-        doc.setFont(undefined, 'normal');
-        addLine('Email', c.email);
-        addLine('Phone', c.phone);
-        addLine('Preferred contact', c.preferredContact);
-        addLine('Borough', c.borough);
-        addLine('Neighborhood', c.neighborhood);
-        addLine('Age', c.age);
-        addLine('Pronouns', c.pronouns);
-        addLine('Gender', c.gender);
-        addLine('Race/Ethnicity', c.raceEthnicity);
-        addLine('LGBTQ+', c.lgbtq);
-        addLine('Willing to travel', c.willingToTravel);
-        addLine('Accessibility needs', c.accessibilityNeeds);
-        y += 8;
-        doc.setFont(undefined, 'bold');
-        doc.text('Availability', margin, y);
-        y += lineH;
-        doc.setFont(undefined, 'normal');
-        const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
-        days.forEach(d => { addLine(d.charAt(0).toUpperCase() + d.slice(1), (c.availability && c.availability[d]) || 'N/A'); });
-        y += 8;
-        doc.setFont(undefined, 'bold');
-        doc.text('Essays', margin, y);
-        y += lineH;
-        doc.setFont(undefined, 'normal');
-        Object.entries(c.essays || {}).forEach(([k, text]) => {
+      const doPdf = () => {
+        try {
+          const jspdfLib = window.jspdf || (window.jspdf && window.jspdf.jsPDF ? { jsPDF: window.jspdf.jsPDF } : null);
+          if (!jspdfLib || !jspdfLib.jsPDF) {
+            alert('PDF library not available. Use the browser Print (Ctrl+P or Cmd+P) and choose "Save as PDF" to save this page.');
+            return;
+          }
+          const jsPDF = jspdfLib.jsPDF;
+          const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+          const margin = 40;
+          let y = margin;
+          const lineH = 18;
+          const addLine = (label, value) => {
+            if (y > 700) { doc.addPage(); y = margin; }
+            doc.setFontSize(9);
+            doc.setFont(undefined, 'normal');
+            doc.text(label + ': ' + (value || 'N/A'), margin, y);
+            y += lineH;
+          };
+          doc.setFontSize(16);
           doc.setFont(undefined, 'bold');
-          doc.setFontSize(9);
-          doc.text(ESSAY_QUESTIONS[k] || k, margin, y);
+          doc.text((c.firstName || '') + ' ' + (c.lastName || '') + ' – Companion Application', margin, y);
+          y += lineH + 8;
+          doc.setFontSize(10);
+          doc.setFont(undefined, 'normal');
+          addLine('Email', c.email);
+          addLine('Phone', c.phone);
+          addLine('Preferred contact', c.preferredContact);
+          addLine('Borough', c.borough);
+          addLine('Neighborhood', c.neighborhood);
+          addLine('Age', c.age);
+          addLine('Pronouns', c.pronouns);
+          addLine('Gender', c.gender);
+          addLine('Race/Ethnicity', c.raceEthnicity);
+          addLine('LGBTQ+', c.lgbtq);
+          addLine('Willing to travel', c.willingToTravel);
+          addLine('Accessibility needs', c.accessibilityNeeds);
+          y += 8;
+          doc.setFont(undefined, 'bold');
+          doc.text('Availability', margin, y);
           y += lineH;
           doc.setFont(undefined, 'normal');
-          const lines = doc.splitTextToSize(String(text || 'N/A'), 500);
-          lines.forEach(l => { if (y > 700) { doc.addPage(); y = margin; } doc.text(l, margin, y); y += lineH; });
-          y += 6;
-        });
-        doc.save(`Companion_${c.firstName}_${c.lastName}.pdf`);
-      } catch (e) {
-        alert('PDF download failed. Please try again.');
-        console.error(e);
+          const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+          days.forEach(function(d) { addLine(d.charAt(0).toUpperCase() + d.slice(1), (c.availability && c.availability[d]) || 'N/A'); });
+          y += 8;
+          doc.setFont(undefined, 'bold');
+          doc.text('Essays', margin, y);
+          y += lineH;
+          doc.setFont(undefined, 'normal');
+          Object.keys(c.essays || {}).forEach(function(k) {
+            var text = c.essays[k];
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(9);
+            doc.text(ESSAY_QUESTIONS[k] || k, margin, y);
+            y += lineH;
+            doc.setFont(undefined, 'normal');
+            var lines = doc.splitTextToSize(String(text || 'N/A'), 500);
+            lines.forEach(function(l) { if (y > 700) { doc.addPage(); y = margin; } doc.text(l, margin, y); y += lineH; });
+            y += 6;
+          });
+          doc.save('Companion_' + (c.firstName || '') + '_' + (c.lastName || '') + '.pdf');
+        } catch (e) {
+          alert('PDF download failed. Use Print (Ctrl+P) and "Save as PDF" instead.');
+        }
+      };
+      if (window.jspdf && window.jspdf.jsPDF) {
+        doPdf();
+        return;
       }
+      var s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      s.onload = function() { doPdf(); };
+      s.onerror = function() { alert('PDF library could not load. Use Print (Ctrl+P) and choose Save as PDF.'); };
+      document.head.appendChild(s);
     };
 
     const getOverlappingAvailability = (c1, c2) => {
