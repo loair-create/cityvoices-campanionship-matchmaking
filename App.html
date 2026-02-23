@@ -77,7 +77,7 @@
     .compare-table th:nth-child(2), .compare-table td:nth-child(2) { width: 39%; }
     .compare-table th:nth-child(3), .compare-table td:nth-child(3) { width: 39%; }
     .compare-table td.criteria-label { font-weight: 500; }
-    .compare-table tr.match-row td:nth-child(2), .compare-table tr.match-row td:nth-child(3) { background: #d1fae5; color: #065f46; font-weight: 500; }
+    .compare-table tr.compare-match-row td:nth-child(2), .compare-table tr.compare-match-row td:nth-child(3) { background: #d1fae5; color: #065f46; font-weight: 500; }
     .compare-section { margin: 20px 0; }
     .compare-section h3 { font-size: 1rem; margin: 0 0 12px 0; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; }
     .essay-block { margin-bottom: 20px; padding: 16px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; }
@@ -502,7 +502,7 @@
           var v1 = c1[key] || '—';
           var v2 = c2[key] || '—';
           var same = String(v1).toLowerCase().trim() === String(v2).toLowerCase().trim() && v1 !== '—' && v1 !== '';
-          return '<tr class="' + (same ? 'match-row' : '') + '"><td class="criteria-label">' + escapeHtml(label) + '</td><td>' + escapeHtml(v1) + '</td><td>' + escapeHtml(v2) + '</td></tr>';
+          return '<tr class="' + (same ? 'compare-match-row' : '') + '"><td class="criteria-label">' + escapeHtml(label) + '</td><td>' + escapeHtml(v1) + '</td><td>' + escapeHtml(v2) + '</td></tr>';
         }
 
         var tableRows = cmp('preferredContact', 'Preferred Contact Method') +
@@ -518,9 +518,9 @@
         var avail1 = (c1.availability && Object.keys(c1.availability).map(function(d) { return (c1.availability[d] && c1.availability[d] !== 'Unavailable') ? capDay(d) : null; }).filter(Boolean).join(', ')) || '—';
         var avail2 = (c2.availability && Object.keys(c2.availability).map(function(d) { return (c2.availability[d] && c2.availability[d] !== 'Unavailable') ? capDay(d) : null; }).filter(Boolean).join(', ')) || '—';
         var availSame = avail1 === avail2;
-        tableRows += '<tr class="' + (availSame ? 'match-row' : '') + '"><td class="criteria-label">Availability</td><td>' + escapeHtml(avail1) + '</td><td>' + escapeHtml(avail2) + '</td></tr>';
+        tableRows += '<tr class="' + (availSame ? 'compare-match-row' : '') + '"><td class="criteria-label">Availability</td><td>' + escapeHtml(avail1) + '</td><td>' + escapeHtml(avail2) + '</td></tr>';
         var overlapTxt = overlaps.length ? overlaps.join(', ') : 'None';
-        tableRows += '<tr class="' + (overlaps.length ? 'match-row' : '') + '"><td class="criteria-label">Overlapping Days</td><td>' + escapeHtml(overlapTxt) + '</td><td>' + escapeHtml(overlapTxt) + '</td></tr>';
+        tableRows += '<tr class="' + (overlaps.length ? 'compare-match-row' : '') + '"><td class="criteria-label">Overlapping Days</td><td>' + escapeHtml(overlapTxt) + '</td><td>' + escapeHtml(overlapTxt) + '</td></tr>';
 
         var essayHtml = '';
         var essayKeys = ['hobbies', 'expectations', 'sharedExperiences', 'motivation', 'creativity'];
