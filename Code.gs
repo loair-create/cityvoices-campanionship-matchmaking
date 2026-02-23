@@ -42,49 +42,58 @@ function getResponsesSheet() {
 
 /**
  * FETCH DATA
+ * Wrapped so storage/spreadsheet errors don't break deployment or first load.
  */
 function getData() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  
-  // 1. Get Companions from the connected responses sheet
-  const formSheet = getResponsesSheet();
-  
-  const formData = formSheet.getDataRange().getValues();
-  const headers = formData[0];
-  const rows = formData.slice(1);
-  
-  const companions = rows
-    .map((row, i) => parseCompanion(row, headers, i + 2))
-    .filter(c => c != null);
-  
-  // 2. Get Matches
-  let matchSheet = ss.getSheetByName('Matches');
-  if (!matchSheet) {
-    matchSheet = ss.insertSheet('Matches');
-    // Added Name columns for better spreadsheet readability
-    matchSheet.appendRow(['Match ID', 'Companion 1 ID', 'Companion 2 ID', 'Status', 'Notes', 'Created At', 'C1 Name', 'C2 Name']);
-  }
-  
-  const matchData = matchSheet.getDataRange().getValues();
-  const matchRows = matchData.slice(1);
-  
-  const matches = matchRows.map(r => ({
-    id: String(r[0]),
-    companion1Id: String(r[1]),
-    companion2Id: String(r[2]),
-    status: r[3],
-    notes: r[4],
-    createdAt: r[5]
-  }));
-
-  // 3. Get Criteria Settings
-  const scriptProperties = PropertiesService.getScriptProperties();
-  const savedCriteria = scriptProperties.getProperty('MATCHING_CRITERIA');
+  let companions = [];
+  let matches = [];
   let criteria = null;
-  if (savedCriteria) {
-    try { criteria = JSON.parse(savedCriteria); } catch(e) {}
+
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // 1. Get Companions from the connected responses sheet
+    const formSheet = getResponsesSheet();
+    const formData = formSheet.getDataRange().getValues();
+    const headers = formData[0];
+    const rows = formData.slice(1);
+    companions = rows
+      .map((row, i) => parseCompanion(row, headers, i + 2))
+      .filter(c => c != null);
+  } catch (e) {
+    throw new Error('Companions: ' + (e.message || String(e)));
   }
-  
+
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let matchSheet = ss.getSheetByName('Matches');
+    if (!matchSheet) {
+      matchSheet = ss.insertSheet('Matches');
+      matchSheet.appendRow(['Match ID', 'Companion 1 ID', 'Companion 2 ID', 'Status', 'Notes', 'Created At', 'C1 Name', 'C2 Name']);
+    }
+    const matchData = matchSheet.getDataRange().getValues();
+    const matchRows = matchData.slice(1);
+    matches = matchRows.map(r => ({
+      id: String(r[0]),
+      companion1Id: String(r[1]),
+      companion2Id: String(r[2]),
+      status: r[3],
+      notes: r[4],
+      createdAt: r[5]
+    }));
+  } catch (e) {
+    throw new Error('Matches: ' + (e.message || String(e)));
+  }
+
+  // 3. Criteria: avoid Script Properties read failure (can cause INTERNAL error)
+  try {
+    const scriptProperties = PropertiesService.getScriptProperties();
+    const savedCriteria = scriptProperties.getProperty('MATCHING_CRITERIA');
+    if (savedCriteria) criteria = JSON.parse(savedCriteria);
+  } catch (e) {
+    // Use default criteria if storage read fails
+  }
+
   return { companions, matches, criteria };
 }
 
@@ -92,8 +101,12 @@ function getData() {
  * SAVE CRITERIA SETTINGS
  */
 function saveCriteriaSettings(settingsJson) {
-  PropertiesService.getScriptProperties().setProperty('MATCHING_CRITERIA', settingsJson);
-  return true;
+  try {
+    PropertiesService.getScriptProperties().setProperty('MATCHING_CRITERIA', settingsJson);
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 /**
