@@ -9,6 +9,8 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <!-- Babel -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- jsPDF for PDF export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   
   <script>
     tailwind.config = {
@@ -74,24 +76,86 @@
       creativity: "How do you express your creativity?"
     };
 
-    // Adjusted weights to sum to 100 exactly
+    // Preferred contact & availability are top criteria (weights sum to 100)
     const DEFAULT_CRITERIA_CONFIG = [
-      { key: 'borough', label: 'Borough', weight: 15, category: 'Logistics', enabled: true },
-      { key: 'willingToTravel', label: 'Willing to Travel', weight: 5, category: 'Logistics', enabled: true },
+      { key: 'preferredContact', label: 'Preferred Method of Contact', weight: 25, category: 'Contact', enabled: true },
       { key: 'availability', label: 'Availability', weight: 25, category: 'Logistics', enabled: true },
-      { key: 'age', label: 'Age Group', weight: 5, category: 'Identity', enabled: true },
-      { key: 'pronouns', label: 'Pronouns', weight: 5, category: 'Identity', enabled: true },
-      { key: 'raceEthnicity', label: 'Race/Ethnicity', weight: 5, category: 'Identity', enabled: true },
-      { key: 'gender', label: 'Gender', weight: 5, category: 'Identity', enabled: true },
-      { key: 'lgbtq', label: 'LGBTQ+ Status', weight: 10, category: 'Identity', enabled: true },
-      { key: 'hasExperiencedDV', label: 'DV Survivor', weight: 5, category: 'Lived Experience', enabled: true },
-      { key: 'hasBeenIncarcerated', label: 'Incarceration History', weight: 5, category: 'Lived Experience', enabled: true },
-      { key: 'hasExperiencedHomelessness', label: 'Homelessness History', weight: 5, category: 'Lived Experience', enabled: true },
-      { key: 'receivingMentalHealthServices', label: 'Mental Health Svcs', weight: 5, category: 'Lived Experience', enabled: true },
-      { key: 'isVeteran', label: 'Veteran', weight: 5, category: 'Lived Experience', enabled: true },
+      { key: 'borough', label: 'Borough', weight: 12, category: 'Logistics', enabled: true },
+      { key: 'willingToTravel', label: 'Willing to Travel', weight: 5, category: 'Logistics', enabled: true },
+      { key: 'age', label: 'Age Group', weight: 4, category: 'Identity', enabled: true },
+      { key: 'pronouns', label: 'Pronouns', weight: 3, category: 'Identity', enabled: true },
+      { key: 'raceEthnicity', label: 'Race/Ethnicity', weight: 3, category: 'Identity', enabled: true },
+      { key: 'gender', label: 'Gender', weight: 3, category: 'Identity', enabled: true },
+      { key: 'lgbtq', label: 'LGBTQ+ Status', weight: 9, category: 'Identity', enabled: true },
+      { key: 'hasExperiencedDV', label: 'DV Survivor', weight: 2, category: 'Lived Experience', enabled: true },
+      { key: 'hasBeenIncarcerated', label: 'Incarceration History', weight: 2, category: 'Lived Experience', enabled: true },
+      { key: 'hasExperiencedHomelessness', label: 'Homelessness History', weight: 2, category: 'Lived Experience', enabled: true },
+      { key: 'receivingMentalHealthServices', label: 'Mental Health Svcs', weight: 2, category: 'Lived Experience', enabled: true },
+      { key: 'isVeteran', label: 'Veteran', weight: 2, category: 'Lived Experience', enabled: true },
     ];
 
     // --- UTILS ---
+    const downloadCompanionPDF = (c) => {
+      try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+        const margin = 40;
+        let y = margin;
+        const lineH = 18;
+        const addLine = (label, value) => {
+          if (y > 700) { doc.addPage(); y = margin; }
+          doc.setFontSize(9);
+          doc.setFont(undefined, 'normal');
+          doc.text(`${label}: ${value || 'N/A'}`, margin, y);
+          y += lineH;
+        };
+        doc.setFontSize(16);
+        doc.setFont(undefined, 'bold');
+        doc.text(`${c.firstName} ${c.lastName} – Companion Application`, margin, y);
+        y += lineH + 8;
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        addLine('Email', c.email);
+        addLine('Phone', c.phone);
+        addLine('Preferred contact', c.preferredContact);
+        addLine('Borough', c.borough);
+        addLine('Neighborhood', c.neighborhood);
+        addLine('Age', c.age);
+        addLine('Pronouns', c.pronouns);
+        addLine('Gender', c.gender);
+        addLine('Race/Ethnicity', c.raceEthnicity);
+        addLine('LGBTQ+', c.lgbtq);
+        addLine('Willing to travel', c.willingToTravel);
+        addLine('Accessibility needs', c.accessibilityNeeds);
+        y += 8;
+        doc.setFont(undefined, 'bold');
+        doc.text('Availability', margin, y);
+        y += lineH;
+        doc.setFont(undefined, 'normal');
+        const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+        days.forEach(d => { addLine(d.charAt(0).toUpperCase() + d.slice(1), (c.availability && c.availability[d]) || 'N/A'); });
+        y += 8;
+        doc.setFont(undefined, 'bold');
+        doc.text('Essays', margin, y);
+        y += lineH;
+        doc.setFont(undefined, 'normal');
+        Object.entries(c.essays || {}).forEach(([k, text]) => {
+          doc.setFont(undefined, 'bold');
+          doc.setFontSize(9);
+          doc.text(ESSAY_QUESTIONS[k] || k, margin, y);
+          y += lineH;
+          doc.setFont(undefined, 'normal');
+          const lines = doc.splitTextToSize(String(text || 'N/A'), 500);
+          lines.forEach(l => { if (y > 700) { doc.addPage(); y = margin; } doc.text(l, margin, y); y += lineH; });
+          y += 6;
+        });
+        doc.save(`Companion_${c.firstName}_${c.lastName}.pdf`);
+      } catch (e) {
+        alert('PDF download failed. Please try again.');
+        console.error(e);
+      }
+    };
+
     const getOverlappingAvailability = (c1, c2) => {
       const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
       const overlaps = [];
@@ -124,25 +188,32 @@
       
       if (maxScore === 0) return { percent: 0, reasons: [] };
 
+      // 0. Preferred method of contact (top criteria)
+      const pc1 = (c1.preferredContact || '').toLowerCase();
+      const pc2 = (c2.preferredContact || '').toLowerCase();
+      if (pc1 && pc2 && pc1 === pc2) {
+        addScore('preferredContact', configMap['preferredContact']?.weight || 25, `Same preferred contact (${c1.preferredContact})`);
+      }
+
       // 1. Geography
       if (c1.borough === c2.borough) {
-        addScore('borough', configMap['borough']?.weight || 15, `Same Borough (${c1.borough})`);
+        addScore('borough', configMap['borough']?.weight || 12, `Same Borough (${c1.borough})`);
       } else if (c1.willingToTravel === "Yes" || c2.willingToTravel === "Yes") {
         addScore('willingToTravel', configMap['willingToTravel']?.weight || 5, "Willing to travel");
       }
 
       // 2. Identity
-      if (c1.age === c2.age) addScore('age', configMap['age']?.weight || 5, "Same age group");
+      if (c1.age === c2.age) addScore('age', configMap['age']?.weight || 4, "Same age group");
       if (c1.pronouns === c2.pronouns && c1.pronouns) addScore('pronouns', configMap['pronouns']?.weight || 3, "Same Pronouns");
-      if (c1.raceEthnicity === c2.raceEthnicity && c1.raceEthnicity) addScore('raceEthnicity', configMap['raceEthnicity']?.weight || 5, "Same Race/Ethnicity");
-      if (c1.gender === c2.gender) addScore('gender', configMap['gender']?.weight || 5, "Gender Match");
-      if (c1.lgbtq === "Yes" && c2.lgbtq === "Yes") addScore('lgbtq', configMap['lgbtq']?.weight || 10, "Both LGBTQ+");
+      if (c1.raceEthnicity === c2.raceEthnicity && c1.raceEthnicity) addScore('raceEthnicity', configMap['raceEthnicity']?.weight || 3, "Same Race/Ethnicity");
+      if (c1.gender === c2.gender) addScore('gender', configMap['gender']?.weight || 3, "Gender Match");
+      if (c1.lgbtq === "Yes" && c2.lgbtq === "Yes") addScore('lgbtq', configMap['lgbtq']?.weight || 9, "Both LGBTQ+");
 
       // 3. Lived Experiences
       const experiences = ['hasExperiencedDV', 'hasBeenIncarcerated', 'hasExperiencedHomelessness', 'receivingMentalHealthServices', 'isVeteran'];
       experiences.forEach(key => {
         if (c1[key] === "Yes" && c2[key] === "Yes") {
-           addScore(key, configMap[key]?.weight || 8, `Shared: ${configMap[key].label}`);
+           addScore(key, configMap[key]?.weight || 2, `Shared: ${configMap[key].label}`);
         }
       });
 
@@ -360,7 +431,7 @@
               {/* Left Column: Data Comparison */}
               <div className="overflow-y-auto pr-2 space-y-6">
                  {renderSection("Identity", ['age', 'pronouns', 'gender', 'raceEthnicity', 'lgbtq'])}
-                 {renderSection("Logistics", ['borough', 'willingToTravel'])}
+                 {renderSection("Contact & Logistics", ['preferredContact', 'borough', 'willingToTravel'])}
                  
                  <div className="bg-white rounded-lg border border-gray-200 p-4">
                     <h4 className="font-bold text-gray-700 text-sm uppercase tracking-wider mb-3">Availability Overlap</h4>
@@ -652,6 +723,9 @@
                     <div className="bg-white border-b border-gray-200 px-8 py-4 flex justify-between items-center shadow-sm z-10">
                        <h2 className="text-xl font-bold text-gray-800">Directory</h2>
                        <div className="flex items-center space-x-3">
+                          <button onClick={() => { setLoading(true); google.script.run.withSuccessHandler(data => { setCompanions(data.companions); setMatches(data.matches); if (data.criteria) setConfig(data.criteria); setLoading(false); }).getData(); }} className="flex items-center px-3 py-2 rounded-md border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-50">
+                             Refresh
+                          </button>
                           <button onClick={() => setShowFilters(!showFilters)} className={`flex items-center px-3 py-2 rounded-md border text-sm font-medium transition ${showFilters ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
                              <ICONS.Filter className="w-4 h-4 mr-2"/> Filters
                           </button>
@@ -689,17 +763,21 @@
 
                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {filteredCompanions.map(c => (
-                             <div key={c.id} onClick={() => { setSelectedCompanion(c); setIsMatchMode(false); }} className="bg-white rounded-lg shadow cursor-pointer hover:shadow-md transition border border-gray-200 group">
-                                <div className="p-5 flex items-center space-x-4">
+                             <div key={c.id} className="bg-white rounded-lg shadow hover:shadow-md transition border border-gray-200 group">
+                                <div onClick={() => { setSelectedCompanion(c); setIsMatchMode(false); }} className="p-5 flex items-center space-x-4 cursor-pointer">
                                    <div className="w-12 h-12 bg-brand-100 rounded-full flex items-center justify-center text-brand-700 font-bold text-lg group-hover:bg-brand-200 transition">{c.firstName[0]}</div>
                                    <div className="min-w-0 flex-1">
                                       <h3 className="text-gray-900 font-bold truncate">{c.firstName} {c.lastName}</h3>
                                       <p className="text-sm text-gray-500 truncate">{c.borough}</p>
+                                      {!c.waiverSigned && <span className="inline-block mt-1 text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">Ineligible (waiver not signed)</span>}
                                    </div>
                                 </div>
-                                <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
+                                <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-between items-center gap-2">
                                    <span className="text-xs font-medium text-gray-500 bg-white px-2 py-1 rounded border border-gray-200">{c.age}</span>
-                                   <span className="text-xs text-brand-600 font-medium group-hover:underline">View Profile &rarr;</span>
+                                   <div className="flex items-center gap-1">
+                                      <button onClick={(e) => { e.stopPropagation(); downloadCompanionPDF(c); }} className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline px-2 py-1 rounded border border-brand-200 hover:bg-brand-50" title="Download PDF">Download PDF</button>
+                                      <button onClick={(e) => { e.stopPropagation(); if(confirm('Delete this application? This will remove them from the spreadsheet and any matches.')) { google.script.run.withSuccessHandler(() => { setLoading(true); google.script.run.withSuccessHandler(data => { setCompanions(data.companions); setMatches(data.matches); if (data.criteria) setConfig(data.criteria); setSelectedCompanion(null); setLoading(false); }).getData(); }).deleteCompanion(c.id); }} className="text-xs font-medium text-red-600 hover:text-red-700 hover:underline px-2 py-1 rounded border border-red-200 hover:bg-red-50" title="Delete application">Delete</button>
+                                   </div>
                                 </div>
                              </div>
                           ))}
@@ -719,13 +797,22 @@
                          <div>
                             <h3 className="text-xl leading-6 font-bold text-gray-900">{selectedCompanion.firstName} {selectedCompanion.lastName}</h3>
                             <p className="text-sm text-gray-500 mt-1">{selectedCompanion.email} • {selectedCompanion.phone}</p>
+                            {!selectedCompanion.waiverSigned && <span className="inline-block mt-2 text-xs font-bold text-amber-700 bg-amber-100 px-2 py-1 rounded">Ineligible to match (waiver not signed)</span>}
                          </div>
-                         <button 
-                            onClick={() => {setSelectedCompanion(null); setIsMatchMode(false);}} 
-                            className="bg-red-500 hover:bg-red-600 text-white rounded-md p-2 transition"
-                         >
-                            <ICONS.Close className="w-5 h-5"/>
-                         </button>
+                         <div className="flex items-center gap-2">
+                            <button onClick={() => downloadCompanionPDF(selectedCompanion)} className="flex items-center px-3 py-2 bg-brand-600 text-white text-sm font-medium rounded-md hover:bg-brand-700">
+                               Download PDF
+                            </button>
+                            <button onClick={() => { if(confirm('Delete this application? This will remove them from the spreadsheet and any matches.')) { google.script.run.withSuccessHandler(() => { setLoading(true); google.script.run.withSuccessHandler(data => { setCompanions(data.companions); setMatches(data.matches); if (data.criteria) setConfig(data.criteria); setSelectedCompanion(null); setIsMatchMode(false); setLoading(false); }).getData(); }).deleteCompanion(selectedCompanion.id); } }} className="flex items-center px-3 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-md hover:bg-red-200">
+                               Delete application
+                            </button>
+                            <button 
+                               onClick={() => {setSelectedCompanion(null); setIsMatchMode(false);}} 
+                               className="bg-red-500 hover:bg-red-600 text-white rounded-md p-2 transition"
+                            >
+                               <ICONS.Close className="w-5 h-5"/>
+                            </button>
+                         </div>
                       </div>
                       
                       {!isMatchMode ? (
@@ -746,6 +833,7 @@
                                
                                <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider border-b pb-1">Contact & Logistics</h4>
                                <div className="bg-gray-50 rounded p-4 space-y-2">
+                                  <DetailRow label="Preferred contact" value={selectedCompanion.preferredContact} />
                                   <DetailRow label="Email" value={selectedCompanion.email} />
                                   <DetailRow label="Phone" value={selectedCompanion.phone} />
                                   <DetailRow label="Willing to Travel" value={selectedCompanion.willingToTravel} />
@@ -762,9 +850,15 @@
                                </div>
                             </div>
                             <div className="space-y-6">
-                               <button onClick={() => setIsMatchMode(true)} className="w-full bg-brand-600 text-white py-3 rounded-lg shadow hover:bg-brand-700 font-bold flex items-center justify-center">
-                                  <ICONS.Match className="w-5 h-5 mr-2"/> Find Match
-                               </button>
+                               {selectedCompanion.waiverSigned ? (
+                                  <button onClick={() => setIsMatchMode(true)} className="w-full bg-brand-600 text-white py-3 rounded-lg shadow hover:bg-brand-700 font-bold flex items-center justify-center">
+                                     <ICONS.Match className="w-5 h-5 mr-2"/> Find Match
+                                  </button>
+                               ) : (
+                                  <div className="w-full py-3 px-4 rounded-lg bg-amber-100 border border-amber-200 text-amber-800 text-sm font-medium">
+                                     Ineligible to match until waivers are signed (column B in spreadsheet).
+                                  </div>
+                               )}
 
                                <div>
                                   <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider mb-2 border-b pb-1">Lived Experiences</h4>
@@ -799,23 +893,25 @@
                          <div className="space-y-4">
                             <button onClick={() => setIsMatchMode(false)} className="text-sm text-brand-600 hover:underline mb-2">&larr; Back to Details</button>
                             <div className="space-y-3">
-                               {companions.filter(c => c.id !== selectedCompanion.id).map(c => {
-                                   const { percent, reasons } = calculateMatchPercentage(selectedCompanion, c, config);
-                                   return { c, percent, reasons };
-                               }).sort((a,b) => b.percent - a.percent).slice(0, 10).map(({ c, percent, reasons }) => (
-                                  <div key={c.id} className="border rounded-lg p-4 flex justify-between items-center hover:bg-gray-50">
-                                     <div>
-                                         <div className="flex items-center space-x-3">
-                                            <h4 className="font-bold text-gray-900">{c.firstName} {c.lastName}</h4>
-                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${percent > 70 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>{percent}% Match</span>
-                                         </div>
-                                         <div className="text-xs text-gray-500 mt-1 flex gap-2">
-                                            {reasons.slice(0,3).map((r,i) => <span key={i} className="bg-gray-100 px-1 rounded">{r}</span>)}
-                                         </div>
-                                     </div>
-                                     <button onClick={() => handleCreateMatch(c.id)} className="bg-brand-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-brand-700">Select</button>
-                                  </div>
-                               ))}
+                               {(() => {
+                                 const eligible = companions.filter(c => c.id !== selectedCompanion.id && c.waiverSigned && selectedCompanion.waiverSigned);
+                                 const sorted = eligible.map(c => ({ c, ...calculateMatchPercentage(selectedCompanion, c, config) })).sort((a,b) => b.percent - a.percent).slice(0, 10);
+                                 if (sorted.length === 0) return <p className="text-gray-500 text-sm">No eligible match candidates (others must have waivers signed).</p>;
+                                 return sorted.map(({ c, percent, reasons }) => (
+                                    <div key={c.id} className="border rounded-lg p-4 flex justify-between items-center hover:bg-gray-50">
+                                       <div>
+                                           <div className="flex items-center space-x-3">
+                                              <h4 className="font-bold text-gray-900">{c.firstName} {c.lastName}</h4>
+                                              <span className={`px-2 py-0.5 rounded text-xs font-bold ${percent > 70 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>{percent}% Match</span>
+                                           </div>
+                                           <div className="text-xs text-gray-500 mt-1 flex gap-2">
+                                              {reasons.slice(0,3).map((r,i) => <span key={i} className="bg-gray-100 px-1 rounded">{r}</span>)}
+                                           </div>
+                                       </div>
+                                       <button onClick={() => handleCreateMatch(c.id)} className="bg-brand-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-brand-700">Select</button>
+                                    </div>
+                                 ));
+                               })()}
                             </div>
                          </div>
                       )}

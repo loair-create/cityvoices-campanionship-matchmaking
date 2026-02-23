@@ -42,7 +42,9 @@ function getData() {
   const headers = formData[0];
   const rows = formData.slice(1);
   
-  const companions = rows.map((row, i) => parseCompanion(row, headers, i + 2));
+  const companions = rows
+    .map((row, i) => parseCompanion(row, headers, i + 2))
+    .filter(c => c != null);
   
   // 2. Get Matches
   let matchSheet = ss.getSheetByName('Matches');
@@ -153,19 +155,51 @@ function updateCompanionNote(rowNumber, note) {
   return true;
 }
 
+/**
+ * DELETE AN APPLICATION (removes row from Form Responses 1)
+ * Also remove any matches that include this companion.
+ */
+function deleteCompanion(rowNumber) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const formSheet = ss.getSheetByName('Form Responses 1');
+  if (!formSheet) return false;
+  const rowNum = parseInt(rowNumber, 10);
+  if (rowNum < 2) return false;
+  formSheet.deleteRow(rowNum);
+
+  // Remove matches that include this companion
+  const matchSheet = ss.getSheetByName('Matches');
+  if (matchSheet) {
+    const matchData = matchSheet.getDataRange().getValues();
+    const idStr = String(rowNumber);
+    for (let i = matchData.length - 1; i >= 1; i--) {
+      if (String(matchData[i][1]) === idStr || String(matchData[i][2]) === idStr) {
+        matchSheet.deleteRow(i + 1);
+      }
+    }
+  }
+  return true;
+}
+
 // --- PARSER ---
+// Column B (index 1) = Waiver. If empty or not signed, person is ineligible to match.
 function parseCompanion(row, headers, rowNum) {
   const getVal = (str) => {
     const idx = headers.findIndex(h => h.toLowerCase().includes(str.toLowerCase()));
-    return idx > -1 ? String(row[idx]) : "";
+    return idx > -1 ? String(row[idx] || '').trim() : "";
   };
   const getAvail = (day) => {
     const idx = headers.findIndex(h => h.toLowerCase().includes(`[${day}]`));
     return idx > -1 ? String(row[idx]) : "Unavailable";
   };
 
+  const waiverCell = row[1];
+  const waiverSigned = !!waiverCell && String(waiverCell).trim().length > 0;
+
   return {
     id: String(rowNum),
+    waiverSigned,
+    preferredContact: getVal('preferred method of contact') || getVal('preferred contact') || "",
     firstName: getVal('First Name'),
     lastName: getVal('Last Name'),
     email: getVal('Email'),
