@@ -165,7 +165,16 @@
           .withSuccessHandler(function(data) {
             state.companions = data.companions || [];
             state.matches = data.matches || [];
-            state.criteria = (data.criteria && data.criteria.length) ? data.criteria : JSON.parse(JSON.stringify(DEFAULT_CRITERIA));
+            var saved = (data.criteria && data.criteria.length) ? data.criteria : [];
+            var byKey = {};
+            saved.forEach(function(item) { byKey[item.key] = item; });
+            state.criteria = DEFAULT_CRITERIA.map(function(defaultItem) {
+              var s = byKey[defaultItem.key];
+              return s ? { key: s.key, label: s.label || defaultItem.label, weight: s.weight, category: s.category || defaultItem.category, enabled: s.enabled !== false } : JSON.parse(JSON.stringify(defaultItem));
+            });
+            Object.keys(byKey).forEach(function(k) {
+              if (!DEFAULT_CRITERIA.some(function(d) { return d.key === k; })) state.criteria.push(byKey[k]);
+            });
             document.getElementById('loading').style.display = 'none';
             document.getElementById('content').style.display = 'flex';
             showTab('directory');
