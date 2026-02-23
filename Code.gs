@@ -29,14 +29,25 @@ function openApp() {
 }
 
 /**
+ * Get the responses sheet (Companionship form data).
+ * Uses the sheet name for City Voices Companionship v2, with fallback.
+ */
+function getResponsesSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('City Voices Companionship v2 (Responses)');
+  if (!sheet) sheet = ss.getSheetByName('Form Responses 1');
+  if (!sheet) throw new Error('No responses sheet found. Expected "City Voices Companionship v2 (Responses)" or "Form Responses 1".');
+  return sheet;
+}
+
+/**
  * FETCH DATA
  */
 function getData() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
-  // 1. Get Companions
-  const formSheet = ss.getSheetByName('Form Responses 1');
-  if (!formSheet) throw new Error('Sheet "Form Responses 1" not found.');
+  // 1. Get Companions from the connected responses sheet
+  const formSheet = getResponsesSheet();
   
   const formData = formSheet.getDataRange().getValues();
   const headers = formData[0];
@@ -141,8 +152,7 @@ function deleteMatch(matchId) {
 }
 
 function updateCompanionNote(rowNumber, note) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('Form Responses 1');
+  const sheet = getResponsesSheet();
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   let noteCol = headers.findIndex(h => h.toUpperCase().includes("INTERNAL NOTES"));
   
@@ -156,12 +166,11 @@ function updateCompanionNote(rowNumber, note) {
 }
 
 /**
- * DELETE AN APPLICATION (removes row from Form Responses 1)
+ * DELETE AN APPLICATION (removes row from responses sheet)
  * Also remove any matches that include this companion.
  */
 function deleteCompanion(rowNumber) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const formSheet = ss.getSheetByName('Form Responses 1');
+  const formSheet = getResponsesSheet();
   if (!formSheet) return false;
   const rowNum = parseInt(rowNumber, 10);
   if (rowNum < 2) return false;
