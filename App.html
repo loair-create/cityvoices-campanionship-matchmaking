@@ -71,7 +71,7 @@
     .compare-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
     .compare-table th { background: #f3f4f6; padding: 10px 12px; text-align: left; }
     .compare-table td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; }
-    .compare-table tr.match-row td { background: #d1fae5; color: #065f46; font-weight: 500; }
+    .compare-table tr.match-row td:nth-child(2), .compare-table tr.match-row td:nth-child(3) { background: #d1fae5; color: #065f46; font-weight: 500; }
     .compare-section { margin: 20px 0; }
     .compare-section h3 { font-size: 1rem; margin: 0 0 12px 0; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; }
     .essay-block { margin-bottom: 20px; padding: 16px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; }
@@ -109,7 +109,7 @@
       'use strict';
 
       var DEFAULT_CRITERIA = [
-        { key: 'preferredContact', label: 'Preferred Method of Contact', weight: 25, category: 'Contact', enabled: true },
+        { key: 'preferredContact', label: 'Preferred Contact Method', weight: 25, category: 'Contact', enabled: true },
         { key: 'availability', label: 'Availability', weight: 25, category: 'Logistics', enabled: true },
         { key: 'borough', label: 'Borough', weight: 12, category: 'Logistics', enabled: true },
         { key: 'willingToTravel', label: 'Willing to Travel', weight: 5, category: 'Logistics', enabled: true },
@@ -140,19 +140,19 @@
       };
 
       var FILTER_FIELDS = [
-        { key: 'preferredContact', label: 'Preferred contact' },
+        { key: 'preferredContact', label: 'Preferred Contact Method' },
         { key: 'borough', label: 'Borough' },
-        { key: 'willingToTravel', label: 'Willing to travel' },
+        { key: 'willingToTravel', label: 'Willing To Travel' },
         { key: 'age', label: 'Age' },
         { key: 'pronouns', label: 'Pronouns' },
         { key: 'gender', label: 'Gender' },
         { key: 'raceEthnicity', label: 'Race/Ethnicity' },
         { key: 'lgbtq', label: 'LGBTQ+' },
-        { key: 'waiverSigned', label: 'Waiver signed' },
-        { key: 'hasExperiencedDV', label: 'DV survivor' },
+        { key: 'waiverSigned', label: 'Waiver Signed' },
+        { key: 'hasExperiencedDV', label: 'DV Survivor' },
         { key: 'hasBeenIncarcerated', label: 'Incarceration' },
         { key: 'hasExperiencedHomelessness', label: 'Homelessness' },
-        { key: 'receivingMentalHealthServices', label: 'Mental health svcs' },
+        { key: 'receivingMentalHealthServices', label: 'Mental Health Svcs' },
         { key: 'isVeteran', label: 'Veteran' }
       ];
 
@@ -329,21 +329,21 @@
         var avail = c.availability || {};
         var days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
         var availHtml = days.map(function(d) { return d + ': ' + (avail[d.toLowerCase()] || '—'); }).join(' | ');
-        var contact = dr('Preferred method of contact', c.preferredContact) + dr('Email', c.email) + dr('Phone', c.phone) + dr('Willing to travel', c.willingToTravel) + dr('Accessibility needs', c.accessibilityNeeds);
-        var identity = dr('Borough', c.borough) + dr('Neighborhood', c.neighborhood) + dr('Age', c.age) + dr('Pronouns', c.pronouns) + dr('Gender', c.gender) + dr('Race/Ethnicity', c.raceEthnicity) + dr('LGBTQ+', c.lgbtq) + dr('Relationship status', c.relationshipStatus);
-        var lived = dr('Experienced domestic violence', c.hasExperiencedDV) + dr('Been incarcerated', c.hasBeenIncarcerated) + dr('Experienced homelessness', c.hasExperiencedHomelessness) + dr('Receiving mental health services', c.receivingMentalHealthServices) + dr('Receiving substance use services', c.receivingSubstanceUseServices) + dr('Ever received mental health services', c.historyMentalHealthServices) + dr('Ever received substance use services', c.historySubstanceUseServices) + dr('Veteran', c.isVeteran);
+        var contact = dr('Preferred Contact Method', c.preferredContact) + dr('Email', c.email) + dr('Phone', c.phone) + dr('Willing To Travel', c.willingToTravel) + dr('Accessibility Needs', c.accessibilityNeeds);
+        var identity = dr('Borough', c.borough) + dr('Neighborhood', c.neighborhood) + dr('Age', c.age) + dr('Pronouns', c.pronouns) + dr('Gender', c.gender) + dr('Race/Ethnicity', c.raceEthnicity) + dr('LGBTQ+', c.lgbtq) + dr('Relationship Status', c.relationshipStatus);
+        var lived = dr('Experienced Domestic Violence', c.hasExperiencedDV) + dr('Been Incarcerated', c.hasBeenIncarcerated) + dr('Experienced Homelessness', c.hasExperiencedHomelessness) + dr('Receiving Mental Health Services', c.receivingMentalHealthServices) + dr('Receiving Substance Use Services', c.receivingSubstanceUseServices) + dr('Ever Received Mental Health Services', c.historyMentalHealthServices) + dr('Ever Received Substance Use Services', c.historySubstanceUseServices) + dr('Veteran', c.isVeteran);
         var essaysHtml = '';
         ['hobbies','expectations','sharedExperiences','motivation','creativity'].forEach(function(k) {
           var q = ESSAY_LABELS[k] || k;
           var text = (c.essays && c.essays[k]) || '—';
           essaysHtml += '<div class="essay-block"><h4>' + escapeHtml(q) + '</h4><p>' + escapeHtml(text) + '</p></div>';
         });
-        var body = '<div class="detail-section"><h3>Contact & logistics</h3>' + contact + '</div>' +
+        var body = '<div class="detail-section"><h3>Contact & Logistics</h3>' + contact + '</div>' +
           '<div class="detail-section"><h3>Identity</h3>' + identity + '</div>' +
-          '<div class="detail-section"><h3>Lived experience</h3>' + lived + '</div>' +
+          '<div class="detail-section"><h3>Lived Experience</h3>' + lived + '</div>' +
           '<div class="detail-section"><h3>Availability</h3><div class="detail-row"><dt>Days</dt><dd>' + escapeHtml(availHtml) + '</dd></div></div>' +
-          (c.internalNotes ? '<div class="detail-section"><h3>Internal notes</h3>' + dr('', c.internalNotes) + '</div>' : '') +
-          '<div class="detail-section"><h3>Essay responses</h3>' + essaysHtml + '</div>' +
+          (c.internalNotes ? '<div class="detail-section"><h3>Internal Notes</h3>' + dr('', c.internalNotes) + '</div>' : '') +
+          '<div class="detail-section"><h3>Essay Responses</h3>' + essaysHtml + '</div>' +
           '<div style="margin-top:20px;">' +
             (c.waiverSigned ? '<button type="button" class="btn btn-primary" onclick="window.showFindMatch(\'' + c.id + '\')">Find Match</button>' : '<span class="badge badge-amber">Cannot match until waiver is signed</span>') +
             ' <button type="button" class="btn btn-danger" onclick="window.deleteCompanion(\'' + c.id + '\')">Delete application</button>' +
@@ -490,7 +490,7 @@
           return '<tr class="' + (same ? 'match-row' : '') + '"><td style="font-weight:500;width:140px;">' + escapeHtml(label) + '</td><td>' + escapeHtml(v1) + '</td><td>' + escapeHtml(v2) + '</td></tr>';
         }
 
-        var tableRows = cmp('preferredContact', 'Preferred contact') +
+        var tableRows = cmp('preferredContact', 'Preferred Contact Method') +
           cmp('borough', 'Borough') +
           cmp('neighborhood', 'Neighborhood') +
           cmp('age', 'Age') +
@@ -498,12 +498,14 @@
           cmp('gender', 'Gender') +
           cmp('raceEthnicity', 'Race/Ethnicity') +
           cmp('lgbtq', 'LGBTQ+') +
-          cmp('willingToTravel', 'Willing to travel');
-        var avail1 = (c1.availability && Object.keys(c1.availability).map(function(d) { return (c1.availability[d] && c1.availability[d] !== 'Unavailable') ? d : null; }).filter(Boolean).join(', ')) || '—';
-        var avail2 = (c2.availability && Object.keys(c2.availability).map(function(d) { return (c2.availability[d] && c2.availability[d] !== 'Unavailable') ? d : null; }).filter(Boolean).join(', ')) || '—';
+          cmp('willingToTravel', 'Willing To Travel');
+        function capDay(d) { return d.charAt(0).toUpperCase() + d.slice(1); }
+        var avail1 = (c1.availability && Object.keys(c1.availability).map(function(d) { return (c1.availability[d] && c1.availability[d] !== 'Unavailable') ? capDay(d) : null; }).filter(Boolean).join(', ')) || '—';
+        var avail2 = (c2.availability && Object.keys(c2.availability).map(function(d) { return (c2.availability[d] && c2.availability[d] !== 'Unavailable') ? capDay(d) : null; }).filter(Boolean).join(', ')) || '—';
         var availSame = avail1 === avail2;
         tableRows += '<tr class="' + (availSame ? 'match-row' : '') + '"><td style="font-weight:500;">Availability</td><td>' + escapeHtml(avail1) + '</td><td>' + escapeHtml(avail2) + '</td></tr>';
-        tableRows += '<tr class="' + (overlaps.length ? 'match-row' : '') + '"><td style="font-weight:500;">Overlapping days</td><td colspan="2">' + (overlaps.length ? escapeHtml(overlaps.join(', ')) : 'None') + '</td></tr>';
+        var overlapTxt = overlaps.length ? overlaps.join(', ') : 'None';
+        tableRows += '<tr class="' + (overlaps.length ? 'match-row' : '') + '"><td style="font-weight:500;">Overlapping Days</td><td>' + escapeHtml(overlapTxt) + '</td><td>' + escapeHtml(overlapTxt) + '</td></tr>';
 
         var essayHtml = '';
         var essayKeys = ['hobbies', 'expectations', 'sharedExperiences', 'motivation', 'creativity'];
@@ -529,12 +531,12 @@
           '</div>' +
           '<div class="modal-body">' +
             '<div class="compare-section">' +
-              '<h3>Application comparison (matches in green)</h3>' +
+              '<h3>Application Comparison (Matches In Green)</h3>' +
               '<table class="compare-table">' +
                 '<thead><tr><th>Criteria</th><th>' + escapeHtml(name1) + '</th><th>' + escapeHtml(name2) + '</th></tr></thead><tbody>' + tableRows + '</tbody>' +
               '</table></div>' +
             '<div class="compare-section">' +
-              '<h3>Manual essay comparison</h3>' + essayHtml + '</div>' +
+              '<h3>Manual Essay Comparison</h3>' + essayHtml + '</div>' +
           '</div></div>';
         modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
         document.body.appendChild(modal);
