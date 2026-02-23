@@ -35,6 +35,14 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
     .modal { background: white; border-radius: 12px; max-width: 560px; width: 100%; max-height: 90vh; overflow: auto; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+    .modal-full { max-width: 720px; }
+    .detail-section { margin: 20px 0; }
+    .detail-section h3 { font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 10px 0; padding-bottom: 6px; border-bottom: 1px solid #e5e7eb; }
+    .filter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .filter-item label { display: block; font-size: 11px; font-weight: 600; color: #6b7280; margin-bottom: 4px; }
+    .filter-item select { width: 100%; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; }
+    .match-reasons { font-size: 12px; color: #065f46; margin-top: 4px; }
+    .match-reasons span { display: block; margin-top: 2px; }
     .modal-header { padding: 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: flex-start; }
     .modal-header h2 { margin: 0; font-size: 1.25rem; }
     .modal-body { padding: 20px; }
@@ -127,8 +135,26 @@
         matches: [],
         criteria: [],
         activeTab: 'directory',
-        selectedCompanion: null
+        selectedCompanion: null,
+        directoryFilters: {}
       };
+
+      var FILTER_FIELDS = [
+        { key: 'preferredContact', label: 'Preferred contact' },
+        { key: 'borough', label: 'Borough' },
+        { key: 'willingToTravel', label: 'Willing to travel' },
+        { key: 'age', label: 'Age' },
+        { key: 'pronouns', label: 'Pronouns' },
+        { key: 'gender', label: 'Gender' },
+        { key: 'raceEthnicity', label: 'Race/Ethnicity' },
+        { key: 'lgbtq', label: 'LGBTQ+' },
+        { key: 'waiverSigned', label: 'Waiver signed' },
+        { key: 'hasExperiencedDV', label: 'DV survivor' },
+        { key: 'hasBeenIncarcerated', label: 'Incarceration' },
+        { key: 'hasExperiencedHomelessness', label: 'Homelessness' },
+        { key: 'receivingMentalHealthServices', label: 'Mental health svcs' },
+        { key: 'isVeteran', label: 'Veteran' }
+      ];
 
       function loadData() {
         if (typeof google === 'undefined' || !google.script || !google.script.run) {
@@ -176,44 +202,93 @@
         return out;
       }
 
-      function calculateMatchPercent(c1, c2) {
+      function calculateMatchPercentAndReasons(c1, c2) {
         var config = state.criteria;
-        var score = 0, maxScore = 0;
+        var score = 0, maxScore = 0, reasons = [];
         for (var i = 0; i < config.length; i++) {
           if (config[i].enabled) maxScore += config[i].weight;
         }
-        if (maxScore === 0) return 0;
+        if (maxScore === 0) return { percent: 0, reasons: [] };
         var cm = {};
         for (var j = 0; j < config.length; j++) { cm[config[j].key] = config[j]; }
         if ((c1.preferredContact || '') === (c2.preferredContact || '') && (c1.preferredContact || c2.preferredContact)) {
-          if (cm.preferredContact && cm.preferredContact.enabled) score += (cm.preferredContact.weight || 25);
+          if (cm.preferredContact && cm.preferredContact.enabled) { score += (cm.preferredContact.weight || 25); reasons.push('Same preferred contact method'); }
         }
         if (c1.borough === c2.borough && c1.borough) {
-          if (cm.borough && cm.borough.enabled) score += (cm.borough.weight || 12);
+          if (cm.borough && cm.borough.enabled) { score += (cm.borough.weight || 12); reasons.push('Same borough (' + (c1.borough || '') + ')'); }
         } else if ((c1.willingToTravel === 'Yes' || c2.willingToTravel === 'Yes') && cm.willingToTravel && cm.willingToTravel.enabled) {
           score += (cm.willingToTravel.weight || 5);
+          reasons.push('Willing to travel');
         }
-        if (c1.age === c2.age && cm.age && cm.age.enabled) score += (cm.age.weight || 4);
-        if (c1.pronouns === c2.pronouns && c1.pronouns && cm.pronouns && cm.pronouns.enabled) score += (cm.pronouns.weight || 3);
-        if (c1.gender === c2.gender && cm.gender && cm.gender.enabled) score += (cm.gender.weight || 3);
-        if (c1.lgbtq === 'Yes' && c2.lgbtq === 'Yes' && cm.lgbtq && cm.lgbtq.enabled) score += (cm.lgbtq.weight || 9);
+        if (c1.age === c2.age && c1.age && cm.age && cm.age.enabled) { score += (cm.age.weight || 4); reasons.push('Same age group'); }
+        if (c1.pronouns === c2.pronouns && c1.pronouns && cm.pronouns && cm.pronouns.enabled) { score += (cm.pronouns.weight || 3); reasons.push('Same pronouns'); }
+        if (c1.gender === c2.gender && c1.gender && cm.gender && cm.gender.enabled) { score += (cm.gender.weight || 3); reasons.push('Same gender'); }
+        if (c1.lgbtq === 'Yes' && c2.lgbtq === 'Yes' && cm.lgbtq && cm.lgbtq.enabled) { score += (cm.lgbtq.weight || 9); reasons.push('Both LGBTQ+'); }
         var overlaps = getOverlappingDays(c1, c2);
         if (overlaps.length > 0 && cm.availability && cm.availability.enabled) {
           score += ((cm.availability.weight || 25) * Math.min(1, overlaps.length / 3));
+          reasons.push(overlaps.length + ' overlapping day(s)');
         }
-        return Math.round((score / maxScore) * 100);
+        return { percent: Math.round((score / maxScore) * 100), reasons: reasons };
+      }
+
+      function calculateMatchPercent(c1, c2) {
+        return calculateMatchPercentAndReasons(c1, c2).percent;
       }
 
       function renderDirectory() {
         var panel = document.getElementById('panel-directory');
         var search = (panel.querySelector('.search-input') && panel.querySelector('.search-input').value) || '';
-        var html = '<div class="toolbar"><input type="text" class="search-input" placeholder="Search names..." value="' + (search || '').replace(/"/g, '&quot;') + '"><button type="button" class="btn btn-secondary" onclick="window.appRefresh()">Refresh</button></div><h1 class="page-title">Directory</h1><div class="grid" id="directory-grid"></div>';
+        var filtersHtml = FILTER_FIELDS.map(function(f) {
+          var val = state.directoryFilters[f.key] || '';
+          var options = ['<option value="">All</option>'];
+          var uniq = {};
+          state.companions.forEach(function(c) {
+            var v = c[f.key];
+            if (v === true || v === false) v = v ? 'Yes' : 'No';
+            else v = (v && String(v).trim()) || '';
+            if (v && !uniq[v]) { uniq[v] = true; options.push('<option value="' + escapeHtml(String(v)) + '"' + (val === String(v) ? ' selected' : '') + '>' + escapeHtml(String(v)) + '</option>'); }
+          });
+          return '<div class="filter-item"><label>' + escapeHtml(f.label) + '</label><select data-filter="' + f.key + '">' + options.join('') + '</select></div>';
+        }).join('');
+        var showFilters = (panel.querySelector('.filter-toggle') && panel.querySelector('.filter-toggle').getAttribute('data-open') === '1') ? true : false;
+        var html = '<div class="toolbar"><input type="text" class="search-input" placeholder="Search names..." value="' + (search || '').replace(/"/g, '&quot;') + '"><button type="button" class="btn btn-secondary" onclick="window.appRefresh()">Refresh</button>' +
+          ' <button type="button" class="btn btn-secondary filter-toggle" data-open="' + (showFilters ? '1' : '0') + '">' + (showFilters ? 'Hide filters' : 'Filters') + '</button></div>' +
+          (showFilters ? '<div class="filter-grid" id="directory-filters">' + filtersHtml + '</div>' : '') +
+          '<h1 class="page-title">Directory</h1><div class="grid" id="directory-grid"></div>';
         panel.innerHTML = html;
+        if (showFilters) {
+          panel.querySelectorAll('#directory-filters select').forEach(function(sel) {
+            sel.addEventListener('change', function() {
+              state.directoryFilters[this.getAttribute('data-filter')] = this.value || '';
+              renderDirectory();
+            });
+          });
+          panel.querySelector('.filter-toggle').addEventListener('click', function() {
+            this.setAttribute('data-open', this.getAttribute('data-open') === '1' ? '0' : '1');
+            renderDirectory();
+          });
+        } else {
+          panel.querySelector('.filter-toggle').addEventListener('click', function() {
+            this.setAttribute('data-open', '1');
+            renderDirectory();
+          });
+        }
         var list = state.companions;
         if (search) {
           search = search.toLowerCase();
           list = list.filter(function(c) {
             return (c.firstName && c.firstName.toLowerCase().indexOf(search) !== -1) || (c.lastName && c.lastName.toLowerCase().indexOf(search) !== -1);
+          });
+        }
+        for (var key in state.directoryFilters) {
+          if (!state.directoryFilters[key]) continue;
+          var filterVal = state.directoryFilters[key];
+          list = list.filter(function(c) {
+            var v = c[key];
+            if (v === true || v === false) v = v ? 'Yes' : 'No';
+            else v = (v && String(v).trim()) || '';
+            return String(v) === filterVal;
           });
         }
         var grid = document.getElementById('directory-grid');
@@ -232,7 +307,8 @@
           card.querySelector('.card-header').addEventListener('click', function() { openCompanionModal(c.id); });
           grid.appendChild(card);
         });
-        panel.querySelector('.search-input').addEventListener('input', function() { renderDirectory(); });
+        var searchEl = panel.querySelector('.search-input');
+        if (searchEl) searchEl.addEventListener('input', function() { renderDirectory(); });
       }
 
       function escapeHtml(s) {
@@ -242,34 +318,45 @@
         return div.innerHTML;
       }
 
+      function dr(label, value) {
+        return '<div class="detail-row"><dt>' + escapeHtml(label) + '</dt><dd>' + escapeHtml(value || '—') + '</dd></div>';
+      }
+
       function openCompanionModal(id) {
         var c = state.companions.find(function(x) { return String(x.id) === String(id); });
         if (!c) return;
         state.selectedCompanion = c;
         var avail = c.availability || {};
         var days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-        var availText = days.map(function(d) { return d + ': ' + (avail[d.toLowerCase()] || '—'); }).join(' | ');
-        var body = '<div class="detail-row"><dt>Email</dt><dd>' + escapeHtml(c.email) + '</dd></div>' +
-          '<div class="detail-row"><dt>Phone</dt><dd>' + escapeHtml(c.phone) + '</dd></div>' +
-          '<div class="detail-row"><dt>Borough / Neighborhood</dt><dd>' + escapeHtml(c.borough) + ' / ' + escapeHtml(c.neighborhood) + '</dd></div>' +
-          '<div class="detail-row"><dt>Age / Pronouns / Gender</dt><dd>' + escapeHtml(c.age) + ' / ' + escapeHtml(c.pronouns) + ' / ' + escapeHtml(c.gender) + '</dd></div>' +
-          '<div class="detail-row"><dt>Availability</dt><dd>' + escapeHtml(availText) + '</dd></div>' +
-          (c.internalNotes ? '<div class="detail-row"><dt>Internal notes</dt><dd>' + escapeHtml(c.internalNotes) + '</dd></div>' : '');
+        var availHtml = days.map(function(d) { return d + ': ' + (avail[d.toLowerCase()] || '—'); }).join(' | ');
+        var contact = dr('Preferred method of contact', c.preferredContact) + dr('Email', c.email) + dr('Phone', c.phone) + dr('Willing to travel', c.willingToTravel) + dr('Accessibility needs', c.accessibilityNeeds);
+        var identity = dr('Borough', c.borough) + dr('Neighborhood', c.neighborhood) + dr('Age', c.age) + dr('Pronouns', c.pronouns) + dr('Gender', c.gender) + dr('Race/Ethnicity', c.raceEthnicity) + dr('LGBTQ+', c.lgbtq) + dr('Relationship status', c.relationshipStatus);
+        var lived = dr('Experienced domestic violence', c.hasExperiencedDV) + dr('Been incarcerated', c.hasBeenIncarcerated) + dr('Experienced homelessness', c.hasExperiencedHomelessness) + dr('Receiving mental health services', c.receivingMentalHealthServices) + dr('Receiving substance use services', c.receivingSubstanceUseServices) + dr('Ever received mental health services', c.historyMentalHealthServices) + dr('Ever received substance use services', c.historySubstanceUseServices) + dr('Veteran', c.isVeteran);
+        var essaysHtml = '';
+        ['hobbies','expectations','sharedExperiences','motivation','creativity'].forEach(function(k) {
+          var q = ESSAY_LABELS[k] || k;
+          var text = (c.essays && c.essays[k]) || '—';
+          essaysHtml += '<div class="essay-block"><h4>' + escapeHtml(q) + '</h4><p>' + escapeHtml(text) + '</p></div>';
+        });
+        var body = '<div class="detail-section"><h3>Contact & logistics</h3>' + contact + '</div>' +
+          '<div class="detail-section"><h3>Identity</h3>' + identity + '</div>' +
+          '<div class="detail-section"><h3>Lived experience</h3>' + lived + '</div>' +
+          '<div class="detail-section"><h3>Availability</h3><div class="detail-row"><dt>Days</dt><dd>' + escapeHtml(availHtml) + '</dd></div></div>' +
+          (c.internalNotes ? '<div class="detail-section"><h3>Internal notes</h3>' + dr('', c.internalNotes) + '</div>' : '') +
+          '<div class="detail-section"><h3>Essay responses</h3>' + essaysHtml + '</div>' +
+          '<div style="margin-top:20px;">' +
+            (c.waiverSigned ? '<button type="button" class="btn btn-primary" onclick="window.showFindMatch(\'' + c.id + '\')">Find Match</button>' : '<span class="badge badge-amber">Cannot match until waiver is signed</span>') +
+            ' <button type="button" class="btn btn-danger" onclick="window.deleteCompanion(\'' + c.id + '\')">Delete application</button>' +
+          '</div>';
         var modal = document.createElement('div');
         modal.className = 'modal-overlay';
         modal.id = 'companion-modal';
-        modal.innerHTML = '<div class="modal">' +
+        modal.innerHTML = '<div class="modal modal-full">' +
           '<div class="modal-header">' +
-            '<h2>' + escapeHtml(c.firstName) + ' ' + escapeHtml(c.lastName) + '</h2>' +
+            '<h2>' + escapeHtml(c.firstName) + ' ' + escapeHtml(c.lastName) + ' — Full application</h2>' +
             '<button type="button" class="btn btn-secondary" onclick="document.getElementById(\'companion-modal\').remove()">Close</button>' +
           '</div>' +
-          '<div class="modal-body">' + body +
-            '<div style="margin-top:20px;">' +
-              (c.waiverSigned ? '<button type="button" class="btn btn-primary" onclick="window.showFindMatch(\'' + c.id + '\')">Find Match</button>' : '<span class="badge badge-amber">Cannot match until waiver is signed</span>') +
-              ' <button type="button" class="btn btn-danger" onclick="window.deleteCompanion(\'' + c.id + '\')">Delete application</button>' +
-            '</div>' +
-          '</div>' +
-        '</div>';
+          '<div class="modal-body">' + body + '</div></div>';
         modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
         document.body.appendChild(modal);
       }
@@ -281,9 +368,12 @@
         others.sort(function(a, b) { return calculateMatchPercent(c1, b) - calculateMatchPercent(c1, a); });
         others = others.slice(0, 10);
         var listHtml = others.map(function(c2) {
-          var pct = calculateMatchPercent(c1, c2);
+          var result = calculateMatchPercentAndReasons(c1, c2);
+          var pct = result.percent;
+          var reasons = (result.reasons || []).slice(0, 3);
+          var reasonsHtml = reasons.length ? '<div class="match-reasons">' + reasons.map(function(r) { return '<span>' + escapeHtml(r) + '</span>'; }).join('') + '</div>' : '';
           return '<div class="match-row">' +
-            '<div class="match-info"><span><strong>' + escapeHtml(c2.firstName) + ' ' + escapeHtml(c2.lastName) + '</strong></span> <span class="badge ' + (pct >= 70 ? 'badge-green' : '') + '">' + pct + '% match</span></div>' +
+            '<div class="match-info"><span><strong>' + escapeHtml(c2.firstName) + ' ' + escapeHtml(c2.lastName) + '</strong></span> <span class="badge ' + (pct >= 70 ? 'badge-green' : '') + '">' + pct + '% match</span>' + reasonsHtml + '</div>' +
             '<button type="button" class="btn btn-primary" onclick="window.createMatch(\'' + c1.id + '\', \'' + c2.id + '\')">Select</button>' +
           '</div>';
         }).join('');
