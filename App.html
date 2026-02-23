@@ -2,976 +2,411 @@
 <html>
 <head>
   <base target="_top">
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- React & ReactDOM -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <!-- Babel -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            brand: {
-              50: '#f0fdfa',
-              100: '#ccfbf1',
-              500: '#14b8a6',
-              600: '#0d9488',
-              700: '#0f766e',
-              900: '#134e4a',
-            }
-          }
-        }
-      }
-    }
-  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Companionship Matching Dashboard</title>
   <style>
-    ::-webkit-scrollbar { width: 8px; }
-    ::-webkit-scrollbar-track { background: #f1f1f1; }
-    ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
-    .loader { border: 4px solid #f3f3f3; border-top: 4px solid #0d9488; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f3f4f6; height: 100vh; overflow: hidden; }
+    .app { display: flex; height: 100%; }
+    .sidebar { width: 240px; background: #134e4a; color: white; padding: 16px; flex-shrink: 0; }
+    .sidebar h1 { font-size: 1.1rem; margin: 0 0 20px 0; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.2); }
+    .tab-btn { display: block; width: 100%; padding: 12px 16px; margin-bottom: 4px; border: none; border-radius: 6px; background: transparent; color: rgba(255,255,255,0.9); text-align: left; font-size: 14px; cursor: pointer; }
+    .tab-btn:hover { background: rgba(255,255,255,0.1); }
+    .tab-btn.active { background: #0f766e; font-weight: 600; }
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #f9fafb; }
+    .tab-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; padding: 24px; }
+    .tab-panel.active { display: flex; }
+    .page-title { font-size: 1.25rem; font-weight: 700; color: #111; margin: 0 0 16px 0; }
+    .card { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e5e7eb; margin-bottom: 12px; overflow: hidden; }
+    .card-header { padding: 16px; cursor: pointer; display: flex; align-items: center; gap: 12px; }
+    .card-header:hover { background: #f9fafb; }
+    .avatar { width: 48px; height: 48px; border-radius: 50%; background: #ccfbf1; color: #0d9488; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; }
+    .card-body { padding: 0 16px 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .btn { padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; border: none; }
+    .btn-primary { background: #0d9488; color: white; }
+    .btn-primary:hover { background: #0f766e; }
+    .btn-secondary { background: #e5e7eb; color: #374151; }
+    .btn-secondary:hover { background: #d1d5db; }
+    .btn-danger { background: #fef2f2; color: #b91c1c; }
+    .btn-danger:hover { background: #fee2e2; }
+    .loader { width: 40px; height: 40px; border: 4px solid #e5e7eb; border-top-color: #0d9488; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 40px auto; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+    .modal { background: white; border-radius: 12px; max-width: 560px; width: 100%; max-height: 90vh; overflow: auto; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+    .modal-header { padding: 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: flex-start; }
+    .modal-header h2 { margin: 0; font-size: 1.25rem; }
+    .modal-body { padding: 20px; }
+    .detail-row { padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
+    .detail-row dt { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin: 0 0 2px 0; }
+    .detail-row dd { margin: 0; font-size: 14px; color: #111; }
+    .criteria-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb; }
+    .criteria-table th { background: #f9fafb; padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; }
+    .criteria-table td { padding: 12px 16px; border-top: 1px solid #e5e7eb; }
+    .criteria-table input[type="number"] { width: 70px; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px; }
+    .criteria-table input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 12px; font-weight: 500; }
+    .badge-amber { background: #fef3c7; color: #92400e; }
+    .badge-green { background: #d1fae5; color: #065f46; }
+    .match-row { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid #e5e7eb; flex-wrap: wrap; gap: 12px; }
+    .match-row:last-child { border-bottom: none; }
+    .match-info { display: flex; align-items: center; gap: 12px; }
+    .match-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .match-actions select { padding: 6px 10px; border-radius: 6px; border: 1px solid #d1d5db; font-size: 13px; }
+    .match-actions input { padding: 6px 10px; border-radius: 6px; border: 1px solid #d1d5db; font-size: 13px; min-width: 180px; }
+    .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .search-input { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; width: 220px; }
+    .weight-sum { font-size: 14px; color: #6b7280; margin-bottom: 12px; }
+    .weight-sum.invalid { color: #b91c1c; font-weight: 600; }
+    .weight-sum.valid { color: #059669; }
   </style>
 </head>
-<body class="bg-gray-100 h-screen overflow-hidden">
-  <div id="root"><div style="padding:24px;font-family:sans-serif;text-align:center;color:#134e4a;">Loading Companionship Dashboard...</div></div>
+<body>
+  <div class="app" id="app">
+    <aside class="sidebar">
+      <h1>Companionship Connections</h1>
+      <button type="button" class="tab-btn active" data-tab="directory">Directory</button>
+      <button type="button" class="tab-btn" data-tab="matches">Matches</button>
+      <button type="button" class="tab-btn" data-tab="criteria">Criteria</button>
+    </aside>
+    <main class="main">
+      <div id="loading" style="padding: 40px; text-align: center;">
+        <div class="loader"></div>
+        <p style="color: #6b7280; margin-top: 12px;">Loading dashboard...</p>
+      </div>
+      <div id="content" style="display: none; flex: 1; flex-direction: column; overflow: hidden;">
+        <div id="panel-directory" class="tab-panel"></div>
+        <div id="panel-matches" class="tab-panel"></div>
+        <div id="panel-criteria" class="tab-panel"></div>
+      </div>
+    </main>
+  </div>
 
   <script>
     (function() {
-      if (typeof React === 'undefined' || typeof ReactDOM === 'undefined') {
-        document.getElementById('root').innerHTML = '<div style="padding:24px;font-family:sans-serif;color:#b91c1c;">Could not load React. Check that you are opening this app from the deployment URL or from the Apps Script editor (Run &gt; Test as web app).</div>';
-      }
-    })();
-  </script>
-  <script type="text/babel">
-    const { useState, useEffect, useMemo, useRef } = React;
+      'use strict';
 
-    // --- ROBUST ICONS (Embedded SVGs to guarantee rendering) ---
-    const IconWrapper = ({ children, className }) => (
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-        {children}
-      </svg>
-    );
+      var DEFAULT_CRITERIA = [
+        { key: 'preferredContact', label: 'Preferred Contact', weight: 25, category: 'Contact', enabled: true },
+        { key: 'availability', label: 'Availability', weight: 25, category: 'Logistics', enabled: true },
+        { key: 'borough', label: 'Borough', weight: 12, category: 'Logistics', enabled: true },
+        { key: 'willingToTravel', label: 'Willing to Travel', weight: 5, category: 'Logistics', enabled: true },
+        { key: 'age', label: 'Age', weight: 4, category: 'Identity', enabled: true },
+        { key: 'pronouns', label: 'Pronouns', weight: 3, category: 'Identity', enabled: true },
+        { key: 'gender', label: 'Gender', weight: 3, category: 'Identity', enabled: true },
+        { key: 'lgbtq', label: 'LGBTQ+', weight: 9, category: 'Identity', enabled: true },
+        { key: 'hasExperiencedDV', label: 'DV Survivor', weight: 2, category: 'Experience', enabled: true },
+        { key: 'hasBeenIncarcerated', label: 'Incarceration', weight: 2, category: 'Experience', enabled: true },
+        { key: 'isVeteran', label: 'Veteran', weight: 2, category: 'Experience', enabled: true }
+      ];
 
-    const ICONS = {
-      Users: (p) => <IconWrapper {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></IconWrapper>,
-      Match: (p) => <IconWrapper {...p}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></IconWrapper>,
-      Filter: (p) => <IconWrapper {...p}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></IconWrapper>,
-      Search: (p) => <IconWrapper {...p}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></IconWrapper>,
-      Close: (p) => <IconWrapper {...p}><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></IconWrapper>,
-      Calendar: (p) => <IconWrapper {...p}><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></IconWrapper>,
-      Check: (p) => <IconWrapper {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></IconWrapper>,
-      Delete: (p) => <IconWrapper {...p}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></IconWrapper>,
-      Settings: (p) => <IconWrapper {...p}><line x1="4" x2="20" y1="21" y2="21"/><line x1="4" x2="20" y1="3" y2="3"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></IconWrapper>,
-      BookOpen: (p) => <IconWrapper {...p}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></IconWrapper>,
-      Edit: (p) => <IconWrapper {...p}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></IconWrapper>,
-      Save: (p) => <IconWrapper {...p}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></IconWrapper>,
-      AlertTriangle: (p) => <IconWrapper {...p}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></IconWrapper>,
-    };
-
-    // --- CONFIG ---
-    const ESSAY_QUESTIONS = {
-      hobbies: "What are your hobbies?",
-      expectations: "What are the most important things that you want from a Companion?",
-      sharedExperiences: "What life experiences do you feel that you and your Companion should have in common?",
-      motivation: "Why are you interested in Companion Connections and what qualities would you bring to the Companionship?",
-      creativity: "How do you express your creativity?"
-    };
-
-    // Preferred contact & availability are top criteria (weights sum to 100)
-    const DEFAULT_CRITERIA_CONFIG = [
-      { key: 'preferredContact', label: 'Preferred Method of Contact', weight: 25, category: 'Contact', enabled: true },
-      { key: 'availability', label: 'Availability', weight: 25, category: 'Logistics', enabled: true },
-      { key: 'borough', label: 'Borough', weight: 12, category: 'Logistics', enabled: true },
-      { key: 'willingToTravel', label: 'Willing to Travel', weight: 5, category: 'Logistics', enabled: true },
-      { key: 'age', label: 'Age Group', weight: 4, category: 'Identity', enabled: true },
-      { key: 'pronouns', label: 'Pronouns', weight: 3, category: 'Identity', enabled: true },
-      { key: 'raceEthnicity', label: 'Race/Ethnicity', weight: 3, category: 'Identity', enabled: true },
-      { key: 'gender', label: 'Gender', weight: 3, category: 'Identity', enabled: true },
-      { key: 'lgbtq', label: 'LGBTQ+ Status', weight: 9, category: 'Identity', enabled: true },
-      { key: 'hasExperiencedDV', label: 'DV Survivor', weight: 2, category: 'Lived Experience', enabled: true },
-      { key: 'hasBeenIncarcerated', label: 'Incarceration History', weight: 2, category: 'Lived Experience', enabled: true },
-      { key: 'hasExperiencedHomelessness', label: 'Homelessness History', weight: 2, category: 'Lived Experience', enabled: true },
-      { key: 'receivingMentalHealthServices', label: 'Mental Health Svcs', weight: 2, category: 'Lived Experience', enabled: true },
-      { key: 'isVeteran', label: 'Veteran', weight: 2, category: 'Lived Experience', enabled: true },
-    ];
-
-    // --- UTILS ---
-    const downloadCompanionPDF = (c) => {
-      const doPdf = () => {
-        try {
-          const jspdfLib = window.jspdf || (window.jspdf && window.jspdf.jsPDF ? { jsPDF: window.jspdf.jsPDF } : null);
-          if (!jspdfLib || !jspdfLib.jsPDF) {
-            alert('PDF library not available. Use the browser Print (Ctrl+P or Cmd+P) and choose "Save as PDF" to save this page.');
-            return;
-          }
-          const jsPDF = jspdfLib.jsPDF;
-          const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-          const margin = 40;
-          let y = margin;
-          const lineH = 18;
-          const addLine = (label, value) => {
-            if (y > 700) { doc.addPage(); y = margin; }
-            doc.setFontSize(9);
-            doc.setFont(undefined, 'normal');
-            doc.text(label + ': ' + (value || 'N/A'), margin, y);
-            y += lineH;
-          };
-          doc.setFontSize(16);
-          doc.setFont(undefined, 'bold');
-          doc.text((c.firstName || '') + ' ' + (c.lastName || '') + ' – Companion Application', margin, y);
-          y += lineH + 8;
-          doc.setFontSize(10);
-          doc.setFont(undefined, 'normal');
-          addLine('Email', c.email);
-          addLine('Phone', c.phone);
-          addLine('Preferred contact', c.preferredContact);
-          addLine('Borough', c.borough);
-          addLine('Neighborhood', c.neighborhood);
-          addLine('Age', c.age);
-          addLine('Pronouns', c.pronouns);
-          addLine('Gender', c.gender);
-          addLine('Race/Ethnicity', c.raceEthnicity);
-          addLine('LGBTQ+', c.lgbtq);
-          addLine('Willing to travel', c.willingToTravel);
-          addLine('Accessibility needs', c.accessibilityNeeds);
-          y += 8;
-          doc.setFont(undefined, 'bold');
-          doc.text('Availability', margin, y);
-          y += lineH;
-          doc.setFont(undefined, 'normal');
-          const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
-          days.forEach(function(d) { addLine(d.charAt(0).toUpperCase() + d.slice(1), (c.availability && c.availability[d]) || 'N/A'); });
-          y += 8;
-          doc.setFont(undefined, 'bold');
-          doc.text('Essays', margin, y);
-          y += lineH;
-          doc.setFont(undefined, 'normal');
-          Object.keys(c.essays || {}).forEach(function(k) {
-            var text = c.essays[k];
-            doc.setFont(undefined, 'bold');
-            doc.setFontSize(9);
-            doc.text(ESSAY_QUESTIONS[k] || k, margin, y);
-            y += lineH;
-            doc.setFont(undefined, 'normal');
-            var lines = doc.splitTextToSize(String(text || 'N/A'), 500);
-            lines.forEach(function(l) { if (y > 700) { doc.addPage(); y = margin; } doc.text(l, margin, y); y += lineH; });
-            y += 6;
-          });
-          doc.save('Companion_' + (c.firstName || '') + '_' + (c.lastName || '') + '.pdf');
-        } catch (e) {
-          alert('PDF download failed. Use Print (Ctrl+P) and "Save as PDF" instead.');
-        }
-      };
-      if (window.jspdf && window.jspdf.jsPDF) {
-        doPdf();
-        return;
-      }
-      var s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-      s.onload = function() { doPdf(); };
-      s.onerror = function() { alert('PDF library could not load. Use Print (Ctrl+P) and choose Save as PDF.'); };
-      document.head.appendChild(s);
-    };
-
-    const getOverlappingAvailability = (c1, c2) => {
-      const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-      const overlaps = [];
-      days.forEach(day => {
-        const s1 = c1.availability[day];
-        const s2 = c2.availability[day];
-        if (s1 && s2 && s1 !== 'Unavailable' && s2 !== 'Unavailable') {
-            overlaps.push(`${day.charAt(0).toUpperCase() + day.slice(1)}`);
-        }
-      });
-      return overlaps;
-    };
-
-    const calculateMatchPercentage = (c1, c2, config) => {
-      let score = 0;
-      let maxScore = 0;
-      const reasons = [];
-      const configMap = config.reduce((acc, c) => ({...acc, [c.key]: c}), {});
-
-      const addScore = (key, points, reason) => {
-        const item = configMap[key];
-        if (item && item.enabled) {
-           score += points;
-           reasons.push(reason);
-        }
+      var state = {
+        companions: [],
+        matches: [],
+        criteria: [],
+        activeTab: 'directory',
+        selectedCompanion: null
       };
 
-      config.forEach(c => {
-        if(c.enabled) maxScore += c.weight;
-      });
-      
-      if (maxScore === 0) return { percent: 0, reasons: [] };
-
-      // 0. Preferred method of contact (top criteria)
-      const pc1 = (c1.preferredContact || '').toLowerCase();
-      const pc2 = (c2.preferredContact || '').toLowerCase();
-      if (pc1 && pc2 && pc1 === pc2) {
-        const w = (configMap['preferredContact'] && configMap['preferredContact'].weight) || 25;
-        addScore('preferredContact', w, 'Same preferred contact (' + c1.preferredContact + ')');
-      }
-
-      // 1. Geography
-      if (c1.borough === c2.borough) {
-        const w = (configMap['borough'] && configMap['borough'].weight) || 12;
-        addScore('borough', w, 'Same Borough (' + c1.borough + ')');
-      } else if (c1.willingToTravel === "Yes" || c2.willingToTravel === "Yes") {
-        addScore('willingToTravel', (configMap['willingToTravel'] && configMap['willingToTravel'].weight) || 5, "Willing to travel");
-      }
-
-      // 2. Identity
-      if (c1.age === c2.age) addScore('age', (configMap['age'] && configMap['age'].weight) || 4, "Same age group");
-      if (c1.pronouns === c2.pronouns && c1.pronouns) addScore('pronouns', (configMap['pronouns'] && configMap['pronouns'].weight) || 3, "Same Pronouns");
-      if (c1.raceEthnicity === c2.raceEthnicity && c1.raceEthnicity) addScore('raceEthnicity', (configMap['raceEthnicity'] && configMap['raceEthnicity'].weight) || 3, "Same Race/Ethnicity");
-      if (c1.gender === c2.gender) addScore('gender', (configMap['gender'] && configMap['gender'].weight) || 3, "Gender Match");
-      if (c1.lgbtq === "Yes" && c2.lgbtq === "Yes") addScore('lgbtq', (configMap['lgbtq'] && configMap['lgbtq'].weight) || 9, "Both LGBTQ+");
-
-      // 3. Lived Experiences
-      const experiences = ['hasExperiencedDV', 'hasBeenIncarcerated', 'hasExperiencedHomelessness', 'receivingMentalHealthServices', 'isVeteran'];
-      experiences.forEach(key => {
-        if (c1[key] === "Yes" && c2[key] === "Yes") {
-           const item = configMap[key];
-           addScore(key, (item && item.weight) || 2, 'Shared: ' + (item && item.label));
-        }
-      });
-
-      // 4. Availability
-      const availItem = configMap['availability'];
-      if (availItem && availItem.enabled) {
-        const overlaps = getOverlappingAvailability(c1, c2);
-        if (overlaps.length > 0) {
-            const weight = (configMap['availability'] && configMap['availability'].weight) || 25;
-            const fraction = Math.min(1, overlaps.length / 3); 
-            score += weight * fraction;
-            reasons.push(`${overlaps.length} overlapping days`);
-        }
-      }
-
-      const percent = Math.round((score / maxScore) * 100);
-      return { percent, reasons };
-    };
-
-    // --- COMPONENTS ---
-
-    const DetailRow = ({ label, value, highlight }) => (
-      <div className={`py-2 border-b border-gray-100 ${highlight ? 'bg-yellow-50 -mx-2 px-2 rounded' : ''}`}>
-        <dt className="text-xs font-bold uppercase text-gray-500">{label}</dt>
-        <dd className="mt-1 text-sm text-gray-900 break-words">{value || "N/A"}</dd>
-      </div>
-    );
-
-    const AvailabilityGrid = ({ availability }) => {
-      const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-      return (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-          {days.map(day => {
-            const status = availability[day];
-            const isUnavailable = status === 'Unavailable';
-            const isFlexible = status === 'Flexible';
-            return (
-              <div key={day} className={`p-2 rounded border ${
-                isUnavailable ? 'bg-gray-50 border-gray-200 text-gray-400' :
-                isFlexible ? 'bg-green-50 border-green-200 text-green-700 font-medium' :
-                'bg-blue-50 border-blue-200 text-blue-700'
-              }`}>
-                <div className="font-semibold capitalize mb-1">{day}</div>
-                <div>{status}</div>
-              </div>
-            );
-          })}
-        </div>
-      );
-    };
-
-    const CriteriaSettings = ({ config, onUpdate, onSave }) => {
-      // Calculate total enabled weight
-      const totalWeight = config
-        .filter(c => c.enabled)
-        .reduce((sum, item) => sum + (parseInt(item.weight) || 0), 0);
-      
-      const isValid = totalWeight === 100;
-
-      return (
-        <div className="p-8 max-w-5xl mx-auto">
-          {/* Header & Actions */}
-          <div className="flex justify-between items-start mb-6">
-             <div>
-                <h2 className="text-2xl font-bold text-gray-800">Matching Criteria Configuration</h2>
-                <p className="text-gray-500">
-                    Total Active Weight: <span className={`font-bold text-lg ${isValid ? 'text-green-600' : 'text-red-600'}`}>{totalWeight}%</span>
-                    <span className="text-xs ml-2 text-gray-400">(Must equal 100%)</span>
-                </p>
-             </div>
-             
-             <button
-               onClick={onSave}
-               disabled={!isValid}
-               className={`flex items-center px-6 py-2 rounded-md font-bold text-white shadow-sm transition ${
-                 isValid 
-                  ? 'bg-brand-600 hover:bg-brand-700 cursor-pointer' 
-                  : 'bg-gray-300 cursor-not-allowed'
-               }`}
-             >
-               <ICONS.Save className="w-5 h-5 mr-2" />
-               Save Configuration
-             </button>
-          </div>
-
-          {/* Validation Alert */}
-          {!isValid && (
-            <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-r shadow-sm animate-pulse">
-                <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                        <ICONS.AlertTriangle className="h-6 w-6 text-red-500" />
-                    </div>
-                    <div className="ml-3">
-                        <p className="text-sm text-red-700 font-bold">
-                            Configuration Error: Weights do not add up to 100!
-                        </p>
-                        <p className="text-xs text-red-600 mt-1">
-                            The sum of all ENABLED criteria weights is currently {totalWeight}. You must adjust the weights or enable/disable items until the total equals 100 before saving.
-                        </p>
-                    </div>
-                </div>
-            </div>
-          )}
-
-          <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-             <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                   <tr>
-                      <th className="px-6 py-3 text-center text-xs font-bold text-gray-500 uppercase w-24">Enabled</th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Category</th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Field Name</th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Weight</th>
-                   </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                   {config.map((item, idx) => (
-                      <tr key={item.key} className={item.enabled ? 'bg-white hover:bg-gray-50' : 'bg-gray-50 opacity-75'}>
-                         <td className="px-6 py-4 text-center">
-                            <input 
-                              type="checkbox" 
-                              checked={item.enabled}
-                              onChange={(e) => {
-                                 const newConfig = [...config];
-                                 newConfig[idx].enabled = e.target.checked;
-                                 onUpdate(newConfig);
-                              }}
-                              className="h-5 w-5 text-brand-600 focus:ring-brand-500 border-gray-300 rounded cursor-pointer"
-                            />
-                         </td>
-                         <td className="px-6 py-4 text-xs font-bold text-gray-400 uppercase">{item.category}</td>
-                         <td className="px-6 py-4 text-sm font-medium text-gray-900">{item.label}</td>
-                         <td className="px-6 py-4">
-                            <div className="flex items-center">
-                                <input 
-                                  type="number" min="0" max="100"
-                                  disabled={!item.enabled}
-                                  value={item.weight}
-                                  onChange={(e) => {
-                                     const val = parseInt(e.target.value) || 0;
-                                     const newConfig = [...config];
-                                     newConfig[idx].weight = val;
-                                     onUpdate(newConfig);
-                                  }}
-                                  className={`block w-20 text-sm border rounded p-1 text-center font-bold ${
-                                    !item.enabled ? 'bg-gray-100 text-gray-400 border-gray-300' : 
-                                    'border-gray-300 focus:ring-brand-500 focus:border-brand-500 text-gray-900'
-                                  }`}
-                                />
-                                <span className="ml-2 text-xs text-gray-400">pts</span>
-                            </div>
-                         </td>
-                      </tr>
-                   ))}
-                </tbody>
-             </table>
-          </div>
-        </div>
-      );
-    };
-
-    const MatchComparison = ({ c1, c2, config }) => {
-      const { percent, reasons } = calculateMatchPercentage(c1, c2, config);
-      const overlaps = getOverlappingAvailability(c1, c2);
-
-      const renderRow = (key) => {
-        const found = DEFAULT_CRITERIA_CONFIG.find(c => c.key === key);
-        const label = (found && found.label) || key;
-        const v1 = c1[key] || '-';
-        const v2 = c2[key] || '-';
-        const isMatch = String(v1).toLowerCase() === String(v2).toLowerCase() && v1 !== '-' && v1 !== 'No';
-        
-        return (
-           <div key={key} className={`grid grid-cols-3 gap-4 p-3 border-b border-gray-50 last:border-0 ${isMatch ? 'bg-green-100 rounded-md border-transparent' : 'hover:bg-gray-50'}`}>
-              <div className="text-sm font-medium text-gray-500">{label}</div>
-              <div className={`text-sm ${isMatch ? 'font-bold text-green-900' : 'text-gray-900'}`}>{v1}</div>
-              <div className={`text-sm ${isMatch ? 'font-bold text-green-900' : 'text-gray-900'}`}>{v2}</div>
-           </div>
-        );
-      };
-
-      const renderSection = (title, keys) => (
-         <div className="mb-6 bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 font-bold text-gray-700 text-sm uppercase tracking-wider">{title}</div>
-            <div className="p-2">
-               {/* Header Row for Section */}
-               <div className="grid grid-cols-3 gap-4 px-3 py-2 text-xs font-bold text-gray-400 uppercase">
-                  <div>Criteria</div>
-                  <div>{c1.firstName}</div>
-                  <div>{c2.firstName}</div>
-               </div>
-               {keys.map(renderRow)}
-            </div>
-         </div>
-      );
-
-      return (
-        <div className="space-y-6">
-           {/* Score Header */}
-           <div className="flex items-center justify-between bg-gradient-to-r from-brand-50 to-white p-6 rounded-xl border border-brand-100 shadow-sm">
-              <div className="flex flex-col items-center">
-                 <div className="h-16 w-16 bg-brand-100 rounded-full flex items-center justify-center text-brand-700 font-bold text-2xl mb-2 border-4 border-white shadow-sm">{c1.firstName[0]}</div>
-                 <div className="font-bold text-gray-900">{c1.firstName}</div>
-              </div>
-              
-              <div className="flex flex-col items-center flex-1 px-8">
-                 <div className="text-5xl font-black text-brand-600 tracking-tighter">{percent}%</div>
-                 <div className="text-xs uppercase tracking-widest font-bold text-brand-400 mt-1">Match</div>
-              </div>
-
-              <div className="flex flex-col items-center">
-                 <div className="h-16 w-16 bg-purple-100 rounded-full flex items-center justify-center text-purple-700 font-bold text-2xl mb-2 border-4 border-white shadow-sm">{c2.firstName[0]}</div>
-                 <div className="font-bold text-gray-900">{c2.firstName}</div>
-              </div>
-           </div>
-
-           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-300px)] overflow-hidden">
-              {/* Left Column: Data Comparison */}
-              <div className="overflow-y-auto pr-2 space-y-6">
-                 {renderSection("Identity", ['age', 'pronouns', 'gender', 'raceEthnicity', 'lgbtq'])}
-                 {renderSection("Contact & Logistics", ['preferredContact', 'borough', 'willingToTravel'])}
-                 
-                 <div className="bg-white rounded-lg border border-gray-200 p-4">
-                    <h4 className="font-bold text-gray-700 text-sm uppercase tracking-wider mb-3">Availability Overlap</h4>
-                    <div className="flex flex-wrap gap-2">
-                       {overlaps.length > 0 ? overlaps.map(d => (
-                          <span key={d} className="px-3 py-1 bg-green-100 text-green-800 text-xs rounded-full font-bold border border-green-200 shadow-sm">{d}</span>
-                       )) : <span className="text-red-500 text-sm italic">No overlapping days found.</span>}
-                    </div>
-                 </div>
-              </div>
-
-              {/* Right Column: Essays */}
-              <div className="bg-slate-50 rounded-lg border border-slate-200 flex flex-col h-full overflow-hidden">
-                 <div className="p-4 border-b border-slate-200 bg-white">
-                    <h3 className="flex items-center text-lg font-bold text-slate-800">
-                        <ICONS.BookOpen className="w-5 h-5 mr-2 text-brand-600" />
-                        Manual Essay Comparison
-                    </h3>
-                 </div>
-                 <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                   {Object.entries(c1.essays).map(([key, text]) => (
-                      <div key={key} className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
-                         <h4 className="text-sm font-bold text-brand-800 mb-4 pb-2 border-b border-gray-100">
-                            {ESSAY_QUESTIONS[key] || key}
-                         </h4>
-                         <div className="grid grid-cols-2 gap-6">
-                            <div>
-                               <strong className="block text-xs uppercase text-slate-400 mb-2">{c1.firstName}</strong>
-                               <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{text || "No answer"}</p>
-                            </div>
-                            <div className="border-l border-slate-100 pl-6">
-                               <strong className="block text-xs uppercase text-slate-400 mb-2">{c2.firstName}</strong>
-                               <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{c2.essays[key] || "No answer"}</p>
-                            </div>
-                         </div>
-                      </div>
-                   ))}
-                 </div>
-              </div>
-           </div>
-        </div>
-      );
-    };
-
-    const ActiveMatches = ({ matches, companions, onUpdateStatus, onDeleteMatch, onUpdateNotes, config }) => {
-      const [viewMatch, setViewMatch] = useState(null);
-
-      if (matches.length === 0) return <div className="p-8 text-center text-gray-500">No active matches yet.</div>;
-
-      return (
-        <div className="p-8">
-           <h1 className="text-2xl font-bold text-gray-900 mb-6">Active Companions</h1>
-           <div className="grid grid-cols-1 gap-6">
-             {matches.map(match => {
-                const c1 = companions.find(c => c.id === match.companion1Id);
-                const c2 = companions.find(c => c.id === match.companion2Id);
-                if (!c1 || !c2) return null;
-
-                const { percent, reasons } = calculateMatchPercentage(c1, c2, config);
-
-                return (
-                   <div key={match.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition">
-                      {/* Match Header */}
-                      <div 
-                         onClick={() => setViewMatch({c1, c2})}
-                         className="p-6 cursor-pointer border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-white to-gray-50 group"
-                      >
-                         <div className="flex items-center space-x-6">
-                            <div className="flex items-center -space-x-3">
-                               <div className="h-12 w-12 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold text-lg ring-4 ring-white z-10">{c1.firstName[0]}</div>
-                               <div className="h-12 w-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-lg ring-4 ring-white z-0">{c2.firstName[0]}</div>
-                            </div>
-                            <div>
-                               <h3 className="text-lg font-bold text-gray-900 group-hover:text-brand-600 transition">{c1.firstName} & {c2.firstName}</h3>
-                               <div className="flex flex-wrap gap-2 mt-1">
-                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${percent > 75 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                                     {percent}% Match
-                                  </span>
-                                  {reasons.slice(0, 2).map((r, i) => (
-                                     <span key={i} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">{r}</span>
-                                  ))}
-                               </div>
-                            </div>
-                         </div>
-                         <div className="text-gray-300 group-hover:text-brand-500 transition-colors">
-                            <ICONS.BookOpen className="w-6 h-6" />
-                         </div>
-                      </div>
-
-                      {/* Match Actions */}
-                      <div className="bg-gray-50 px-6 py-4 flex items-center justify-between">
-                          <div className="flex items-center space-x-4 w-full mr-4">
-                             <div className="relative inline-block text-left">
-                                <select 
-                                   value={match.status} 
-                                   onChange={(e) => onUpdateStatus(match.id, e.target.value)}
-                                   className={`appearance-none pl-3 pr-8 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-brand-500 border-0 shadow-sm
-                                     ${match.status === 'Active' ? 'bg-green-100 text-green-800' : 
-                                       match.status === 'Canceled' ? 'bg-red-100 text-red-800' : 
-                                       'bg-blue-100 text-blue-800'}`}
-                                >
-                                   <option>Just Matched</option>
-                                   <option>Introduction Sent</option>
-                                   <option>First Meeting Set</option>
-                                   <option>Active</option>
-                                   <option>Canceled</option>
-                                </select>
-                             </div>
-                             
-                             <div className="flex-1 relative">
-                                <ICONS.Edit className="w-3 h-3 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                                <input 
-                                   type="text" 
-                                   className="w-full text-sm border-gray-300 rounded-md pl-8 focus:ring-brand-500 focus:border-brand-500 placeholder-gray-400 bg-white"
-                                   placeholder="Internal notes..."
-                                   value={match.notes || ""}
-                                   onChange={(e) => onUpdateNotes(match.id, e.target.value)}
-                                />
-                             </div>
-                          </div>
-                          
-                          <button onClick={() => onDeleteMatch(match.id)} className="text-gray-400 hover:text-red-500 transition p-2 hover:bg-red-50 rounded-full">
-                             <ICONS.Delete className="w-4 h-4" />
-                          </button>
-                      </div>
-                   </div>
-                );
-             })}
-           </div>
-
-           {/* Match Detail Modal */}
-           {viewMatch && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                  <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setViewMatch(null)}></div>
-                  <div className="bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all w-full max-w-6xl h-[90vh] flex flex-col relative z-10">
-                     <div className="bg-white px-6 py-4 flex justify-between items-center border-b border-gray-200">
-                        <h3 className="text-xl font-bold text-gray-900">Match Comparison</h3>
-                        <button 
-                           onClick={() => setViewMatch(null)} 
-                           className="bg-red-500 hover:bg-red-600 text-white rounded-md p-2 transition shadow-sm"
-                        >
-                           <ICONS.Close className="w-5 h-5"/>
-                        </button>
-                     </div>
-                     <div className="p-6 overflow-y-auto flex-1 bg-gray-50">
-                        <MatchComparison c1={viewMatch.c1} c2={viewMatch.c2} config={config} />
-                     </div>
-                  </div>
-              </div>
-           )}
-        </div>
-      );
-    };
-
-    // --- MAIN APP ---
-
-    const App = () => {
-      const [loading, setLoading] = useState(true);
-      const [activeTab, setActiveTab] = useState('dashboard');
-      const [companions, setCompanions] = useState([]);
-      const [matches, setMatches] = useState([]);
-      const [config, setConfig] = useState(DEFAULT_CRITERIA_CONFIG);
-      
-      const [selectedCompanion, setSelectedCompanion] = useState(null);
-      const [isMatchMode, setIsMatchMode] = useState(false);
-      const [showFilters, setShowFilters] = useState(false);
-      const [filters, setFilters] = useState({});
-      const [search, setSearch] = useState("");
-
-      useEffect(() => {
+      function loadData() {
         if (typeof google === 'undefined' || !google.script || !google.script.run) {
-          setLoading(false);
+          document.getElementById('loading').innerHTML = '<p style="color: #b91c1c;">This app must be run from Google Apps Script (Deploy as web app or Test as web app).</p>';
           return;
         }
         google.script.run
           .withSuccessHandler(function(data) {
-            setCompanions(data.companions || []);
-            setMatches(data.matches || []);
-            if (data.criteria) setConfig(data.criteria);
-            setLoading(false);
+            state.companions = data.companions || [];
+            state.matches = data.matches || [];
+            state.criteria = (data.criteria && data.criteria.length) ? data.criteria : JSON.parse(JSON.stringify(DEFAULT_CRITERIA));
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('content').style.display = 'flex';
+            showTab('directory');
           })
           .withFailureHandler(function(err) {
-            setLoading(false);
-            console.error(err);
+            document.getElementById('loading').innerHTML = '<p style="color: #b91c1c;">Failed to load: ' + (err.message || String(err)) + '</p>';
           })
           .getData();
-      }, []);
-
-      // Just updates local state for immediate UI feedback
-      const handleConfigUpdate = (newConfig) => {
-         setConfig(newConfig);
-      };
-
-      // Actually persist to backend
-      const handleSaveConfig = () => {
-         google.script.run.saveCriteriaSettings(JSON.stringify(config));
-         // Optional: Add a toast notification here
-         alert("Configuration Saved!"); 
-      };
-
-      const handleCreateMatch = (targetId) => {
-         const c1 = selectedCompanion;
-         const c2 = companions.find(c => c.id === targetId);
-         if (!c1 || !c2) return;
-         
-         const newMatch = {
-            id: Math.random().toString(36).substr(2, 9),
-            companion1Id: c1.id,
-            companion2Id: c2.id,
-            c1Name: `${c1.firstName} ${c1.lastName}`,
-            c2Name: `${c2.firstName} ${c2.lastName}`,
-            status: "Just Matched",
-            notes: "",
-            createdAt: new Date().toISOString()
-         };
-         
-         setMatches([newMatch, ...matches]);
-         google.script.run.createMatch(newMatch);
-         setIsMatchMode(false);
-         setSelectedCompanion(null);
-         setActiveTab('matches');
-      };
-
-      const filteredCompanions = useMemo(() => {
-        return companions.filter(c => {
-          const searchMatch = !search || 
-            c.firstName.toLowerCase().includes(search.toLowerCase()) || 
-            c.lastName.toLowerCase().includes(search.toLowerCase());
-          if (!searchMatch) return false;
-          
-          for (const key in filters) {
-             const filterVal = filters[key];
-             const companionVal = c[key];
-             if (filterVal && String(companionVal).trim() !== String(filterVal).trim()) return false;
-          }
-          return true;
-        });
-      }, [companions, search, filters]);
-
-      if (loading) return <div className="h-screen flex flex-col items-center justify-center"><div className="loader mb-4"></div><p className="text-gray-500">Loading...</p></div>;
-
-      return (
-        <div className="flex h-screen overflow-hidden">
-          <aside className="w-64 bg-brand-900 text-white flex-shrink-0 flex flex-col h-full shadow-xl z-20">
-             <div className="p-6 border-b border-brand-800">
-               <h1 className="text-xl font-bold">Companionship Connections</h1>
-             </div>
-             <nav className="flex-1 px-4 py-6 space-y-2">
-                <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center px-4 py-3 rounded-md transition ${activeTab === 'dashboard' ? 'bg-brand-800 shadow-md' : 'hover:bg-brand-800 hover:bg-opacity-50 text-brand-100'}`}>
-                   <ICONS.Users className="w-5 h-5 mr-3" /> Directory
-                </button>
-                <button onClick={() => setActiveTab('matches')} className={`w-full flex items-center px-4 py-3 rounded-md transition ${activeTab === 'matches' ? 'bg-brand-800 shadow-md' : 'hover:bg-brand-800 hover:bg-opacity-50 text-brand-100'}`}>
-                   <ICONS.Match className="w-5 h-5 mr-3" /> Matches 
-                   {matches.length > 0 && <span className="ml-auto bg-brand-600 text-xs py-0.5 px-2 rounded-full">{matches.length}</span>}
-                </button>
-                <button onClick={() => setActiveTab('settings')} className={`w-full flex items-center px-4 py-3 rounded-md transition ${activeTab === 'settings' ? 'bg-brand-800 shadow-md' : 'hover:bg-brand-800 hover:bg-opacity-50 text-brand-100'}`}>
-                   <ICONS.Settings className="w-5 h-5 mr-3" /> Criteria
-                </button>
-             </nav>
-          </aside>
-
-          <main className="flex-1 flex flex-col h-full overflow-hidden relative bg-gray-50">
-             {activeTab === 'settings' && (
-                <div className="overflow-auto h-full">
-                   <CriteriaSettings 
-                      config={config} 
-                      onUpdate={handleConfigUpdate} 
-                      onSave={handleSaveConfig} 
-                   />
-                </div>
-             )}
-             
-             {activeTab === 'matches' && (
-                <div className="overflow-auto h-full">
-                    <ActiveMatches 
-                       matches={matches} 
-                       companions={companions} 
-                       config={config}
-                       onUpdateStatus={(id, s) => {
-                          setMatches(m => m.map(x => x.id === id ? {...x, status: s} : x));
-                          google.script.run.updateMatchData(id, 'status', s);
-                       }}
-                       onUpdateNotes={(id, n) => {
-                          setMatches(m => m.map(x => x.id === id ? {...x, notes: n} : x));
-                          google.script.run.updateMatchData(id, 'notes', n);
-                       }}
-                       onDeleteMatch={(id) => {
-                          if(confirm('Delete match?')) {
-                             setMatches(m => m.filter(x => x.id !== id));
-                             google.script.run.deleteMatch(id);
-                          }
-                       }}
-                    />
-                </div>
-             )}
-
-             {activeTab === 'dashboard' && (
-                <div className="flex flex-col h-full">
-                    <div className="bg-white border-b border-gray-200 px-8 py-4 flex justify-between items-center shadow-sm z-10">
-                       <h2 className="text-xl font-bold text-gray-800">Directory</h2>
-                       <div className="flex items-center space-x-3">
-                          <button onClick={() => { setLoading(true); google.script.run.withSuccessHandler(data => { setCompanions(data.companions); setMatches(data.matches); if (data.criteria) setConfig(data.criteria); setLoading(false); }).getData(); }} className="flex items-center px-3 py-2 rounded-md border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-50">
-                             Refresh
-                          </button>
-                          <button onClick={() => setShowFilters(!showFilters)} className={`flex items-center px-3 py-2 rounded-md border text-sm font-medium transition ${showFilters ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-                             <ICONS.Filter className="w-4 h-4 mr-2"/> Filters
-                          </button>
-                          <div className="relative">
-                             <ICONS.Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                             <input type="text" placeholder="Search names..." className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg w-64 text-sm focus:ring-brand-500 focus:border-brand-500" onChange={(e) => setSearch(e.target.value)} />
-                          </div>
-                       </div>
-                    </div>
-                    
-                    <div className="flex-1 overflow-auto p-8">
-                       {showFilters && (
-                          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
-                             <div className="flex justify-between items-center mb-4">
-                                <h3 className="font-bold text-gray-700 flex items-center"><ICONS.Filter className="w-4 h-4 mr-2"/> Filter Directory</h3>
-                                <button onClick={() => {setFilters({}); setShowFilters(false);}} className="text-xs text-brand-600 hover:underline">Clear All</button>
-                             </div>
-                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                               {DEFAULT_CRITERIA_CONFIG
-                                 .filter(c => c.category !== 'Lived Experience' && c.key !== 'availability')
-                                 .map(c => (
-                                  <div key={c.key}>
-                                     <label className="block text-xs font-bold text-gray-500 mb-1">{c.label}</label>
-                                     <select className="w-full text-sm border-gray-300 rounded focus:ring-brand-500" onChange={e => setFilters({...filters, [c.key]: e.target.value})}>
-                                        <option value="">All</option>
-                                        {[...new Set(companions.map(x => x[c.key]))].filter(val => val && typeof val === 'string').sort().map(val => (
-                                           <option key={val} value={val}>{val}</option>
-                                        ))}
-                                     </select>
-                                  </div>
-                               ))}
-                             </div>
-                          </div>
-                       )}
-
-                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                          {filteredCompanions.map(c => (
-                             <div key={c.id} className="bg-white rounded-lg shadow hover:shadow-md transition border border-gray-200 group">
-                                <div onClick={() => { setSelectedCompanion(c); setIsMatchMode(false); }} className="p-5 flex items-center space-x-4 cursor-pointer">
-                                   <div className="w-12 h-12 bg-brand-100 rounded-full flex items-center justify-center text-brand-700 font-bold text-lg group-hover:bg-brand-200 transition">{c.firstName[0]}</div>
-                                   <div className="min-w-0 flex-1">
-                                      <h3 className="text-gray-900 font-bold truncate">{c.firstName} {c.lastName}</h3>
-                                      <p className="text-sm text-gray-500 truncate">{c.borough}</p>
-                                      {!c.waiverSigned && <span className="inline-block mt-1 text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">Ineligible (waiver not signed)</span>}
-                                   </div>
-                                </div>
-                                <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-between items-center gap-2">
-                                   <span className="text-xs font-medium text-gray-500 bg-white px-2 py-1 rounded border border-gray-200">{c.age}</span>
-                                   <div className="flex items-center gap-1">
-                                      <button onClick={(e) => { e.stopPropagation(); downloadCompanionPDF(c); }} className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline px-2 py-1 rounded border border-brand-200 hover:bg-brand-50" title="Download PDF">Download PDF</button>
-                                      <button onClick={(e) => { e.stopPropagation(); if(confirm('Delete this application? This will remove them from the spreadsheet and any matches.')) { google.script.run.withSuccessHandler(() => { setLoading(true); google.script.run.withSuccessHandler(data => { setCompanions(data.companions); setMatches(data.matches); if (data.criteria) setConfig(data.criteria); setSelectedCompanion(null); setLoading(false); }).getData(); }).deleteCompanion(c.id); }} className="text-xs font-medium text-red-600 hover:text-red-700 hover:underline px-2 py-1 rounded border border-red-200 hover:bg-red-50" title="Delete application">Delete</button>
-                                   </div>
-                                </div>
-                             </div>
-                          ))}
-                       </div>
-                    </div>
-                </div>
-             )}
-          </main>
-
-          {/* Modal Overlay */}
-          {selectedCompanion && (
-             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => {setSelectedCompanion(null); setIsMatchMode(false);}}></div>
-                <div className="bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all w-full max-w-4xl max-h-[90vh] flex flex-col relative z-10">
-                   <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 overflow-y-auto flex-1">
-                      <div className="flex justify-between items-start mb-6 border-b border-gray-100 pb-4">
-                         <div>
-                            <h3 className="text-xl leading-6 font-bold text-gray-900">{selectedCompanion.firstName} {selectedCompanion.lastName}</h3>
-                            <p className="text-sm text-gray-500 mt-1">{selectedCompanion.email} • {selectedCompanion.phone}</p>
-                            {!selectedCompanion.waiverSigned && <span className="inline-block mt-2 text-xs font-bold text-amber-700 bg-amber-100 px-2 py-1 rounded">Ineligible to match (waiver not signed)</span>}
-                         </div>
-                         <div className="flex items-center gap-2">
-                            <button onClick={() => downloadCompanionPDF(selectedCompanion)} className="flex items-center px-3 py-2 bg-brand-600 text-white text-sm font-medium rounded-md hover:bg-brand-700">
-                               Download PDF
-                            </button>
-                            <button onClick={() => { if(confirm('Delete this application? This will remove them from the spreadsheet and any matches.')) { google.script.run.withSuccessHandler(() => { setLoading(true); google.script.run.withSuccessHandler(data => { setCompanions(data.companions); setMatches(data.matches); if (data.criteria) setConfig(data.criteria); setSelectedCompanion(null); setIsMatchMode(false); setLoading(false); }).getData(); }).deleteCompanion(selectedCompanion.id); } }} className="flex items-center px-3 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-md hover:bg-red-200">
-                               Delete application
-                            </button>
-                            <button 
-                               onClick={() => {setSelectedCompanion(null); setIsMatchMode(false);}} 
-                               className="bg-red-500 hover:bg-red-600 text-white rounded-md p-2 transition"
-                            >
-                               <ICONS.Close className="w-5 h-5"/>
-                            </button>
-                         </div>
-                      </div>
-                      
-                      {!isMatchMode ? (
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div className="space-y-4">
-                               <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider border-b pb-1">Core Identity</h4>
-                               <div className="bg-gray-50 rounded p-4 space-y-2">
-                                  <DetailRow label="Borough" value={selectedCompanion.borough} />
-                                  <DetailRow label="Neighborhood" value={selectedCompanion.neighborhood} />
-                                  <DetailRow label="Age" value={selectedCompanion.age} />
-                                  <DetailRow label="Pronouns" value={selectedCompanion.pronouns} />
-                                  <DetailRow label="Gender" value={selectedCompanion.gender} />
-                                  <DetailRow label="Race" value={selectedCompanion.raceEthnicity} />
-                                  <DetailRow label="LGBTQ+" value={selectedCompanion.lgbtq} />
-                                  <DetailRow label="Relationship Status" value={selectedCompanion.relationshipStatus} />
-                                  <DetailRow label="Veteran Status" value={selectedCompanion.isVeteran} />
-                               </div>
-                               
-                               <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider border-b pb-1">Contact & Logistics</h4>
-                               <div className="bg-gray-50 rounded p-4 space-y-2">
-                                  <DetailRow label="Preferred contact" value={selectedCompanion.preferredContact} />
-                                  <DetailRow label="Email" value={selectedCompanion.email} />
-                                  <DetailRow label="Phone" value={selectedCompanion.phone} />
-                                  <DetailRow label="Willing to Travel" value={selectedCompanion.willingToTravel} />
-                                  <DetailRow label="Accessibility Needs" value={selectedCompanion.accessibilityNeeds} />
-                               </div>
-
-                               <div className="bg-yellow-50 p-4 rounded border border-yellow-100">
-                                   <label className="text-xs font-bold text-yellow-800 uppercase block mb-1">Internal Notes</label>
-                                   <textarea 
-                                     className="w-full text-sm p-2 rounded border border-yellow-300"
-                                     defaultValue={selectedCompanion.internalNotes}
-                                     onBlur={(e) => google.script.run.updateCompanionNote(selectedCompanion.id, e.target.value)}
-                                   ></textarea>
-                               </div>
-                            </div>
-                            <div className="space-y-6">
-                               {selectedCompanion.waiverSigned ? (
-                                  <button onClick={() => setIsMatchMode(true)} className="w-full bg-brand-600 text-white py-3 rounded-lg shadow hover:bg-brand-700 font-bold flex items-center justify-center">
-                                     <ICONS.Match className="w-5 h-5 mr-2"/> Find Match
-                                  </button>
-                               ) : (
-                                  <div className="w-full py-3 px-4 rounded-lg bg-amber-100 border border-amber-200 text-amber-800 text-sm font-medium">
-                                     Ineligible to match until waivers are signed (column B in spreadsheet).
-                                  </div>
-                               )}
-
-                               <div>
-                                  <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider mb-2 border-b pb-1">Lived Experiences</h4>
-                                  <div className="flex flex-wrap gap-2 mb-4">
-                                     {selectedCompanion.hasExperiencedDV === 'Yes' && <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded">DV Survivor</span>}
-                                     {selectedCompanion.hasBeenIncarcerated === 'Yes' && <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded">Incarcerated</span>}
-                                     {selectedCompanion.hasExperiencedHomelessness === 'Yes' && <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded">Homelessness</span>}
-                                     {selectedCompanion.receivingMentalHealthServices === 'Yes' && <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded">Mental Health Svcs</span>}
-                                     {selectedCompanion.receivingSubstanceUseServices === 'Yes' && <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">Substance Use Svcs</span>}
-                                  </div>
-                               </div>
-
-                               <div>
-                                  <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider mb-2 border-b pb-1">Essays</h4>
-                                  <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
-                                     {Object.entries(selectedCompanion.essays).map(([key, text]) => (
-                                       <div key={key} className="bg-white border p-3 rounded">
-                                           <p className="text-xs font-bold text-gray-400 mb-1 uppercase">{key}</p>
-                                           <p className="text-sm text-gray-800">{text}</p>
-                                       </div>
-                                     ))}
-                                  </div>
-                               </div>
-
-                               <div>
-                                  <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider mb-2 border-b pb-1">Availability</h4>
-                                  <AvailabilityGrid availability={selectedCompanion.availability} />
-                               </div>
-                            </div>
-                         </div>
-                      ) : (
-                         <div className="space-y-4">
-                            <button onClick={() => setIsMatchMode(false)} className="text-sm text-brand-600 hover:underline mb-2">&larr; Back to Details</button>
-                            <div className="space-y-3">
-                               {(() => {
-                                 const eligible = companions.filter(c => c.id !== selectedCompanion.id && c.waiverSigned && selectedCompanion.waiverSigned);
-                                 const sorted = eligible.map(c => ({ c, ...calculateMatchPercentage(selectedCompanion, c, config) })).sort((a,b) => b.percent - a.percent).slice(0, 10);
-                                 if (sorted.length === 0) return <p className="text-gray-500 text-sm">No eligible match candidates (others must have waivers signed).</p>;
-                                 return sorted.map(({ c, percent, reasons }) => (
-                                    <div key={c.id} className="border rounded-lg p-4 flex justify-between items-center hover:bg-gray-50">
-                                       <div>
-                                           <div className="flex items-center space-x-3">
-                                              <h4 className="font-bold text-gray-900">{c.firstName} {c.lastName}</h4>
-                                              <span className={`px-2 py-0.5 rounded text-xs font-bold ${percent > 70 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>{percent}% Match</span>
-                                           </div>
-                                           <div className="text-xs text-gray-500 mt-1 flex gap-2">
-                                              {reasons.slice(0,3).map((r,i) => <span key={i} className="bg-gray-100 px-1 rounded">{r}</span>)}
-                                           </div>
-                                       </div>
-                                       <button onClick={() => handleCreateMatch(c.id)} className="bg-brand-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-brand-700">Select</button>
-                                    </div>
-                                 ));
-                               })()}
-                            </div>
-                         </div>
-                      )}
-                   </div>
-                </div>
-             </div>
-          )}
-        </div>
-      );
-    };
-
-    try {
-      var rootEl = document.getElementById('root');
-      if (typeof ReactDOM.createRoot === 'function') {
-        var root = ReactDOM.createRoot(rootEl);
-        root.render(React.createElement(App, null));
-      } else {
-        ReactDOM.render(React.createElement(App, null), rootEl);
       }
-    } catch (err) {
-      var el = document.getElementById('root');
-      if (el) el.innerHTML = '<div style="padding:24px;font-family:sans-serif;color:#b91c1c;">Error loading app: ' + (err && err.message ? err.message : String(err)) + '</div>';
-    }
+
+      function showTab(tabName) {
+        state.activeTab = tabName;
+        state.selectedCompanion = null;
+        document.querySelectorAll('.tab-btn').forEach(function(btn) {
+          btn.classList.toggle('active', btn.getAttribute('data-tab') === tabName);
+        });
+        document.querySelectorAll('.tab-panel').forEach(function(panel) {
+          panel.classList.toggle('active', panel.id === 'panel-' + tabName);
+        });
+        if (tabName === 'directory') renderDirectory();
+        else if (tabName === 'matches') renderMatches();
+        else if (tabName === 'criteria') renderCriteria();
+      }
+
+      function getOverlappingDays(c1, c2) {
+        var days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+        var out = [];
+        for (var d = 0; d < days.length; d++) {
+          var key = days[d];
+          var a = (c1.availability && c1.availability[key]) || '';
+          var b = (c2.availability && c2.availability[key]) || '';
+          if (a && b && a !== 'Unavailable' && b !== 'Unavailable') out.push(key.charAt(0).toUpperCase() + key.slice(1));
+        }
+        return out;
+      }
+
+      function calculateMatchPercent(c1, c2) {
+        var config = state.criteria;
+        var score = 0, maxScore = 0;
+        for (var i = 0; i < config.length; i++) {
+          if (config[i].enabled) maxScore += config[i].weight;
+        }
+        if (maxScore === 0) return 0;
+        var cm = {};
+        for (var j = 0; j < config.length; j++) { cm[config[j].key] = config[j]; }
+        if ((c1.preferredContact || '') === (c2.preferredContact || '') && (c1.preferredContact || c2.preferredContact)) {
+          if (cm.preferredContact && cm.preferredContact.enabled) score += (cm.preferredContact.weight || 25);
+        }
+        if (c1.borough === c2.borough && c1.borough) {
+          if (cm.borough && cm.borough.enabled) score += (cm.borough.weight || 12);
+        } else if ((c1.willingToTravel === 'Yes' || c2.willingToTravel === 'Yes') && cm.willingToTravel && cm.willingToTravel.enabled) {
+          score += (cm.willingToTravel.weight || 5);
+        }
+        if (c1.age === c2.age && cm.age && cm.age.enabled) score += (cm.age.weight || 4);
+        if (c1.pronouns === c2.pronouns && c1.pronouns && cm.pronouns && cm.pronouns.enabled) score += (cm.pronouns.weight || 3);
+        if (c1.gender === c2.gender && cm.gender && cm.gender.enabled) score += (cm.gender.weight || 3);
+        if (c1.lgbtq === 'Yes' && c2.lgbtq === 'Yes' && cm.lgbtq && cm.lgbtq.enabled) score += (cm.lgbtq.weight || 9);
+        var overlaps = getOverlappingDays(c1, c2);
+        if (overlaps.length > 0 && cm.availability && cm.availability.enabled) {
+          score += ((cm.availability.weight || 25) * Math.min(1, overlaps.length / 3));
+        }
+        return Math.round((score / maxScore) * 100);
+      }
+
+      function renderDirectory() {
+        var panel = document.getElementById('panel-directory');
+        var search = (panel.querySelector('.search-input') && panel.querySelector('.search-input').value) || '';
+        var html = '<div class="toolbar"><input type="text" class="search-input" placeholder="Search names..." value="' + (search || '').replace(/"/g, '&quot;') + '"><button type="button" class="btn btn-secondary" onclick="window.appRefresh()">Refresh</button></div><h1 class="page-title">Directory</h1><div class="grid" id="directory-grid"></div>';
+        panel.innerHTML = html;
+        var list = state.companions;
+        if (search) {
+          search = search.toLowerCase();
+          list = list.filter(function(c) {
+            return (c.firstName && c.firstName.toLowerCase().indexOf(search) !== -1) || (c.lastName && c.lastName.toLowerCase().indexOf(search) !== -1);
+          });
+        }
+        var grid = document.getElementById('directory-grid');
+        list.forEach(function(c) {
+          var card = document.createElement('div');
+          card.className = 'card';
+          var ineligible = !c.waiverSigned;
+          card.innerHTML = '<div class="card-header" data-id="' + c.id + '">' +
+            '<div class="avatar">' + (c.firstName ? c.firstName.charAt(0) : '?') + '</div>' +
+            '<div style="flex:1;min-width:0;">' +
+              '<div style="font-weight:600;color:#111;">' + escapeHtml(c.firstName || '') + ' ' + escapeHtml(c.lastName || '') + '</div>' +
+              '<div style="font-size:13px;color:#6b7280;">' + escapeHtml(c.borough || '') + '</div>' +
+              (ineligible ? '<span class="badge badge-amber" style="margin-top:4px;">Waiver not signed</span>' : '') +
+            '</div>' +
+            '</div>';
+          card.querySelector('.card-header').addEventListener('click', function() { openCompanionModal(c.id); });
+          grid.appendChild(card);
+        });
+        panel.querySelector('.search-input').addEventListener('input', function() { renderDirectory(); });
+      }
+
+      function escapeHtml(s) {
+        if (s == null) return '';
+        var div = document.createElement('div');
+        div.textContent = s;
+        return div.innerHTML;
+      }
+
+      function openCompanionModal(id) {
+        var c = state.companions.find(function(x) { return String(x.id) === String(id); });
+        if (!c) return;
+        state.selectedCompanion = c;
+        var avail = c.availability || {};
+        var days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+        var availText = days.map(function(d) { return d + ': ' + (avail[d.toLowerCase()] || '—'); }).join(' | ');
+        var body = '<div class="detail-row"><dt>Email</dt><dd>' + escapeHtml(c.email) + '</dd></div>' +
+          '<div class="detail-row"><dt>Phone</dt><dd>' + escapeHtml(c.phone) + '</dd></div>' +
+          '<div class="detail-row"><dt>Borough / Neighborhood</dt><dd>' + escapeHtml(c.borough) + ' / ' + escapeHtml(c.neighborhood) + '</dd></div>' +
+          '<div class="detail-row"><dt>Age / Pronouns / Gender</dt><dd>' + escapeHtml(c.age) + ' / ' + escapeHtml(c.pronouns) + ' / ' + escapeHtml(c.gender) + '</dd></div>' +
+          '<div class="detail-row"><dt>Availability</dt><dd>' + escapeHtml(availText) + '</dd></div>' +
+          (c.internalNotes ? '<div class="detail-row"><dt>Internal notes</dt><dd>' + escapeHtml(c.internalNotes) + '</dd></div>' : '');
+        var modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.id = 'companion-modal';
+        modal.innerHTML = '<div class="modal">' +
+          '<div class="modal-header">' +
+            '<h2>' + escapeHtml(c.firstName) + ' ' + escapeHtml(c.lastName) + '</h2>' +
+            '<button type="button" class="btn btn-secondary" onclick="document.getElementById(\'companion-modal\').remove()">Close</button>' +
+          '</div>' +
+          '<div class="modal-body">' + body +
+            '<div style="margin-top:20px;">' +
+              (c.waiverSigned ? '<button type="button" class="btn btn-primary" onclick="window.showFindMatch(\'' + c.id + '\')">Find Match</button>' : '<span class="badge badge-amber">Cannot match until waiver is signed</span>') +
+              ' <button type="button" class="btn btn-danger" onclick="window.deleteCompanion(\'' + c.id + '\')">Delete application</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+        modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+      }
+
+      function showFindMatch(selectedId) {
+        var c1 = state.companions.find(function(x) { return String(x.id) === String(selectedId); });
+        if (!c1) return;
+        var others = state.companions.filter(function(c) { return String(c.id) !== String(selectedId) && c.waiverSigned; });
+        others.sort(function(a, b) { return calculateMatchPercent(c1, b) - calculateMatchPercent(c1, a); });
+        others = others.slice(0, 10);
+        var listHtml = others.map(function(c2) {
+          var pct = calculateMatchPercent(c1, c2);
+          return '<div class="match-row">' +
+            '<div class="match-info"><span><strong>' + escapeHtml(c2.firstName) + ' ' + escapeHtml(c2.lastName) + '</strong></span> <span class="badge ' + (pct >= 70 ? 'badge-green' : '') + '">' + pct + '% match</span></div>' +
+            '<button type="button" class="btn btn-primary" onclick="window.createMatch(\'' + c1.id + '\', \'' + c2.id + '\')">Select</button>' +
+          '</div>';
+        }).join('');
+        var modal = document.getElementById('companion-modal');
+        if (modal) modal.remove();
+        var m = document.createElement('div');
+        m.className = 'modal-overlay';
+        m.id = 'find-match-modal';
+        m.innerHTML = '<div class="modal" style="max-width:640px;">' +
+          '<div class="modal-header"><h2>Find match for ' + escapeHtml(c1.firstName) + ' ' + escapeHtml(c1.lastName) + '</h2><button type="button" class="btn btn-secondary" onclick="document.getElementById(\'find-match-modal\').remove()">Back</button></div>' +
+          '<div class="modal-body">' + (others.length ? listHtml : '<p>No eligible companions to match.</p>') + '</div></div>';
+        m.addEventListener('click', function(e) { if (e.target === m) m.remove(); });
+        document.body.appendChild(m);
+      }
+
+      function createMatch(id1, id2) {
+        var c1 = state.companions.find(function(x) { return String(x.id) === String(id1); });
+        var c2 = state.companions.find(function(x) { return String(x.id) === String(id2); });
+        if (!c1 || !c2) return;
+        var matchObj = {
+          id: Math.random().toString(36).substring(2, 11),
+          companion1Id: String(c1.id),
+          companion2Id: String(c2.id),
+          c1Name: (c1.firstName || '') + ' ' + (c1.lastName || ''),
+          c2Name: (c2.firstName || '') + ' ' + (c2.lastName || ''),
+          status: 'Just Matched',
+          notes: '',
+          createdAt: new Date().toISOString()
+        };
+        google.script.run.withSuccessHandler(function() {
+          state.matches.unshift(matchObj);
+          var mod = document.getElementById('find-match-modal');
+          if (mod) mod.remove();
+          showTab('matches');
+        }).createMatch(matchObj);
+      }
+
+      function deleteCompanion(id) {
+        if (!confirm('Delete this application? They will be removed from the spreadsheet and any matches.')) return;
+        google.script.run.withSuccessHandler(function() { loadData(); }).deleteCompanion(id);
+        var mod = document.getElementById('companion-modal');
+        if (mod) mod.remove();
+      }
+
+      function appRefresh() { loadData(); }
+
+      function renderMatches() {
+        var panel = document.getElementById('panel-matches');
+        panel.innerHTML = '<h1 class="page-title">Matches</h1><div id="matches-list"></div>';
+        var list = document.getElementById('matches-list');
+        if (state.matches.length === 0) {
+          list.innerHTML = '<p style="color:#6b7280;">No matches yet. Use Directory to find a match for a companion.</p>';
+          return;
+        }
+        state.matches.forEach(function(m) {
+          var c1 = state.companions.find(function(c) { return String(c.id) === String(m.companion1Id); });
+          var c2 = state.companions.find(function(c) { return String(c.id) === String(m.companion2Id); });
+          var names = (c1 ? c1.firstName + ' ' + c1.lastName : '?') + ' & ' + (c2 ? c2.firstName + ' ' + c2.lastName : '?');
+          var pct = (c1 && c2) ? calculateMatchPercent(c1, c2) : 0;
+          var statuses = ['Just Matched', 'Introduction Sent', 'First Meeting Set', 'Active', 'Canceled'];
+          var opts = statuses.map(function(s) { return '<option value="' + escapeHtml(s) + '"' + (m.status === s ? ' selected' : '') + '>' + s + '</option>'; }).join('');
+          var row = document.createElement('div');
+          row.className = 'card';
+          row.innerHTML = '<div class="match-row">' +
+            '<div class="match-info"><strong>' + escapeHtml(names) + '</strong> <span class="badge badge-green">' + pct + '%</span></div>' +
+            '<div class="match-actions">' +
+              '<select data-match-id="' + m.id + '" data-field="status">' + opts + '</select>' +
+              '<input type="text" placeholder="Notes" value="' + escapeHtml(m.notes || '') + '" data-match-id="' + m.id + '" data-field="notes">' +
+              '<button type="button" class="btn btn-danger" onclick="window.removeMatch(\'' + m.id + '\')">Delete</button>' +
+            '</div>' +
+          '</div>';
+          list.appendChild(row);
+          (function(matchId) {
+            row.querySelector('select').addEventListener('change', function() {
+              var val = this.value;
+              google.script.run.updateMatchData(matchId, 'status', val);
+              var mm = state.matches.find(function(x) { return x.id === matchId; });
+              if (mm) mm.status = val;
+            });
+            row.querySelector('input').addEventListener('change', function() {
+              var val = this.value;
+              google.script.run.updateMatchData(matchId, 'notes', val);
+              var mm = state.matches.find(function(x) { return x.id === matchId; });
+              if (mm) mm.notes = val;
+            });
+          })(m.id);
+        });
+      }
+
+      function removeMatch(id) {
+        if (!confirm('Delete this match?')) return;
+        google.script.run.withSuccessHandler(function() {
+          state.matches = state.matches.filter(function(m) { return m.id !== id; });
+          renderMatches();
+        }).deleteMatch(id);
+      }
+
+      function renderCriteria() {
+        var panel = document.getElementById('panel-criteria');
+        var total = 0;
+        state.criteria.forEach(function(c) { if (c.enabled) total += (parseInt(c.weight, 10) || 0); });
+        var valid = total === 100;
+        var rows = state.criteria.map(function(item, idx) {
+          return '<tr>' +
+            '<td><input type="checkbox" ' + (item.enabled ? 'checked' : '') + ' data-idx="' + idx + '"></td>' +
+            '<td>' + escapeHtml(item.category) + '</td>' +
+            '<td>' + escapeHtml(item.label) + '</td>' +
+            '<td><input type="number" min="0" max="100" value="' + item.weight + '" data-idx="' + idx + '" ' + (item.enabled ? '' : 'disabled') + '></td>' +
+          '</tr>';
+        }).join('');
+        panel.innerHTML = '<h1 class="page-title">Matching Criteria</h1>' +
+          '<p class="weight-sum ' + (valid ? 'valid' : 'invalid') + '">Total weight (enabled only): ' + total + '% ' + (valid ? '— OK' : '— Must equal 100%') + '</p>' +
+          '<table class="criteria-table"><thead><tr><th>Include</th><th>Category</th><th>Criteria</th><th>Weight</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+          '<div style="margin-top:16px;"><button type="button" class="btn btn-primary" ' + (valid ? '' : 'disabled') + ' id="save-criteria-btn">Save criteria</button></div>';
+        panel.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+          cb.addEventListener('change', function() {
+            state.criteria[parseInt(this.getAttribute('data-idx'), 10)].enabled = this.checked;
+            panel.querySelectorAll('input[type="number"]')[parseInt(this.getAttribute('data-idx'), 10)].disabled = !this.checked;
+            renderCriteria();
+          });
+        });
+        panel.querySelectorAll('input[type="number"]').forEach(function(inp) {
+          inp.addEventListener('change', function() {
+            state.criteria[parseInt(this.getAttribute('data-idx'), 10)].weight = parseInt(this.value, 10) || 0;
+            renderCriteria();
+          });
+        });
+        document.getElementById('save-criteria-btn').addEventListener('click', function() {
+          google.script.run.withSuccessHandler(function() { alert('Criteria saved.'); }).saveCriteriaSettings(JSON.stringify(state.criteria));
+        });
+      }
+
+      document.querySelectorAll('.tab-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() { showTab(btn.getAttribute('data-tab')); });
+      });
+
+      window.appRefresh = appRefresh;
+      window.showFindMatch = showFindMatch;
+      window.createMatch = createMatch;
+      window.deleteCompanion = deleteCompanion;
+      window.removeMatch = removeMatch;
+
+      loadData();
+    })();
   </script>
 </body>
 </html>
