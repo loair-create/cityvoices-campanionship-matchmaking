@@ -216,7 +216,8 @@ function parseCompanion(row, headers, rowNum) {
   };
 
   const waiverCell = row[1];
-  const waiverSigned = !!waiverCell && String(waiverCell).trim().length > 0;
+  const waiverVal = String(waiverCell || '').trim();
+  const waiverSigned = waiverVal.length > 0 && waiverVal.toLowerCase() !== 'no';
 
   return {
     id: String(rowNum),
