@@ -42,6 +42,9 @@
     .filter-item label { display: block; font-size: 11px; font-weight: 600; color: #6b7280; margin-bottom: 4px; }
     .filter-item select { width: 100%; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; }
     .match-reasons { font-size: 12px; color: #065f46; margin-top: 4px; }
+    .card-ineligible { opacity: 0.85; background: #f9fafb; }
+    .card-ineligible .avatar { background: #e5e7eb; color: #6b7280; }
+    .card-ineligible .card-header:hover { background: #f3f4f6; }
     .match-reasons span { display: block; margin-top: 2px; }
     .modal-header { padding: 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: flex-start; }
     .modal-header h2 { margin: 0; font-size: 1.25rem; }
@@ -146,6 +149,7 @@
       };
 
       var FILTER_FIELDS = [
+        { key: 'waiverSigned', label: 'Waiver Signed (eligible to match)' },
         { key: 'preferredContact', label: 'Preferred Contact Method' },
         { key: 'borough', label: 'Borough' },
         { key: 'willingToTravel', label: 'Willing To Travel' },
@@ -154,7 +158,6 @@
         { key: 'gender', label: 'Gender' },
         { key: 'raceEthnicity', label: 'Race/Ethnicity' },
         { key: 'lgbtq', label: 'LGBTQ+' },
-        { key: 'waiverSigned', label: 'Waiver Signed' },
         { key: 'hasExperiencedDV', label: 'DV Survivor' },
         { key: 'hasBeenIncarcerated', label: 'Incarceration' },
         { key: 'hasExperiencedHomelessness', label: 'Homelessness' },
@@ -306,11 +309,16 @@
             return String(v) === filterVal;
           });
         }
+        list.sort(function(a, b) {
+          if (a.waiverSigned && !b.waiverSigned) return -1;
+          if (!a.waiverSigned && b.waiverSigned) return 1;
+          return 0;
+        });
         var grid = document.getElementById('directory-grid');
         list.forEach(function(c) {
           var card = document.createElement('div');
-          card.className = 'card';
           var ineligible = !c.waiverSigned;
+          card.className = 'card' + (ineligible ? ' card-ineligible' : '');
           card.innerHTML = '<div class="card-header" data-id="' + c.id + '">' +
             '<div class="avatar">' + (c.firstName ? c.firstName.charAt(0) : '?') + '</div>' +
             '<div style="flex:1;min-width:0;">' +
@@ -331,6 +339,95 @@
         var div = document.createElement('div');
         div.textContent = s;
         return div.innerHTML;
+      }
+
+      function downloadCompanionPDF(companionId) {
+        var c = state.companions.find(function(x) { return String(x.id) === String(companionId); });
+        if (!c) return;
+        function doPdf() {
+          try {
+            var jspdfLib = window.jspdf;
+            if (!jspdfLib || !jspdfLib.jsPDF) {
+              alert('PDF library not loaded. Use browser Print (Ctrl+P or Cmd+P) and choose "Save as PDF".');
+              return;
+            }
+            var jsPDF = jspdfLib.jsPDF;
+            var doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+            var margin = 40;
+            var y = margin;
+            var lineH = 16;
+            function addLine(label, value) {
+              if (y > 700) { doc.addPage(); y = margin; }
+              doc.setFontSize(9);
+              doc.setFont(undefined, 'normal');
+              doc.text((label ? label + ': ' : '') + (value || '—'), margin, y);
+              y += lineH;
+            }
+            doc.setFontSize(16);
+            doc.setFont(undefined, 'bold');
+            doc.text((c.firstName || '') + ' ' + (c.lastName || '') + ' — Companion Application', margin, y);
+            y += lineH + 8;
+            doc.setFontSize(10);
+            addLine('Preferred Contact Method', c.preferredContact);
+            addLine('Email', c.email);
+            addLine('Phone', c.phone);
+            addLine('Willing To Travel', c.willingToTravel);
+            addLine('Accessibility Needs', c.accessibilityNeeds);
+            addLine('Borough', c.borough);
+            addLine('Neighborhood', c.neighborhood);
+            addLine('Age', c.age);
+            addLine('Pronouns', c.pronouns);
+            addLine('Gender', c.gender);
+            addLine('Race/Ethnicity', c.raceEthnicity);
+            addLine('LGBTQ+', c.lgbtq);
+            addLine('Relationship Status', c.relationshipStatus);
+            y += 4;
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(10);
+            doc.text('Lived Experience', margin, y);
+            y += lineH;
+            doc.setFont(undefined, 'normal');
+            addLine('Experienced Domestic Violence', c.hasExperiencedDV);
+            addLine('Been Incarcerated', c.hasBeenIncarcerated);
+            addLine('Experienced Homelessness', c.hasExperiencedHomelessness);
+            addLine('Receiving Mental Health Services', c.receivingMentalHealthServices);
+            addLine('Receiving Substance Use Services', c.receivingSubstanceUseServices);
+            addLine('Veteran', c.isVeteran);
+            y += 4;
+            doc.setFont(undefined, 'bold');
+            doc.text('Availability', margin, y);
+            y += lineH;
+            doc.setFont(undefined, 'normal');
+            var days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+            days.forEach(function(d) { addLine(d, (c.availability && c.availability[d.toLowerCase()]) || '—'); });
+            if (c.internalNotes) { y += 4; doc.setFont(undefined, 'bold'); doc.text('Internal Notes', margin, y); y += lineH; doc.setFont(undefined, 'normal'); var lines = doc.splitTextToSize(c.internalNotes || '', 500); lines.forEach(function(l) { if (y > 700) { doc.addPage(); y = margin; } doc.text(l, margin, y); y += lineH; }); y += 4; }
+            doc.setFont(undefined, 'bold');
+            doc.text('Essay Responses', margin, y);
+            y += lineH;
+            doc.setFont(undefined, 'normal');
+            ['hobbies','expectations','sharedExperiences','motivation','creativity'].forEach(function(k) {
+              var q = ESSAY_LABELS[k] || k;
+              var text = (c.essays && c.essays[k]) || '—';
+              doc.setFont(undefined, 'bold');
+              doc.setFontSize(9);
+              doc.text(q, margin, y);
+              y += lineH;
+              doc.setFont(undefined, 'normal');
+              var lines = doc.splitTextToSize(String(text), 500);
+              lines.forEach(function(l) { if (y > 700) { doc.addPage(); y = margin; } doc.text(l, margin, y); y += lineH; });
+              y += 8;
+            });
+            doc.save('Companion_' + (c.firstName || '').replace(/\s+/g, '_') + '_' + (c.lastName || '').replace(/\s+/g, '_') + '.pdf');
+          } catch (e) {
+            alert('PDF failed. Try Print (Ctrl+P) and "Save as PDF".');
+          }
+        }
+        if (window.jspdf && window.jspdf.jsPDF) { doPdf(); return; }
+        var script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        script.onload = function() { doPdf(); };
+        script.onerror = function() { alert('Could not load PDF library. Use Print and "Save as PDF".'); };
+        document.head.appendChild(script);
       }
 
       function dr(label, value) {
@@ -360,7 +457,8 @@
           (c.internalNotes ? '<div class="detail-section"><h3>Internal Notes</h3>' + dr('', c.internalNotes) + '</div>' : '') +
           '<div class="detail-section"><h3>Essay Responses</h3>' + essaysHtml + '</div>' +
           '<div style="margin-top:20px;">' +
-            (c.waiverSigned ? '<button type="button" class="btn btn-primary" onclick="window.showFindMatch(\'' + c.id + '\')">Find Match</button>' : '<span class="badge badge-amber">Cannot match until waiver is signed</span>') +
+            '<button type="button" class="btn btn-secondary" onclick="window.downloadCompanionPDF(\'' + c.id + '\')">Download PDF</button> ' +
+            (c.waiverSigned ? '<button type="button" class="btn btn-primary" onclick="window.showFindMatch(\'' + c.id + '\')">Find Match</button>' : '<span class="badge badge-amber">Ineligible — waiver not signed (column B)</span>') +
             ' <button type="button" class="btn btn-danger" onclick="window.deleteCompanion(\'' + c.id + '\')">Delete application</button>' +
           '</div>';
         var modal = document.createElement('div');
@@ -603,6 +701,7 @@
       window.deleteCompanion = deleteCompanion;
       window.removeMatch = removeMatch;
       window.openMatchDetailModal = openMatchDetailModal;
+      window.downloadCompanionPDF = downloadCompanionPDF;
 
       loadData();
     })();
