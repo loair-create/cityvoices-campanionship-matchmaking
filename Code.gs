@@ -417,11 +417,18 @@ function runScheduledReminders() {
  */
 function sendTestReminderEmail(toEmail) {
   const email = String(toEmail || '').trim();
-  if (!email) return false;
+  if (!email) throw new Error('No email address provided.');
   const body = "This is a test reminder email for the Companionship Matching app. When a match has \"First Meeting Set\" and 3 months have passed, a reminder like this is sent to the configured recipient.\n\nExample body for a real reminder:\n\nThis is a reminder that it's been 3 months since [Match Names] had their first meeting set. Remember to check in with them to see how their Companionship is going. Their preferred contact method is below.";
   const subject = "Companionship app – test reminder";
-  MailApp.sendEmail(email, subject, body);
-  return true;
+  try {
+    MailApp.sendEmail(email, subject, body);
+    return true;
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    throw new Error(msg.indexOf('Authorization') >= 0 || msg.indexOf('permission') >= 0
+      ? 'Email permission needed. In the Apps Script editor, run the function sendTestReminderEmail once (or run openApp), then approve sending email when prompted.'
+      : 'Could not send email: ' + msg);
+  }
 }
 
 /**
