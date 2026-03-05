@@ -194,6 +194,7 @@
       <button type="button" class="tab-btn active" data-tab="directory">Directory</button>
       <button type="button" class="tab-btn" data-tab="matches">Matches</button>
       <button type="button" class="tab-btn" data-tab="criteria">Criteria</button>
+      <button type="button" class="tab-btn" id="btn-3month-reminder" style="margin-top:12px;">3 month email reminder</button>
     </aside>
     <main class="main">
       <div id="loading" style="padding: 40px; text-align: center;">
@@ -904,46 +905,48 @@
           var email = document.getElementById('reminder-recipient-input').value.trim();
           google.script.run.withSuccessHandler(function() { state.reminderRecipient = email; alert('Reminder recipient saved.'); }).withFailureHandler(function(err) { alert('Failed: ' + (err.message || err)); }).saveReminderRecipient(email);
         });
-        document.getElementById('open-test-reminder-popup-btn').addEventListener('click', function() {
-          var overlay = document.createElement('div');
-          overlay.className = 'modal-overlay';
-          overlay.id = 'test-reminder-popup';
-          overlay.innerHTML = '<div class="modal" style="max-width:420px;">' +
-            '<div class="modal-header"><h2>Send test reminder email</h2><button type="button" class="btn btn-secondary" data-action="cancel">Cancel</button></div>' +
-            '<div class="modal-body">' +
-              '<p style="margin:0 0 12px 0;font-size:14px;color:#374151;">Choose the email address to receive the test reminder:</p>' +
-              '<input type="email" id="test-reminder-email-input" placeholder="e.g. your@email.com" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-bottom:16px;box-sizing:border-box;">' +
-              '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
-                '<button type="button" class="btn btn-secondary" data-action="cancel">Cancel</button>' +
-                '<button type="button" class="btn btn-primary" id="test-reminder-send-btn">Send test email</button>' +
-              '</div>' +
-            '</div></div>';
-          overlay.addEventListener('click', function(e) {
-            if (e.target === overlay || e.target.getAttribute('data-action') === 'cancel') overlay.remove();
-          });
-          document.body.appendChild(overlay);
-          var input = document.getElementById('test-reminder-email-input');
-          if (input) { input.focus(); input.addEventListener('keydown', function(ev) { if (ev.key === 'Escape') overlay.remove(); }); }
-          document.getElementById('test-reminder-send-btn').addEventListener('click', function() {
-            var email = (document.getElementById('test-reminder-email-input') || {}).value.trim();
-            if (!email) { alert('Please enter an email address.'); return; }
-            document.getElementById('test-reminder-send-btn').disabled = true;
-            document.getElementById('test-reminder-send-btn').textContent = 'Sending…';
-            google.script.run
-              .withSuccessHandler(function() { overlay.remove(); alert('Test reminder sent to ' + email); })
-              .withFailureHandler(function(err) {
-                document.getElementById('test-reminder-send-btn').disabled = false;
-                document.getElementById('test-reminder-send-btn').textContent = 'Send test email';
-                alert('Failed to send: ' + (err && err.message ? err.message : String(err)) + '\n\nIf using Apps Script, ensure the script is authorized to send email (run once from the script editor and approve permissions).');
-              })
-              .sendTestReminderEmail(email);
-          });
-        });
+        document.getElementById('open-test-reminder-popup-btn').addEventListener('click', openTestReminderPopup);
         document.getElementById('refresh-reminder-sheet-btn').addEventListener('click', function() {
           google.script.run.withSuccessHandler(function() { alert('Reminder Schedule sheet updated.'); }).withFailureHandler(function(err) { alert('Failed: ' + (err.message || err)); }).updateReminderSheet();
         });
         document.getElementById('run-reminder-check-btn').addEventListener('click', function() {
           google.script.run.withSuccessHandler(function() { alert('Reminder check complete. Due emails sent; Reminder Schedule sheet updated.'); }).withFailureHandler(function(err) { alert('Failed: ' + (err.message || err)); }).runScheduledReminders();
+        });
+      }
+
+      function openTestReminderPopup() {
+        var overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.id = 'test-reminder-popup';
+        overlay.innerHTML = '<div class="modal" style="max-width:420px;">' +
+          '<div class="modal-header"><h2>3 month email reminder</h2><button type="button" class="btn btn-secondary" data-action="cancel">Cancel</button></div>' +
+          '<div class="modal-body">' +
+            '<p style="margin:0 0 12px 0;font-size:14px;color:#374151;">Reminders are sent to <strong>danfrey76@gmail.com</strong> when a match has status &quot;First Meeting Set&quot; for 3 months—your reminder to check in. Send a test email to any address below:</p>' +
+            '<input type="email" id="test-reminder-email-input" placeholder="e.g. your@email.com" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin:12px 0 16px 0;box-sizing:border-box;">' +
+            '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+              '<button type="button" class="btn btn-secondary" data-action="cancel">Cancel</button>' +
+              '<button type="button" class="btn btn-primary" id="test-reminder-send-btn">Send test email</button>' +
+            '</div>' +
+          '</div></div>';
+        overlay.addEventListener('click', function(e) {
+          if (e.target === overlay || e.target.getAttribute('data-action') === 'cancel') overlay.remove();
+        });
+        document.body.appendChild(overlay);
+        var input = document.getElementById('test-reminder-email-input');
+        if (input) { input.focus(); input.addEventListener('keydown', function(ev) { if (ev.key === 'Escape') overlay.remove(); }); }
+        document.getElementById('test-reminder-send-btn').addEventListener('click', function() {
+          var email = (document.getElementById('test-reminder-email-input') || {}).value.trim();
+          if (!email) { alert('Please enter an email address.'); return; }
+          document.getElementById('test-reminder-send-btn').disabled = true;
+          document.getElementById('test-reminder-send-btn').textContent = 'Sending…';
+          google.script.run
+            .withSuccessHandler(function() { overlay.remove(); alert('Test reminder sent to ' + email); })
+            .withFailureHandler(function(err) {
+              var sendBtn = document.getElementById('test-reminder-send-btn');
+              if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Send test email'; }
+              alert('Failed to send: ' + (err && err.message ? err.message : String(err)) + '\n\nIf using Apps Script, ensure the script is authorized to send email (run once from the script editor and approve permissions).');
+            })
+            .sendTestReminderEmail(email);
         });
       }
 
@@ -960,7 +963,14 @@
       }
 
       document.querySelectorAll('.tab-btn').forEach(function(btn) {
-        btn.addEventListener('click', function() { showTab(btn.getAttribute('data-tab')); });
+        btn.addEventListener('click', function() {
+          if (btn.id === 'btn-3month-reminder') {
+            openTestReminderPopup();
+            return;
+          }
+          var tab = btn.getAttribute('data-tab');
+          if (tab) showTab(tab);
+        });
       });
 
       window.appRefresh = appRefresh;
