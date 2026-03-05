@@ -213,31 +213,23 @@
       'use strict';
 
       var DEFAULT_CRITERIA = [
-        { key: 'preferredContact', label: 'Preferred Contact Method', weight: 25, category: 'Contact', enabled: true },
+        { key: 'preferredContact', label: 'Preferred contact', weight: 25, category: 'Contact', enabled: true },
         { key: 'availability', label: 'Availability', weight: 24, category: 'Logistics', enabled: true },
         { key: 'borough', label: 'Borough', weight: 12, category: 'Logistics', enabled: true },
-        { key: 'willingToTravel', label: 'Willing to Travel', weight: 5, category: 'Logistics', enabled: true },
+        { key: 'willingToTravel', label: 'Willing to travel', weight: 5, category: 'Logistics', enabled: true },
         { key: 'age', label: 'Age', weight: 4, category: 'Identity', enabled: true },
         { key: 'pronouns', label: 'Pronouns', weight: 3, category: 'Identity', enabled: true },
         { key: 'gender', label: 'Gender', weight: 3, category: 'Identity', enabled: true },
         { key: 'raceEthnicity', label: 'Race/Ethnicity', weight: 2, category: 'Identity', enabled: true },
-        { key: 'lgbtq', label: 'Do you consider yourself to be a part of the LGBTQ+ community?', weight: 9, category: 'Identity', enabled: true },
-        { key: 'relationshipStatus', label: 'Are you currently in a committed relationship (e.g. married, partner, boyfriend/girlfriend)?', weight: 2, category: 'Identity', enabled: true },
-        { key: 'hasExperiencedDV', label: 'Have you ever experienced domestic violence?', weight: 2, category: 'Experience', enabled: true },
-        { key: 'hasBeenIncarcerated', label: 'Are you a survivor of being incarcerated in prison or jail?', weight: 2, category: 'Experience', enabled: true },
-        { key: 'hasExperiencedHomelessness', label: 'Have you ever experienced homelessness?', weight: 1, category: 'Experience', enabled: true },
-        { key: 'receivingMentalHealthServices', label: 'Are you currently receiving mental health services?', weight: 2, category: 'Experience', enabled: true },
-        { key: 'receivingSubstanceUseServices', label: 'Are you currently receiving substance use services?', weight: 2, category: 'Experience', enabled: true },
-        { key: 'historyMentalHealthServices', label: 'Have you ever received mental health services?', weight: 0, category: 'Experience', enabled: true },
-        { key: 'historySubstanceUseServices', label: 'Have you ever received substance use services?', weight: 0, category: 'Experience', enabled: true },
-        { key: 'isVeteran', label: 'Are you a military veteran?', weight: 2, category: 'Experience', enabled: true },
-        { key: 'interestedInPeerSupport', label: "Are you interested in professional peer support work? (it's ok if you're not)", weight: 0, category: 'Other', enabled: true },
-        { key: 'accessibilityNeeds', label: 'Do you have any accessibility needs? If so, please let us know below.', weight: 0, category: 'Other', enabled: true },
-        { key: 'essay_creativity', label: 'How do you express your creativity?', weight: 0, category: 'Essay', enabled: true },
-        { key: 'essay_hobbies', label: 'What are your hobbies?', weight: 0, category: 'Essay', enabled: true },
-        { key: 'essay_expectations', label: 'What are the most important things that you want from a companion?', weight: 0, category: 'Essay', enabled: true },
-        { key: 'essay_sharedExperiences', label: 'What life experiences do you feel that you and your companion should have in common?', weight: 0, category: 'Essay', enabled: true },
-        { key: 'essay_motivation', label: 'Why are you interested in Companion Connections and what qualities would you bring to the Companionship?', weight: 0, category: 'Essay', enabled: true }
+        { key: 'lgbtq', label: 'LGBTQ+', weight: 9, category: 'Identity', enabled: true },
+        { key: 'relationshipStatus', label: 'Committed relationship', weight: 2, category: 'Identity', enabled: true },
+        { key: 'hasExperiencedDV', label: 'Domestic violence', weight: 2, category: 'Experience', enabled: true },
+        { key: 'hasBeenIncarcerated', label: 'Incarceration', weight: 2, category: 'Experience', enabled: true },
+        { key: 'hasExperiencedHomelessness', label: 'Homelessness', weight: 1, category: 'Experience', enabled: true },
+        { key: 'mentalHealthServices', label: 'Mental health services', weight: 2, category: 'Experience', enabled: true },
+        { key: 'substanceUseServices', label: 'Substance use services', weight: 2, category: 'Experience', enabled: true },
+        { key: 'isVeteran', label: 'Veteran', weight: 2, category: 'Experience', enabled: true },
+        { key: 'interestedInPeerSupport', label: 'Peer support interest', weight: 0, category: 'Other', enabled: true }
       ];
 
       var ESSAY_LABELS = {
@@ -374,8 +366,8 @@
         if (sameVal(c1.hasExperiencedDV, c2.hasExperiencedDV) && cm.hasExperiencedDV && cm.hasExperiencedDV.enabled) { score += (cm.hasExperiencedDV.weight || 2); reasons.push('DV experience match'); }
         if (sameVal(c1.hasBeenIncarcerated, c2.hasBeenIncarcerated) && cm.hasBeenIncarcerated && cm.hasBeenIncarcerated.enabled) { score += (cm.hasBeenIncarcerated.weight || 2); reasons.push('Incarceration experience match'); }
         if (sameVal(c1.hasExperiencedHomelessness, c2.hasExperiencedHomelessness) && cm.hasExperiencedHomelessness && cm.hasExperiencedHomelessness.enabled) { score += (cm.hasExperiencedHomelessness.weight || 1); reasons.push('Homelessness experience match'); }
-        if (sameVal(c1.receivingMentalHealthServices, c2.receivingMentalHealthServices) && cm.receivingMentalHealthServices && cm.receivingMentalHealthServices.enabled) { score += (cm.receivingMentalHealthServices.weight || 2); reasons.push('Mental health services match'); }
-        if (sameVal(c1.receivingSubstanceUseServices, c2.receivingSubstanceUseServices) && cm.receivingSubstanceUseServices && cm.receivingSubstanceUseServices.enabled) { score += (cm.receivingSubstanceUseServices.weight || 2); reasons.push('Substance use services match'); }
+        if (cm.mentalHealthServices && cm.mentalHealthServices.enabled && (sameVal(c1.receivingMentalHealthServices, c2.receivingMentalHealthServices) || sameVal(c1.historyMentalHealthServices, c2.historyMentalHealthServices))) { score += (cm.mentalHealthServices.weight || 2); reasons.push('Mental health services match'); }
+        if (cm.substanceUseServices && cm.substanceUseServices.enabled && (sameVal(c1.receivingSubstanceUseServices, c2.receivingSubstanceUseServices) || sameVal(c1.historySubstanceUseServices, c2.historySubstanceUseServices))) { score += (cm.substanceUseServices.weight || 2); reasons.push('Substance use services match'); }
         if (sameVal(c1.isVeteran, c2.isVeteran) && cm.isVeteran && cm.isVeteran.enabled) { score += (cm.isVeteran.weight || 2); reasons.push('Veteran status match'); }
         return { percent: Math.round((score / maxScore) * 100), reasons: reasons };
       }
@@ -887,11 +879,8 @@
             '</div>' +
             '<div style="padding:16px;background:#f0fdfa;border-radius:8px;border:1px solid #99f6e4;margin-bottom:16px;">' +
               '<h4 style="margin:0 0 8px 0;font-size:14px;font-weight:600;color:#0f766e;">Send test reminder email</h4>' +
-              '<p style="margin:0 0 12px 0;font-size:13px;color:#475569;">Choose which email address should receive the test, then click the button to send a sample reminder to that address.</p>' +
-              '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">' +
-                '<div class="filter-item"><label>Send test to this email</label><input type="email" id="reminder-test-email-input" placeholder="e.g. your@email.com" style="width:280px;padding:10px 12px;border:1px solid #0d9488;border-radius:6px;font-size:14px;"></div>' +
-                '<button type="button" class="btn btn-primary" id="send-test-reminder-btn" style="margin-top:4px;">Send test email</button>' +
-              '</div>' +
+              '<p style="margin:0 0 12px 0;font-size:13px;color:#475569;">Click the button below to choose which email should receive a sample 3‑month reminder.</p>' +
+              '<button type="button" class="btn btn-primary" id="open-test-reminder-popup-btn" style="margin-top:4px;">Send test reminder email…</button>' +
             '</div>' +
             '<div style="margin-top:12px;"><button type="button" class="btn btn-secondary" id="refresh-reminder-sheet-btn">Refresh Reminder Schedule sheet</button> <button type="button" class="btn btn-secondary" id="run-reminder-check-btn">Run reminder check now</button> <span style="font-size:12px;color:#6b7280;">Refresh updates the "Reminder Schedule" tab. Run check sends due 3‑month emails. For automatic daily emails, set a trigger: Edit &gt; Current project\'s triggers &gt; Add trigger &gt; runScheduledReminders, Time‑driven, Day timer.</span></div>' +
           '</div>';
@@ -915,10 +904,40 @@
           var email = document.getElementById('reminder-recipient-input').value.trim();
           google.script.run.withSuccessHandler(function() { state.reminderRecipient = email; alert('Reminder recipient saved.'); }).withFailureHandler(function(err) { alert('Failed: ' + (err.message || err)); }).saveReminderRecipient(email);
         });
-        document.getElementById('send-test-reminder-btn').addEventListener('click', function() {
-          var email = document.getElementById('reminder-test-email-input').value.trim();
-          if (!email) { alert('Enter an email to send the test to.'); return; }
-          google.script.run.withSuccessHandler(function() { alert('Test email sent to ' + email); }).withFailureHandler(function(err) { alert('Failed: ' + (err.message || err)); }).sendTestReminderEmail(email);
+        document.getElementById('open-test-reminder-popup-btn').addEventListener('click', function() {
+          var overlay = document.createElement('div');
+          overlay.className = 'modal-overlay';
+          overlay.id = 'test-reminder-popup';
+          overlay.innerHTML = '<div class="modal" style="max-width:420px;">' +
+            '<div class="modal-header"><h2>Send test reminder email</h2><button type="button" class="btn btn-secondary" data-action="cancel">Cancel</button></div>' +
+            '<div class="modal-body">' +
+              '<p style="margin:0 0 12px 0;font-size:14px;color:#374151;">Choose the email address to receive the test reminder:</p>' +
+              '<input type="email" id="test-reminder-email-input" placeholder="e.g. your@email.com" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-bottom:16px;box-sizing:border-box;">' +
+              '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+                '<button type="button" class="btn btn-secondary" data-action="cancel">Cancel</button>' +
+                '<button type="button" class="btn btn-primary" id="test-reminder-send-btn">Send test email</button>' +
+              '</div>' +
+            '</div></div>';
+          overlay.addEventListener('click', function(e) {
+            if (e.target === overlay || e.target.getAttribute('data-action') === 'cancel') overlay.remove();
+          });
+          document.body.appendChild(overlay);
+          var input = document.getElementById('test-reminder-email-input');
+          if (input) { input.focus(); input.addEventListener('keydown', function(ev) { if (ev.key === 'Escape') overlay.remove(); }); }
+          document.getElementById('test-reminder-send-btn').addEventListener('click', function() {
+            var email = (document.getElementById('test-reminder-email-input') || {}).value.trim();
+            if (!email) { alert('Please enter an email address.'); return; }
+            document.getElementById('test-reminder-send-btn').disabled = true;
+            document.getElementById('test-reminder-send-btn').textContent = 'Sending…';
+            google.script.run
+              .withSuccessHandler(function() { overlay.remove(); alert('Test reminder sent to ' + email); })
+              .withFailureHandler(function(err) {
+                document.getElementById('test-reminder-send-btn').disabled = false;
+                document.getElementById('test-reminder-send-btn').textContent = 'Send test email';
+                alert('Failed to send: ' + (err && err.message ? err.message : String(err)) + '\n\nIf using Apps Script, ensure the script is authorized to send email (run once from the script editor and approve permissions).');
+              })
+              .sendTestReminderEmail(email);
+          });
         });
         document.getElementById('refresh-reminder-sheet-btn').addEventListener('click', function() {
           google.script.run.withSuccessHandler(function() { alert('Reminder Schedule sheet updated.'); }).withFailureHandler(function(err) { alert('Failed: ' + (err.message || err)); }).updateReminderSheet();
