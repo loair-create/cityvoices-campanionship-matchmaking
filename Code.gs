@@ -183,6 +183,7 @@ function updateCompanionNote(rowNumber, note) {
  * Also remove any matches that include this companion.
  */
 function deleteCompanion(rowNumber) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
   const formSheet = getResponsesSheet();
   if (!formSheet) return false;
   const rowNum = parseInt(rowNumber, 10);
