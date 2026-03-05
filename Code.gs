@@ -46,8 +46,9 @@ function doGet(e) {
       .addMetaTag('viewport', 'width=device-width, initial-scale=1')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
-  return HtmlService.createTemplateFromFile('App')
-    .evaluate()
+  const dashboardT = HtmlService.createTemplateFromFile('App');
+  dashboardT.page = 'dashboard'; // so template scriptlet "page" is defined (avoids ReferenceError)
+  return dashboardT.evaluate()
     .setTitle('Companionship Matching Dashboard')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
