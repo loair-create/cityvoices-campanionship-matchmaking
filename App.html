@@ -44,19 +44,25 @@
       <div class="profile-row"><dt>Pronouns</dt><dd><?= pronouns || '—' ?></dd></div>
       <div class="profile-row"><dt>Gender</dt><dd><?= gender || '—' ?></dd></div>
       <div class="profile-row"><dt>Race/Ethnicity</dt><dd><?= raceEthnicity || '—' ?></dd></div>
-      <div class="profile-row"><dt>LGBTQ+</dt><dd><?= lgbtq || '—' ?></dd></div>
-      <div class="profile-row"><dt>Relationship status</dt><dd><?= relationshipStatus || '—' ?></dd></div>
+      <div class="profile-row"><dt>Do you consider yourself to be a part of the LGBTQ+ community?</dt><dd><?= lgbtq || '—' ?></dd></div>
+      <div class="profile-row"><dt>Are you currently in a committed relationship (e.g. married, partner, boyfriend/girlfriend)?</dt><dd><?= relationshipStatus || '—' ?></dd></div>
       <div class="profile-row"><dt>Willing to travel</dt><dd><?= willingToTravel || '—' ?></dd></div>
-      <div class="profile-row"><dt>Accessibility needs</dt><dd><?= accessibilityNeeds || '—' ?></dd></div>
     </div>
     <div class="profile-section">
       <h2>Lived experience</h2>
-      <div class="profile-row"><dt>Experienced domestic violence</dt><dd><?= hasExperiencedDV || '—' ?></dd></div>
-      <div class="profile-row"><dt>Been incarcerated</dt><dd><?= hasBeenIncarcerated || '—' ?></dd></div>
-      <div class="profile-row"><dt>Experienced homelessness</dt><dd><?= hasExperiencedHomelessness || '—' ?></dd></div>
-      <div class="profile-row"><dt>Currently receiving mental health services</dt><dd><?= receivingMentalHealthServices || '—' ?></dd></div>
-      <div class="profile-row"><dt>Currently receiving substance use services</dt><dd><?= receivingSubstanceUseServices || '—' ?></dd></div>
-      <div class="profile-row"><dt>Veteran</dt><dd><?= isVeteran || '—' ?></dd></div>
+      <div class="profile-row"><dt>Have you ever experienced domestic violence?</dt><dd><?= hasExperiencedDV || '—' ?></dd></div>
+      <div class="profile-row"><dt>Are you a survivor of being incarcerated in prison or jail?</dt><dd><?= hasBeenIncarcerated || '—' ?></dd></div>
+      <div class="profile-row"><dt>Have you ever experienced homelessness?</dt><dd><?= hasExperiencedHomelessness || '—' ?></dd></div>
+      <div class="profile-row"><dt>Are you currently receiving mental health services?</dt><dd><?= receivingMentalHealthServices || '—' ?></dd></div>
+      <div class="profile-row"><dt>Are you currently receiving substance use services?</dt><dd><?= receivingSubstanceUseServices || '—' ?></dd></div>
+      <div class="profile-row"><dt>Have you ever received mental health services?</dt><dd><?= historyMentalHealthServices || '—' ?></dd></div>
+      <div class="profile-row"><dt>Have you ever received substance use services?</dt><dd><?= historySubstanceUseServices || '—' ?></dd></div>
+      <div class="profile-row"><dt>Are you a military veteran?</dt><dd><?= isVeteran || '—' ?></dd></div>
+    </div>
+    <div class="profile-section">
+      <h2>Other</h2>
+      <div class="profile-row"><dt>Are you interested in professional peer support work? (it's ok if you're not)</dt><dd><?= interestedInPeerSupport || '—' ?></dd></div>
+      <div class="profile-row"><dt>Do you have any accessibility needs? If so, please let us know below.</dt><dd><?= accessibilityNeeds || '—' ?></dd></div>
     </div>
     <div class="profile-section">
       <h2>Availability</h2>
@@ -74,7 +80,7 @@
     <div class="profile-section">
       <h2>Essay responses</h2>
       <? var essays = {}; try { essays = JSON.parse(essaysJson || '{}'); } catch(e) {} ?>
-      <? var essayKeys = ['hobbies','expectations','sharedExperiences','motivation','creativity']; var essayLabels = { hobbies: 'What are your hobbies?', expectations: 'What do you want from a Companion?', sharedExperiences: 'Life experiences in common?', motivation: 'Why are you interested?', creativity: 'How do you express creativity?' }; ?>
+      <? var essayKeys = ['creativity','hobbies','expectations','sharedExperiences','motivation']; var essayLabels = { creativity: 'How do you express your creativity?', hobbies: 'What are your hobbies?', expectations: 'What are the most important things that you want from a companion?', sharedExperiences: 'What life experiences do you feel that you and your companion should have in common?', motivation: 'Why are you interested in Companion Connections and what qualities would you bring to the Companionship?' }; ?>
       <? for (var i = 0; i < essayKeys.length; i++) { var key = essayKeys[i]; var text = essays[key] || '—'; ?>
       <div class="profile-essay">
         <h3><?= essayLabels[key] ?></h3>
@@ -215,14 +221,23 @@
         { key: 'pronouns', label: 'Pronouns', weight: 3, category: 'Identity', enabled: true },
         { key: 'gender', label: 'Gender', weight: 3, category: 'Identity', enabled: true },
         { key: 'raceEthnicity', label: 'Race/Ethnicity', weight: 2, category: 'Identity', enabled: true },
-        { key: 'lgbtq', label: 'LGBTQ+', weight: 9, category: 'Identity', enabled: true },
-        { key: 'relationshipStatus', label: 'Relationship Status', weight: 2, category: 'Identity', enabled: true },
-        { key: 'hasExperiencedDV', label: 'DV Survivor', weight: 2, category: 'Experience', enabled: true },
-        { key: 'hasBeenIncarcerated', label: 'Incarceration', weight: 2, category: 'Experience', enabled: true },
-        { key: 'hasExperiencedHomelessness', label: 'Homelessness', weight: 1, category: 'Experience', enabled: true },
-        { key: 'receivingMentalHealthServices', label: 'Mental Health Services', weight: 2, category: 'Experience', enabled: true },
-        { key: 'receivingSubstanceUseServices', label: 'Substance Use Services', weight: 2, category: 'Experience', enabled: true },
-        { key: 'isVeteran', label: 'Veteran', weight: 2, category: 'Experience', enabled: true }
+        { key: 'lgbtq', label: 'Do you consider yourself to be a part of the LGBTQ+ community?', weight: 9, category: 'Identity', enabled: true },
+        { key: 'relationshipStatus', label: 'Are you currently in a committed relationship (e.g. married, partner, boyfriend/girlfriend)?', weight: 2, category: 'Identity', enabled: true },
+        { key: 'hasExperiencedDV', label: 'Have you ever experienced domestic violence?', weight: 2, category: 'Experience', enabled: true },
+        { key: 'hasBeenIncarcerated', label: 'Are you a survivor of being incarcerated in prison or jail?', weight: 2, category: 'Experience', enabled: true },
+        { key: 'hasExperiencedHomelessness', label: 'Have you ever experienced homelessness?', weight: 1, category: 'Experience', enabled: true },
+        { key: 'receivingMentalHealthServices', label: 'Are you currently receiving mental health services?', weight: 2, category: 'Experience', enabled: true },
+        { key: 'receivingSubstanceUseServices', label: 'Are you currently receiving substance use services?', weight: 2, category: 'Experience', enabled: true },
+        { key: 'historyMentalHealthServices', label: 'Have you ever received mental health services?', weight: 0, category: 'Experience', enabled: true },
+        { key: 'historySubstanceUseServices', label: 'Have you ever received substance use services?', weight: 0, category: 'Experience', enabled: true },
+        { key: 'isVeteran', label: 'Are you a military veteran?', weight: 2, category: 'Experience', enabled: true },
+        { key: 'interestedInPeerSupport', label: "Are you interested in professional peer support work? (it's ok if you're not)", weight: 0, category: 'Other', enabled: true },
+        { key: 'accessibilityNeeds', label: 'Do you have any accessibility needs? If so, please let us know below.', weight: 0, category: 'Other', enabled: true },
+        { key: 'essay_creativity', label: 'How do you express your creativity?', weight: 0, category: 'Essay', enabled: true },
+        { key: 'essay_hobbies', label: 'What are your hobbies?', weight: 0, category: 'Essay', enabled: true },
+        { key: 'essay_expectations', label: 'What are the most important things that you want from a companion?', weight: 0, category: 'Essay', enabled: true },
+        { key: 'essay_sharedExperiences', label: 'What life experiences do you feel that you and your companion should have in common?', weight: 0, category: 'Essay', enabled: true },
+        { key: 'essay_motivation', label: 'Why are you interested in Companion Connections and what qualities would you bring to the Companionship?', weight: 0, category: 'Essay', enabled: true }
       ];
 
       var ESSAY_LABELS = {
@@ -258,6 +273,7 @@
         { key: 'hasBeenIncarcerated', label: 'Incarceration' },
         { key: 'hasExperiencedHomelessness', label: 'Homelessness' },
         { key: 'receivingMentalHealthServices', label: 'Mental Health Svcs' },
+        { key: 'receivingSubstanceUseServices', label: 'Substance Use Svcs' },
         { key: 'isVeteran', label: 'Veteran' }
       ];
 
