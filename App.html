@@ -475,17 +475,6 @@
         if (!c1) return;
         var others = state.companions.filter(function(c) { return String(c.id) !== String(selectedId); });
         others.sort(function(a, b) { return calculateMatchPercent(c1, b) - calculateMatchPercent(c1, a); });
-        others = others.slice(0, 10);
-        var listHtml = others.map(function(c2) {
-          var result = calculateMatchPercentAndReasons(c1, c2);
-          var pct = result.percent;
-          var reasons = (result.reasons || []).slice(0, 3);
-          var reasonsHtml = reasons.length ? '<div class="match-reasons">' + reasons.map(function(r) { return '<span>' + escapeHtml(r) + '</span>'; }).join('') + '</div>' : '';
-          return '<div class="match-row">' +
-            '<div class="match-info"><span><strong>' + escapeHtml(c2.firstName) + ' ' + escapeHtml(c2.lastName) + '</strong></span> <span class="badge ' + (pct >= 70 ? 'badge-green' : '') + '">' + pct + '% match</span>' + reasonsHtml + '</div>' +
-            '<button type="button" class="btn btn-primary" onclick="window.createMatch(\'' + c1.id + '\', \'' + c2.id + '\')">Select</button>' +
-          '</div>';
-        }).join('');
         var modal = document.getElementById('companion-modal');
         if (modal) modal.remove();
         var m = document.createElement('div');
@@ -493,10 +482,43 @@
         m.id = 'find-match-modal';
         m.innerHTML = '<div class="modal" style="max-width:640px;">' +
           '<div class="modal-header"><h2>Find match for ' + escapeHtml(c1.firstName) + ' ' + escapeHtml(c1.lastName) + '</h2><button type="button" class="btn btn-secondary" onclick="document.getElementById(\'find-match-modal\').remove()">Back</button></div>' +
-          '<div class="modal-body">' + (others.length ? listHtml : '<p>No eligible companions to match.</p>') + '</div></div>';
+          '<div class="modal-body">' +
+            '<p style="margin:0 0 12px 0;color:#6b7280;font-size:14px;">Any companion can be matched with any other. Sorted by match score; use search to find by name.</p>' +
+            '<input type="text" class="search-input" id="find-match-search" placeholder="Search by name..." style="margin-bottom:12px;width:100%;">' +
+            '<div id="find-match-list"></div>' +
+          '</div></div>';
         m.addEventListener('click', function(e) { if (e.target === m) m.remove(); });
+        function renderFindMatchList(filter) {
+          var list = others;
+          if (filter) {
+            filter = filter.toLowerCase();
+            list = list.filter(function(c) {
+              var full = ((c.firstName || '') + ' ' + (c.lastName || '')).toLowerCase();
+              return full.indexOf(filter) !== -1;
+            });
+          }
+          var listHtml = list.map(function(c2) {
+            var result = calculateMatchPercentAndReasons(c1, c2);
+            var pct = result.percent;
+            var reasons = (result.reasons || []).slice(0, 3);
+            var reasonsHtml = reasons.length ? '<div class="match-reasons">' + reasons.map(function(r) { return '<span>' + escapeHtml(r) + '</span>'; }).join('') + '</div>' : '';
+            return '<div class="match-row">' +
+              '<div class="match-info"><span><strong>' + escapeHtml(c2.firstName) + ' ' + escapeHtml(c2.lastName) + '</strong></span> <span class="badge ' + (pct >= 70 ? 'badge-green' : '') + '">' + pct + '% match</span>' + reasonsHtml + '</div>' +
+              '<button type="button" class="btn btn-primary" onclick="window.createMatch(\'' + c1.id + '\', \'' + c2.id + '\')">Select</button>' +
+            '</div>';
+          }).join('');
+          var listEl = document.getElementById('find-match-list');
+          if (listEl) listEl.innerHTML = list.length ? listHtml : '<p style="color:#6b7280;">No companions match your search.</p>';
+          if (!list.length && !filter && others.length === 0) {
+            if (listEl) listEl.innerHTML = '<p style="color:#6b7280;">No other companions to match.</p>';
+          }
+        }
         document.body.appendChild(m);
+        renderFindMatchList('');
+        var searchEl = document.getElementById('find-match-search');
+        if (searchEl) searchEl.addEventListener('input', function() { renderFindMatchList(this.value); });
       }
+
 
       function createMatch(id1, id2) {
         var c1 = state.companions.find(function(x) { return String(x.id) === String(id1); });
