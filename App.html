@@ -20,6 +20,14 @@
     .profile-essay { margin: 16px 0; padding: 12px; background: #f9fafb; border-radius: 8px; }
     .profile-essay h3 { font-size: 13px; color: #6b7280; margin: 0 0 8px 0; }
     .profile-essay p { margin: 0; white-space: pre-wrap; line-height: 1.5; }
+    .profile-availability-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 8px; }
+    @media (min-width: 480px) { .profile-availability-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (min-width: 640px) { .profile-availability-grid { grid-template-columns: repeat(4, 1fr); } }
+    .profile-day-card { padding: 12px 14px; border-radius: 8px; border: 1px solid #e5e7eb; background: #f9fafb; }
+    .profile-day-card.available { background: #f0fdfa; border-color: #99f6e4; }
+    .profile-day-name { display: block; font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 4px; }
+    .profile-day-value { display: block; font-size: 14px; color: #111; }
+    .profile-day-card:not(.available) .profile-day-value { color: #9ca3af; }
   </style>
 </head>
 <body>
@@ -52,8 +60,16 @@
     </div>
     <div class="profile-section">
       <h2>Availability</h2>
-      <? var availStr = '—'; try { var a = JSON.parse(availabilityJson || '{}'); var days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']; var parts = []; for (var i = 0; i < days.length; i++) { var v = a[days[i]]; if (v && v !== 'Unavailable') parts.push(days[i].charAt(0).toUpperCase() + days[i].slice(1) + ': ' + v); } if (parts.length) availStr = parts.join(' | '); } catch(e) {} ?>
-      <div class="profile-row"><dt>Days</dt><dd><?= availStr ?></dd></div>
+      <p style="margin:0 0 8px 0;font-size:13px;color:#6b7280;">Each day is shown separately below. Green cards are available; gray are unavailable.</p>
+      <div class="profile-availability-grid">
+        <? var a = {}; try { a = JSON.parse(availabilityJson || '{}'); } catch(e) {} ?>
+        <? var dayKeys = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']; for (var i = 0; i < dayKeys.length; i++) { var d = dayKeys[i]; var v = a[d]; var available = v && v !== 'Unavailable'; var label = d.charAt(0).toUpperCase() + d.slice(1); var displayVal = available ? v : 'Unavailable'; ?>
+        <div class="profile-day-card <?= available ? 'available' : '' ?>">
+          <span class="profile-day-name"><?= label ?></span>
+          <span class="profile-day-value"><?= displayVal ?></span>
+        </div>
+        <? } ?>
+      </div>
     </div>
     <div class="profile-section">
       <h2>Essay responses</h2>
@@ -192,15 +208,20 @@
 
       var DEFAULT_CRITERIA = [
         { key: 'preferredContact', label: 'Preferred Contact Method', weight: 25, category: 'Contact', enabled: true },
-        { key: 'availability', label: 'Availability', weight: 25, category: 'Logistics', enabled: true },
+        { key: 'availability', label: 'Availability', weight: 24, category: 'Logistics', enabled: true },
         { key: 'borough', label: 'Borough', weight: 12, category: 'Logistics', enabled: true },
         { key: 'willingToTravel', label: 'Willing to Travel', weight: 5, category: 'Logistics', enabled: true },
         { key: 'age', label: 'Age', weight: 4, category: 'Identity', enabled: true },
         { key: 'pronouns', label: 'Pronouns', weight: 3, category: 'Identity', enabled: true },
         { key: 'gender', label: 'Gender', weight: 3, category: 'Identity', enabled: true },
+        { key: 'raceEthnicity', label: 'Race/Ethnicity', weight: 2, category: 'Identity', enabled: true },
         { key: 'lgbtq', label: 'LGBTQ+', weight: 9, category: 'Identity', enabled: true },
+        { key: 'relationshipStatus', label: 'Relationship Status', weight: 2, category: 'Identity', enabled: true },
         { key: 'hasExperiencedDV', label: 'DV Survivor', weight: 2, category: 'Experience', enabled: true },
         { key: 'hasBeenIncarcerated', label: 'Incarceration', weight: 2, category: 'Experience', enabled: true },
+        { key: 'hasExperiencedHomelessness', label: 'Homelessness', weight: 1, category: 'Experience', enabled: true },
+        { key: 'receivingMentalHealthServices', label: 'Mental Health Services', weight: 2, category: 'Experience', enabled: true },
+        { key: 'receivingSubstanceUseServices', label: 'Substance Use Services', weight: 2, category: 'Experience', enabled: true },
         { key: 'isVeteran', label: 'Veteran', weight: 2, category: 'Experience', enabled: true }
       ];
 
@@ -296,6 +317,15 @@
         return out;
       }
 
+      function sameVal(a, b) {
+        var x = (a === true || a === 'Yes' || (a && String(a).toLowerCase() === 'yes'));
+        var y = (b === true || b === 'Yes' || (b && String(b).toLowerCase() === 'yes'));
+        if (x && y) return true;
+        var u = !a || a === false || String(a).toLowerCase() === 'no';
+        var v = !b || b === false || String(b).toLowerCase() === 'no';
+        return u && v;
+      }
+
       function calculateMatchPercentAndReasons(c1, c2) {
         var config = state.criteria;
         var score = 0, maxScore = 0, reasons = [];
@@ -318,11 +348,19 @@
         if (c1.pronouns === c2.pronouns && c1.pronouns && cm.pronouns && cm.pronouns.enabled) { score += (cm.pronouns.weight || 3); reasons.push('Same pronouns'); }
         if (c1.gender === c2.gender && c1.gender && cm.gender && cm.gender.enabled) { score += (cm.gender.weight || 3); reasons.push('Same gender'); }
         if (c1.lgbtq === 'Yes' && c2.lgbtq === 'Yes' && cm.lgbtq && cm.lgbtq.enabled) { score += (cm.lgbtq.weight || 9); reasons.push('Both LGBTQ+'); }
+        if (c1.raceEthnicity === c2.raceEthnicity && c1.raceEthnicity && cm.raceEthnicity && cm.raceEthnicity.enabled) { score += (cm.raceEthnicity.weight || 2); reasons.push('Same race/ethnicity'); }
+        if (c1.relationshipStatus === c2.relationshipStatus && c1.relationshipStatus && cm.relationshipStatus && cm.relationshipStatus.enabled) { score += (cm.relationshipStatus.weight || 2); reasons.push('Same relationship status'); }
         var overlaps = getOverlappingDays(c1, c2);
         if (overlaps.length > 0 && cm.availability && cm.availability.enabled) {
-          score += ((cm.availability.weight || 25) * Math.min(1, overlaps.length / 3));
+          score += ((cm.availability.weight || 24) * Math.min(1, overlaps.length / 3));
           reasons.push(overlaps.length + ' overlapping day(s)');
         }
+        if (sameVal(c1.hasExperiencedDV, c2.hasExperiencedDV) && cm.hasExperiencedDV && cm.hasExperiencedDV.enabled) { score += (cm.hasExperiencedDV.weight || 2); reasons.push('DV experience match'); }
+        if (sameVal(c1.hasBeenIncarcerated, c2.hasBeenIncarcerated) && cm.hasBeenIncarcerated && cm.hasBeenIncarcerated.enabled) { score += (cm.hasBeenIncarcerated.weight || 2); reasons.push('Incarceration experience match'); }
+        if (sameVal(c1.hasExperiencedHomelessness, c2.hasExperiencedHomelessness) && cm.hasExperiencedHomelessness && cm.hasExperiencedHomelessness.enabled) { score += (cm.hasExperiencedHomelessness.weight || 1); reasons.push('Homelessness experience match'); }
+        if (sameVal(c1.receivingMentalHealthServices, c2.receivingMentalHealthServices) && cm.receivingMentalHealthServices && cm.receivingMentalHealthServices.enabled) { score += (cm.receivingMentalHealthServices.weight || 2); reasons.push('Mental health services match'); }
+        if (sameVal(c1.receivingSubstanceUseServices, c2.receivingSubstanceUseServices) && cm.receivingSubstanceUseServices && cm.receivingSubstanceUseServices.enabled) { score += (cm.receivingSubstanceUseServices.weight || 2); reasons.push('Substance use services match'); }
+        if (sameVal(c1.isVeteran, c2.isVeteran) && cm.isVeteran && cm.isVeteran.enabled) { score += (cm.isVeteran.weight || 2); reasons.push('Veteran status match'); }
         return { percent: Math.round((score / maxScore) * 100), reasons: reasons };
       }
 
@@ -824,18 +862,22 @@
           '<p class="weight-sum ' + (valid ? 'valid' : 'invalid') + '">Total weight (enabled only): ' + total + '% ' + (valid ? '— OK' : '— Must equal 100%') + '</p>' +
           '<table class="criteria-table"><thead><tr><th>Include</th><th>Category</th><th>Criteria</th><th>Weight</th></tr></thead><tbody>' + rows + '</tbody></table>' +
           '<div style="margin-top:16px;"><button type="button" class="btn btn-primary" ' + (valid ? '' : 'disabled') + ' id="save-criteria-btn">Save criteria</button></div>' +
-          '<div class="card" style="margin-top:24px;padding:20px;">' +
-            '<h3 style="margin:0 0 12px 0;font-size:14px;color:#374151;">3‑month reminder email</h3>' +
-            '<p style="margin:0 0 12px 0;font-size:13px;color:#6b7280;">Reminder is sent 3 months after a match status is set to "First Meeting Set". Set the recipient and send a test to any email.</p>' +
-            '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:12px;">' +
-              '<div class="filter-item"><label>Reminder sent to</label><input type="email" id="reminder-recipient-input" value="' + escapeHtml(state.reminderRecipient || '') + '" placeholder="danfrey76@gmail.com" style="width:240px;padding:8px;border:1px solid #d1d5db;border-radius:6px;"></div>' +
+          '<div class="card" style="margin-top:24px;padding:24px;border:1px solid #0d9488;">' +
+            '<h3 style="margin:0 0 8px 0;font-size:1rem;font-weight:700;color:#134e4a;">3‑month reminder email</h3>' +
+            '<p style="margin:0 0 20px 0;font-size:13px;color:#6b7280;">Reminder is sent 3 months after a match status is set to "First Meeting Set".</p>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:20px;">' +
+              '<div class="filter-item"><label>Reminder sent to (for real reminders)</label><input type="email" id="reminder-recipient-input" value="' + escapeHtml(state.reminderRecipient || '') + '" placeholder="danfrey76@gmail.com" style="width:260px;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;"></div>' +
               '<button type="button" class="btn btn-primary" id="save-reminder-recipient-btn">Save recipient</button>' +
             '</div>' +
-            '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">' +
-              '<div class="filter-item"><label>Send test email to</label><input type="email" id="reminder-test-email-input" placeholder="email@example.com" style="width:240px;padding:8px;border:1px solid #d1d5db;border-radius:6px;"></div>' +
-              '<button type="button" class="btn btn-secondary" id="send-test-reminder-btn">Send test email</button>' +
+            '<div style="padding:16px;background:#f0fdfa;border-radius:8px;border:1px solid #99f6e4;margin-bottom:16px;">' +
+              '<h4 style="margin:0 0 8px 0;font-size:14px;font-weight:600;color:#0f766e;">Send test reminder email</h4>' +
+              '<p style="margin:0 0 12px 0;font-size:13px;color:#475569;">Choose which email address should receive the test, then click the button to send a sample reminder to that address.</p>' +
+              '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">' +
+                '<div class="filter-item"><label>Send test to this email</label><input type="email" id="reminder-test-email-input" placeholder="e.g. your@email.com" style="width:280px;padding:10px 12px;border:1px solid #0d9488;border-radius:6px;font-size:14px;"></div>' +
+                '<button type="button" class="btn btn-primary" id="send-test-reminder-btn" style="margin-top:4px;">Send test email</button>' +
+              '</div>' +
             '</div>' +
-            '<div style="margin-top:12px;"><button type="button" class="btn btn-secondary" id="refresh-reminder-sheet-btn">Refresh Reminder Schedule sheet</button> <button type="button" class="btn btn-secondary" id="run-reminder-check-btn">Run reminder check now</button> <span style="font-size:12px;color:#6b7280;">Refresh updates the "Reminder Schedule" tab. Run check sends due 3‑month emails. For automatic daily emails, set a trigger: Edit > Current project\'s triggers > Add trigger > runScheduledReminders, Time‑driven, Day timer.</span></div>' +
+            '<div style="margin-top:12px;"><button type="button" class="btn btn-secondary" id="refresh-reminder-sheet-btn">Refresh Reminder Schedule sheet</button> <button type="button" class="btn btn-secondary" id="run-reminder-check-btn">Run reminder check now</button> <span style="font-size:12px;color:#6b7280;">Refresh updates the "Reminder Schedule" tab. Run check sends due 3‑month emails. For automatic daily emails, set a trigger: Edit &gt; Current project\'s triggers &gt; Add trigger &gt; runScheduledReminders, Time‑driven, Day timer.</span></div>' +
           '</div>';
         panel.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
           cb.addEventListener('change', function() {
