@@ -38,7 +38,10 @@ function doGet(e) {
     t.hasExperiencedHomelessness = profile.hasExperiencedHomelessness || '';
     t.receivingMentalHealthServices = profile.receivingMentalHealthServices || '';
     t.receivingSubstanceUseServices = profile.receivingSubstanceUseServices || '';
+    t.historyMentalHealthServices = profile.historyMentalHealthServices || '';
+    t.historySubstanceUseServices = profile.historySubstanceUseServices || '';
     t.isVeteran = profile.isVeteran || '';
+    t.interestedInPeerSupport = profile.interestedInPeerSupport || '';
     t.essaysJson = JSON.stringify(profile.essays || {});
     t.availabilityJson = JSON.stringify(profile.availability || {});
     return t.evaluate()
@@ -524,6 +527,7 @@ function parseCompanion(row, headers, rowNum) {
     historyMentalHealthServices: getVal('ever received mental health'),
     historySubstanceUseServices: getVal('ever received substance use'),
     isVeteran: getVal('veteran'),
+    interestedInPeerSupport: getVal('peer support') || getVal('professional peer support'),
     accessibilityNeeds: getVal('accessibility needs'),
     internalNotes: getVal('INTERNAL NOTES'),
     
@@ -577,7 +581,10 @@ function getCompanionForProfile(companionId) {
     hasExperiencedHomelessness: c.hasExperiencedHomelessness,
     receivingMentalHealthServices: c.receivingMentalHealthServices,
     receivingSubstanceUseServices: c.receivingSubstanceUseServices,
+    historyMentalHealthServices: c.historyMentalHealthServices,
+    historySubstanceUseServices: c.historySubstanceUseServices,
     isVeteran: c.isVeteran,
+    interestedInPeerSupport: c.interestedInPeerSupport,
     essays: c.essays || {},
     availability: c.availability || {}
   };
