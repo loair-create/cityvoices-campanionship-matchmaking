@@ -1,3 +1,75 @@
+<? if (page === 'profile') { ?>
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Companion Profile</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 24px; background: #f9fafb; color: #111; }
+    .profile-container { max-width: 640px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e5e7eb; overflow: hidden; }
+    .profile-header { background: #134e4a; color: white; padding: 24px; }
+    .profile-header h1 { margin: 0; font-size: 1.5rem; }
+    .profile-section { padding: 20px; border-bottom: 1px solid #e5e7eb; }
+    .profile-section:last-child { border-bottom: none; }
+    .profile-section h2 { font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 12px 0; }
+    .profile-row { padding: 6px 0; }
+    .profile-row dt { font-size: 11px; color: #6b7280; margin: 0 0 2px 0; }
+    .profile-row dd { margin: 0; font-size: 15px; }
+    .profile-essay { margin: 16px 0; padding: 12px; background: #f9fafb; border-radius: 8px; }
+    .profile-essay h3 { font-size: 13px; color: #6b7280; margin: 0 0 8px 0; }
+    .profile-essay p { margin: 0; white-space: pre-wrap; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="profile-container">
+    <div class="profile-header">
+      <h1><?= firstName ?>'s Profile</h1>
+      <p style="margin:8px 0 0 0;opacity:0.9;">Companionship Connections – shared profile (no contact info)</p>
+    </div>
+    <div class="profile-section">
+      <h2>Location & identity</h2>
+      <div class="profile-row"><dt>Borough</dt><dd><?= borough || '—' ?></dd></div>
+      <div class="profile-row"><dt>Neighborhood</dt><dd><?= neighborhood || '—' ?></dd></div>
+      <div class="profile-row"><dt>Age</dt><dd><?= age || '—' ?></dd></div>
+      <div class="profile-row"><dt>Pronouns</dt><dd><?= pronouns || '—' ?></dd></div>
+      <div class="profile-row"><dt>Gender</dt><dd><?= gender || '—' ?></dd></div>
+      <div class="profile-row"><dt>Race/Ethnicity</dt><dd><?= raceEthnicity || '—' ?></dd></div>
+      <div class="profile-row"><dt>LGBTQ+</dt><dd><?= lgbtq || '—' ?></dd></div>
+      <div class="profile-row"><dt>Relationship status</dt><dd><?= relationshipStatus || '—' ?></dd></div>
+      <div class="profile-row"><dt>Willing to travel</dt><dd><?= willingToTravel || '—' ?></dd></div>
+      <div class="profile-row"><dt>Accessibility needs</dt><dd><?= accessibilityNeeds || '—' ?></dd></div>
+    </div>
+    <div class="profile-section">
+      <h2>Lived experience</h2>
+      <div class="profile-row"><dt>Experienced domestic violence</dt><dd><?= hasExperiencedDV || '—' ?></dd></div>
+      <div class="profile-row"><dt>Been incarcerated</dt><dd><?= hasBeenIncarcerated || '—' ?></dd></div>
+      <div class="profile-row"><dt>Experienced homelessness</dt><dd><?= hasExperiencedHomelessness || '—' ?></dd></div>
+      <div class="profile-row"><dt>Currently receiving mental health services</dt><dd><?= receivingMentalHealthServices || '—' ?></dd></div>
+      <div class="profile-row"><dt>Currently receiving substance use services</dt><dd><?= receivingSubstanceUseServices || '—' ?></dd></div>
+      <div class="profile-row"><dt>Veteran</dt><dd><?= isVeteran || '—' ?></dd></div>
+    </div>
+    <div class="profile-section">
+      <h2>Availability</h2>
+      <? var availStr = '—'; try { var a = JSON.parse(availabilityJson || '{}'); var days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']; var parts = []; for (var i = 0; i < days.length; i++) { var v = a[days[i]]; if (v && v !== 'Unavailable') parts.push(days[i].charAt(0).toUpperCase() + days[i].slice(1) + ': ' + v); } if (parts.length) availStr = parts.join(' | '); } catch(e) {} ?>
+      <div class="profile-row"><dt>Days</dt><dd><?= availStr ?></dd></div>
+    </div>
+    <div class="profile-section">
+      <h2>Essay responses</h2>
+      <? var essays = {}; try { essays = JSON.parse(essaysJson || '{}'); } catch(e) {} ?>
+      <? var essayKeys = ['hobbies','expectations','sharedExperiences','motivation','creativity']; var essayLabels = { hobbies: 'What are your hobbies?', expectations: 'What do you want from a Companion?', sharedExperiences: 'Life experiences in common?', motivation: 'Why are you interested?', creativity: 'How do you express creativity?' }; ?>
+      <? for (var i = 0; i < essayKeys.length; i++) { var key = essayKeys[i]; var text = essays[key] || '—'; ?>
+      <div class="profile-essay">
+        <h3><?= essayLabels[key] ?></h3>
+        <p><?= text ?></p>
+      </div>
+      <? } ?>
+    </div>
+  </div>
+</body>
+</html>
+<? } else { ?>
 <!DOCTYPE html>
 <html>
 <head>
@@ -60,6 +132,7 @@
     .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 12px; font-weight: 500; }
     .badge-amber { background: #fef3c7; color: #92400e; }
     .badge-green { background: #d1fae5; color: #065f46; }
+    .badge-gray { background: #e5e7eb; color: #4b5563; }
     .match-row { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid #e5e7eb; flex-wrap: wrap; gap: 12px; }
     .match-row:last-child { border-bottom: none; }
     .match-info { display: flex; align-items: center; gap: 12px; }
@@ -143,12 +216,14 @@
         companions: [],
         matches: [],
         criteria: [],
+        reminderRecipient: 'danfrey76@gmail.com',
         activeTab: 'directory',
         selectedCompanion: null,
         directoryFilters: {}
       };
 
       var FILTER_FIELDS = [
+        { key: '_matchedStatus', label: 'Match status', options: [{ value: '', label: 'All' }, { value: 'unmatched', label: 'Not yet matched' }, { value: 'matched', label: 'Has at least one match' }] },
         { key: 'waiverSigned', label: 'Waiver Signed (eligible to match)' },
         { key: 'preferredContact', label: 'Preferred Contact Method' },
         { key: 'borough', label: 'Borough' },
@@ -174,6 +249,7 @@
           .withSuccessHandler(function(data) {
             state.companions = data.companions || [];
             state.matches = data.matches || [];
+            state.reminderRecipient = data.reminderRecipient || 'danfrey76@gmail.com';
             var saved = (data.criteria && data.criteria.length) ? data.criteria : [];
             var byKey = {};
             saved.forEach(function(item) { byKey[item.key] = item; });
@@ -254,20 +330,55 @@
         return calculateMatchPercentAndReasons(c1, c2).percent;
       }
 
+      function getMatchedCompanionIds() {
+        var ids = {};
+        state.matches.forEach(function(m) {
+          if (m.companion1Id) ids[m.companion1Id] = true;
+          if (m.companion2Id) ids[m.companion2Id] = true;
+        });
+        return ids;
+      }
+
+      function isPairMatched(id1, id2) {
+        var a = String(id1);
+        var b = String(id2);
+        return state.matches.some(function(m) {
+          return (String(m.companion1Id) === a && String(m.companion2Id) === b) || (String(m.companion1Id) === b && String(m.companion2Id) === a);
+        });
+      }
+
+      function getCompanionMatchInfo(companionId) {
+        var id = String(companionId);
+        var names = [];
+        state.matches.forEach(function(m) {
+          var otherId = String(m.companion1Id) === id ? m.companion2Id : (String(m.companion2Id) === id ? m.companion1Id : null);
+          if (otherId) {
+            var other = state.companions.find(function(c) { return String(c.id) === String(otherId); });
+            names.push(other ? (other.firstName || '') + ' ' + (other.lastName || '') : (m.c1Name || m.c2Name || '?'));
+          }
+        });
+        return { count: names.length, names: names };
+      }
+
       function renderDirectory() {
         var panel = document.getElementById('panel-directory');
         var search = (panel.querySelector('.search-input') && panel.querySelector('.search-input').value) || '';
         var filtersHtml = FILTER_FIELDS.map(function(f) {
           var val = state.directoryFilters[f.key] || '';
-          var options = ['<option value="">All</option>'];
-          var uniq = {};
-          state.companions.forEach(function(c) {
-            var v = c[f.key];
-            if (v === true || v === false) v = v ? 'Yes' : 'No';
-            else v = (v && String(v).trim()) || '';
-            if (v && !uniq[v]) { uniq[v] = true; options.push('<option value="' + escapeHtml(String(v)) + '"' + (val === String(v) ? ' selected' : '') + '>' + escapeHtml(String(v)) + '</option>'); }
-          });
-          return '<div class="filter-item"><label>' + escapeHtml(f.label) + '</label><select data-filter="' + f.key + '">' + options.join('') + '</select></div>';
+          var options;
+          if (f.options) {
+            options = f.options.map(function(opt) { return '<option value="' + escapeHtml(opt.value) + '"' + (val === opt.value ? ' selected' : '') + '>' + escapeHtml(opt.label) + '</option>'; }).join('');
+          } else {
+            options = '<option value="">All</option>';
+            var uniq = {};
+            state.companions.forEach(function(c) {
+              var v = c[f.key];
+              if (v === true || v === false) v = v ? 'Yes' : 'No';
+              else v = (v && String(v).trim()) || '';
+              if (v && !uniq[v]) { uniq[v] = true; options += '<option value="' + escapeHtml(String(v)) + '"' + (val === String(v) ? ' selected' : '') + '>' + escapeHtml(String(v)) + '</option>'; }
+            });
+          }
+          return '<div class="filter-item"><label>' + escapeHtml(f.label) + '</label><select data-filter="' + f.key + '">' + options + '</select></div>';
         }).join('');
         var showFilters = (panel.querySelector('.filter-toggle') && panel.querySelector('.filter-toggle').getAttribute('data-open') === '1') ? true : false;
         var html = '<div class="toolbar"><input type="text" class="search-input" placeholder="Search names..." value="' + (search || '').replace(/"/g, '&quot;') + '"><button type="button" class="btn btn-secondary" onclick="window.appRefresh()">Refresh</button>' +
@@ -299,27 +410,37 @@
             return (c.firstName && c.firstName.toLowerCase().indexOf(search) !== -1) || (c.lastName && c.lastName.toLowerCase().indexOf(search) !== -1);
           });
         }
+        var matchedIds = getMatchedCompanionIds();
         for (var key in state.directoryFilters) {
           if (!state.directoryFilters[key]) continue;
           var filterVal = state.directoryFilters[key];
-          list = list.filter(function(c) {
-            var v = c[key];
-            if (v === true || v === false) v = v ? 'Yes' : 'No';
-            else v = (v && String(v).trim()) || '';
-            return String(v) === filterVal;
-          });
+          if (key === '_matchedStatus') {
+            if (filterVal === 'unmatched') list = list.filter(function(c) { return !matchedIds[String(c.id)]; });
+            else if (filterVal === 'matched') list = list.filter(function(c) { return matchedIds[String(c.id)]; });
+          } else {
+            list = list.filter(function(c) {
+              var v = c[key];
+              if (v === true || v === false) v = v ? 'Yes' : 'No';
+              else v = (v && String(v).trim()) || '';
+              return String(v) === filterVal;
+            });
+          }
         }
         var grid = document.getElementById('directory-grid');
         list.forEach(function(c) {
           var card = document.createElement('div');
           card.className = 'card';
           var waiverNote = !c.waiverSigned;
+          var neverMatched = !matchedIds[String(c.id)];
+          var badges = [];
+          if (waiverNote) badges.push('<span class="badge badge-amber" style="margin-top:4px;">Waiver not signed</span>');
+          if (neverMatched) badges.push('<span class="badge badge-gray" style="margin-top:4px;">Not yet matched</span>');
           card.innerHTML = '<div class="card-header" data-id="' + c.id + '">' +
             '<div class="avatar">' + (c.firstName ? c.firstName.charAt(0) : '?') + '</div>' +
             '<div style="flex:1;min-width:0;">' +
               '<div style="font-weight:600;color:#111;">' + escapeHtml(c.firstName || '') + ' ' + escapeHtml(c.lastName || '') + '</div>' +
               '<div style="font-size:13px;color:#6b7280;">' + escapeHtml(c.borough || '') + '</div>' +
-              (waiverNote ? '<span class="badge badge-amber" style="margin-top:4px;">Waiver not signed</span>' : '') +
+              (badges.length ? '<div style="margin-top:4px;">' + badges.join(' ') + '</div>' : '') +
             '</div>' +
             '</div>';
           card.querySelector('.card-header').addEventListener('click', function() { openCompanionModal(c.id); });
@@ -445,8 +566,15 @@
           var text = (c.essays && c.essays[k]) || '—';
           essaysHtml += '<div class="essay-block"><h4>' + escapeHtml(q) + '</h4><p>' + escapeHtml(text) + '</p></div>';
         });
+        var matchInfo = getCompanionMatchInfo(c.id);
+        var matchSection = '<div class="detail-section"><h3>Matches</h3>' +
+          (matchInfo.count === 0
+            ? '<div class="detail-row"><dt>Status</dt><dd><span class="badge badge-gray">Not yet matched</span></dd></div>'
+            : '<div class="detail-row"><dt>Matched with (' + matchInfo.count + ')</dt><dd>' + escapeHtml(matchInfo.names.join(', ')) + '</dd></div><div class="detail-row"><dt>Note</dt><dd>One person can have multiple matches. Use Find Match to add another.</dd></div>') +
+          '</div>';
         var body = '<div class="detail-section"><h3>Contact & Logistics</h3>' + contact + '</div>' +
           '<div class="detail-section"><h3>Identity</h3>' + identity + '</div>' +
+          matchSection +
           '<div class="detail-section"><h3>Lived Experience</h3>' + lived + '</div>' +
           '<div class="detail-section"><h3>Availability</h3><div class="detail-row"><dt>Days</dt><dd>' + escapeHtml(availHtml) + '</dd></div></div>' +
           (c.internalNotes ? '<div class="detail-section"><h3>Internal Notes</h3>' + dr('', c.internalNotes) + '</div>' : '') +
@@ -455,6 +583,7 @@
             (!c.waiverSigned ? '<div style="margin-bottom:12px;padding:10px;background:#fef3c7;border-radius:6px;font-size:13px;color:#92400e;">Note: Waiver not signed (column B in form responses).</div>' : '') +
             '<button type="button" class="btn btn-secondary" onclick="window.downloadCompanionPDF(\'' + c.id + '\')">Download PDF</button> ' +
             '<button type="button" class="btn btn-primary" onclick="window.showFindMatch(\'' + c.id + '\')">Find Match</button> ' +
+            '<button type="button" class="btn btn-secondary" onclick="window.copyProfileLink(\'' + c.id + '\')">Copy profile link</button> ' +
             '<button type="button" class="btn btn-danger" onclick="window.deleteCompanion(\'' + c.id + '\')">Delete application</button>' +
           '</div>';
         var modal = document.createElement('div');
@@ -483,7 +612,7 @@
         m.innerHTML = '<div class="modal" style="max-width:640px;">' +
           '<div class="modal-header"><h2>Find match for ' + escapeHtml(c1.firstName) + ' ' + escapeHtml(c1.lastName) + '</h2><button type="button" class="btn btn-secondary" onclick="document.getElementById(\'find-match-modal\').remove()">Back</button></div>' +
           '<div class="modal-body">' +
-            '<p style="margin:0 0 12px 0;color:#6b7280;font-size:14px;">Any companion can be matched with any other. Sorted by match score; use search to find by name.</p>' +
+            '<p style="margin:0 0 12px 0;color:#6b7280;font-size:14px;">Any companion can be matched with any other; one person can have multiple matches. Sorted by match score; use search to find by name. Pairs already matched show "Already matched."</p>' +
             '<input type="text" class="search-input" id="find-match-search" placeholder="Search by name..." style="margin-bottom:12px;width:100%;">' +
             '<div id="find-match-list"></div>' +
           '</div></div>';
@@ -502,9 +631,13 @@
             var pct = result.percent;
             var reasons = (result.reasons || []).slice(0, 3);
             var reasonsHtml = reasons.length ? '<div class="match-reasons">' + reasons.map(function(r) { return '<span>' + escapeHtml(r) + '</span>'; }).join('') + '</div>' : '';
+            var alreadyPaired = isPairMatched(c1.id, c2.id);
+            var actionBtn = alreadyPaired
+              ? '<span class="badge badge-gray">Already matched</span>'
+              : '<button type="button" class="btn btn-primary" onclick="window.createMatch(\'' + c1.id + '\', \'' + c2.id + '\')">Select</button>';
             return '<div class="match-row">' +
               '<div class="match-info"><span><strong>' + escapeHtml(c2.firstName) + ' ' + escapeHtml(c2.lastName) + '</strong></span> <span class="badge ' + (pct >= 70 ? 'badge-green' : '') + '">' + pct + '% match</span>' + reasonsHtml + '</div>' +
-              '<button type="button" class="btn btn-primary" onclick="window.createMatch(\'' + c1.id + '\', \'' + c2.id + '\')">Select</button>' +
+              actionBtn +
             '</div>';
           }).join('');
           var listEl = document.getElementById('find-match-list');
@@ -690,7 +823,20 @@
         panel.innerHTML = '<h1 class="page-title">Matching Criteria</h1>' +
           '<p class="weight-sum ' + (valid ? 'valid' : 'invalid') + '">Total weight (enabled only): ' + total + '% ' + (valid ? '— OK' : '— Must equal 100%') + '</p>' +
           '<table class="criteria-table"><thead><tr><th>Include</th><th>Category</th><th>Criteria</th><th>Weight</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-          '<div style="margin-top:16px;"><button type="button" class="btn btn-primary" ' + (valid ? '' : 'disabled') + ' id="save-criteria-btn">Save criteria</button></div>';
+          '<div style="margin-top:16px;"><button type="button" class="btn btn-primary" ' + (valid ? '' : 'disabled') + ' id="save-criteria-btn">Save criteria</button></div>' +
+          '<div class="card" style="margin-top:24px;padding:20px;">' +
+            '<h3 style="margin:0 0 12px 0;font-size:14px;color:#374151;">3‑month reminder email</h3>' +
+            '<p style="margin:0 0 12px 0;font-size:13px;color:#6b7280;">Reminder is sent 3 months after a match status is set to "First Meeting Set". Set the recipient and send a test to any email.</p>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:12px;">' +
+              '<div class="filter-item"><label>Reminder sent to</label><input type="email" id="reminder-recipient-input" value="' + escapeHtml(state.reminderRecipient || '') + '" placeholder="danfrey76@gmail.com" style="width:240px;padding:8px;border:1px solid #d1d5db;border-radius:6px;"></div>' +
+              '<button type="button" class="btn btn-primary" id="save-reminder-recipient-btn">Save recipient</button>' +
+            '</div>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">' +
+              '<div class="filter-item"><label>Send test email to</label><input type="email" id="reminder-test-email-input" placeholder="email@example.com" style="width:240px;padding:8px;border:1px solid #d1d5db;border-radius:6px;"></div>' +
+              '<button type="button" class="btn btn-secondary" id="send-test-reminder-btn">Send test email</button>' +
+            '</div>' +
+            '<div style="margin-top:12px;"><button type="button" class="btn btn-secondary" id="refresh-reminder-sheet-btn">Refresh Reminder Schedule sheet</button> <button type="button" class="btn btn-secondary" id="run-reminder-check-btn">Run reminder check now</button> <span style="font-size:12px;color:#6b7280;">Refresh updates the "Reminder Schedule" tab. Run check sends due 3‑month emails. For automatic daily emails, set a trigger: Edit > Current project\'s triggers > Add trigger > runScheduledReminders, Time‑driven, Day timer.</span></div>' +
+          '</div>';
         panel.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
           cb.addEventListener('change', function() {
             state.criteria[parseInt(this.getAttribute('data-idx'), 10)].enabled = this.checked;
@@ -707,6 +853,33 @@
         document.getElementById('save-criteria-btn').addEventListener('click', function() {
           google.script.run.withSuccessHandler(function() { alert('Criteria saved.'); }).saveCriteriaSettings(JSON.stringify(state.criteria));
         });
+        document.getElementById('save-reminder-recipient-btn').addEventListener('click', function() {
+          var email = document.getElementById('reminder-recipient-input').value.trim();
+          google.script.run.withSuccessHandler(function() { state.reminderRecipient = email; alert('Reminder recipient saved.'); }).withFailureHandler(function(err) { alert('Failed: ' + (err.message || err)); }).saveReminderRecipient(email);
+        });
+        document.getElementById('send-test-reminder-btn').addEventListener('click', function() {
+          var email = document.getElementById('reminder-test-email-input').value.trim();
+          if (!email) { alert('Enter an email to send the test to.'); return; }
+          google.script.run.withSuccessHandler(function() { alert('Test email sent to ' + email); }).withFailureHandler(function(err) { alert('Failed: ' + (err.message || err)); }).sendTestReminderEmail(email);
+        });
+        document.getElementById('refresh-reminder-sheet-btn').addEventListener('click', function() {
+          google.script.run.withSuccessHandler(function() { alert('Reminder Schedule sheet updated.'); }).withFailureHandler(function(err) { alert('Failed: ' + (err.message || err)); }).updateReminderSheet();
+        });
+        document.getElementById('run-reminder-check-btn').addEventListener('click', function() {
+          google.script.run.withSuccessHandler(function() { alert('Reminder check complete. Due emails sent; Reminder Schedule sheet updated.'); }).withFailureHandler(function(err) { alert('Failed: ' + (err.message || err)); }).runScheduledReminders();
+        });
+      }
+
+      function copyProfileLink(companionId) {
+        google.script.run.withSuccessHandler(function(baseUrl) {
+          if (!baseUrl) { alert('Profile links work when the app is deployed as a web app. Deploy from the Apps Script editor (Deploy > New deployment > Web app).'); return; }
+          var url = baseUrl + '?page=profile&id=' + encodeURIComponent(companionId);
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(function() { alert('Profile link copied to clipboard.'); }, function() { prompt('Copy this link:', url); });
+          } else {
+            prompt('Copy this profile link (no last name or contact info):', url);
+          }
+        }).withFailureHandler(function() { alert('Could not get profile URL.'); }).getProfileBaseUrl();
       }
 
       document.querySelectorAll('.tab-btn').forEach(function(btn) {
@@ -720,9 +893,11 @@
       window.removeMatch = removeMatch;
       window.openMatchDetailModal = openMatchDetailModal;
       window.downloadCompanionPDF = downloadCompanionPDF;
+      window.copyProfileLink = copyProfileLink;
 
       loadData();
     })();
   </script>
 </body>
 </html>
+<? } ?>
