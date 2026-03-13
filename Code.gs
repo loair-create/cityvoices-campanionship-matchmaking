@@ -76,6 +76,17 @@ function openApp() {
 }
 
 /**
+ * Run this once from the Apps Script editor to authorize email sending.
+ * Select "authorizeEmailPermission" in the function dropdown, click Run, then approve when prompted.
+ * After that, the Tester email and 3‑month reminders will work from the site/spreadsheet.
+ */
+function authorizeEmailPermission() {
+  const to = Session.getActiveUser().getEmail();
+  if (!to) throw new Error('Could not get your email. Run openApp from the spreadsheet menu instead and approve when prompted.');
+  MailApp.sendEmail(to, 'Companionship app – authorization test', 'This is a one-time test. Email permission is now authorized. You can use the Tester email and reminders from the app.');
+}
+
+/**
  * Get the responses sheet (Companionship form data).
  * Uses the sheet name for City Voices Companionship v2, with fallback.
  */
@@ -417,7 +428,7 @@ function runScheduledReminders() {
  */
 function sendTestReminderEmail(toEmail) {
   const email = String(toEmail || '').trim();
-  if (!email) throw new Error('No email address provided.');
+  if (!email) throw new Error('No email address provided. Enter an email in the "Send test to" field on the Tester email page, then click Test Send.');
   const body = "This is a test reminder email for the Companionship Matching app. When a match has \"First Meeting Set\" and 3 months have passed, a reminder like this is sent to the configured recipient.\n\nExample body for a real reminder:\n\nThis is a reminder that it's been 3 months since [Match Names] had their first meeting set. Remember to check in with them to see how their Companionship is going. Their preferred contact method is below.";
   const subject = "Companionship app – test reminder";
   try {
@@ -426,7 +437,7 @@ function sendTestReminderEmail(toEmail) {
   } catch (e) {
     const msg = e && e.message ? e.message : String(e);
     throw new Error(msg.indexOf('Authorization') >= 0 || msg.indexOf('permission') >= 0
-      ? 'Email permission needed. In the Apps Script editor, run the function sendTestReminderEmail once (or run openApp), then approve sending email when prompted.'
+      ? 'Email permission needed. In the Apps Script editor: select the function authorizeEmailPermission, click Run, then approve when prompted. After that, use the Tester email page again.'
       : 'Could not send email: ' + msg);
   }
 }
