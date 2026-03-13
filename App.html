@@ -194,7 +194,7 @@
       <button type="button" class="tab-btn active" data-tab="directory">Directory</button>
       <button type="button" class="tab-btn" data-tab="matches">Matches</button>
       <button type="button" class="tab-btn" data-tab="criteria">Criteria</button>
-      <button type="button" class="tab-btn" data-tab="tester-email">Tester email</button>
+      <button type="button" class="tab-btn" data-tab="reminder-email">Reminder Email</button>
     </aside>
     <main class="main">
       <div id="loading" style="padding: 40px; text-align: center;">
@@ -205,7 +205,7 @@
         <div id="panel-directory" class="tab-panel"></div>
         <div id="panel-matches" class="tab-panel"></div>
         <div id="panel-criteria" class="tab-panel"></div>
-        <div id="panel-tester-email" class="tab-panel"></div>
+        <div id="panel-reminder-email" class="tab-panel"></div>
       </div>
     </main>
   </div>
@@ -313,7 +313,7 @@
         if (tabName === 'directory') renderDirectory();
         else if (tabName === 'matches') renderMatches();
         else if (tabName === 'criteria') renderCriteria();
-        else if (tabName === 'tester-email') renderTesterEmail();
+        else if (tabName === 'reminder-email') renderReminderEmail();
       }
 
       function getOverlappingDays(c1, c2) {
@@ -872,17 +872,7 @@
         panel.innerHTML = '<h1 class="page-title">Matching Criteria</h1>' +
           '<p class="weight-sum ' + (valid ? 'valid' : 'invalid') + '">Total weight (enabled only): ' + total + '% ' + (valid ? '— OK' : '— Must equal 100%') + '</p>' +
           '<table class="criteria-table"><thead><tr><th>Include</th><th>Category</th><th>Criteria</th><th>Weight</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-          '<div style="margin-top:16px;"><button type="button" class="btn btn-primary" ' + (valid ? '' : 'disabled') + ' id="save-criteria-btn">Save criteria</button></div>' +
-          '<div class="card" style="margin-top:24px;padding:24px;border:1px solid #0d9488;">' +
-            '<h3 style="margin:0 0 8px 0;font-size:1rem;font-weight:700;color:#134e4a;">3‑month reminder email</h3>' +
-            '<p style="margin:0 0 20px 0;font-size:13px;color:#6b7280;">Reminder is sent 3 months after a match status is set to "First Meeting Set".</p>' +
-            '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:20px;">' +
-              '<div class="filter-item"><label>Reminder sent to (for real reminders)</label><input type="email" id="reminder-recipient-input" value="' + escapeHtml(state.reminderRecipient || '') + '" placeholder="danfrey76@gmail.com" style="width:260px;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;"></div>' +
-              '<button type="button" class="btn btn-primary" id="save-reminder-recipient-btn">Save recipient</button>' +
-            '</div>' +
-            '<p style="margin:0 0 12px 0;font-size:13px;color:#475569;">To send a test reminder and choose who receives it, use the <strong>Tester email</strong> tab in the sidebar.</p>' +
-            '<div style="margin-top:12px;"><button type="button" class="btn btn-secondary" id="refresh-reminder-sheet-btn">Refresh Reminder Schedule sheet</button> <button type="button" class="btn btn-secondary" id="run-reminder-check-btn">Run reminder check now</button> <span style="font-size:12px;color:#6b7280;">Refresh updates the "Reminder Schedule" tab. Run check sends due 3‑month emails. For automatic daily emails, set a trigger: Edit &gt; Current project\'s triggers &gt; Add trigger &gt; runScheduledReminders, Time‑driven, Day timer.</span></div>' +
-          '</div>';
+          '<div style="margin-top:16px;"><button type="button" class="btn btn-primary" ' + (valid ? '' : 'disabled') + ' id="save-criteria-btn">Save criteria</button></div>';
         panel.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
           cb.addEventListener('change', function() {
             state.criteria[parseInt(this.getAttribute('data-idx'), 10)].enabled = this.checked;
@@ -899,35 +889,42 @@
         document.getElementById('save-criteria-btn').addEventListener('click', function() {
           google.script.run.withSuccessHandler(function() { alert('Criteria saved.'); }).saveCriteriaSettings(JSON.stringify(state.criteria));
         });
-        document.getElementById('save-reminder-recipient-btn').addEventListener('click', function() {
-          var email = document.getElementById('reminder-recipient-input').value.trim();
-          google.script.run.withSuccessHandler(function() { state.reminderRecipient = email; alert('Reminder recipient saved.'); }).withFailureHandler(function(err) { alert('Failed: ' + (err.message || err)); }).saveReminderRecipient(email);
-        });
-        document.getElementById('refresh-reminder-sheet-btn').addEventListener('click', function() {
-          google.script.run.withSuccessHandler(function() { alert('Reminder Schedule sheet updated.'); }).withFailureHandler(function(err) { alert('Failed: ' + (err.message || err)); }).updateReminderSheet();
-        });
-        document.getElementById('run-reminder-check-btn').addEventListener('click', function() {
-          google.script.run.withSuccessHandler(function() { alert('Reminder check complete. Due emails sent; Reminder Schedule sheet updated.'); }).withFailureHandler(function(err) { alert('Failed: ' + (err.message || err)); }).runScheduledReminders();
-        });
       }
 
-      function renderTesterEmail() {
-        var panel = document.getElementById('panel-tester-email');
-        var recipient = state.reminderRecipient || 'danfrey76@gmail.com';
-        panel.innerHTML = '<h1 class="page-title">Tester email</h1>' +
-          '<div class="card" style="padding:24px;max-width:560px;">' +
-            '<h3 style="margin:0 0 12px 0;font-size:1rem;font-weight:700;color:#134e4a;">Companionship check-in reminder</h3>' +
-            '<p style="margin:0 0 20px 0;font-size:14px;color:#374151;line-height:1.5;">This email reminds <strong>Dan</strong> to check in on the companionship. When a match has status &quot;First Meeting Set&quot; for 3 months, a reminder is sent to <strong>' + escapeHtml(recipient) + '</strong> so you can follow up and see how the companionship is going.</p>' +
-            '<div style="padding:16px;background:#f0fdfa;border-radius:8px;border:1px solid #99f6e4;margin-bottom:20px;">' +
-              '<h4 style="margin:0 0 8px 0;font-size:14px;font-weight:600;color:#0f766e;">Test Send</h4>' +
-              '<p style="margin:0 0 12px 0;font-size:13px;color:#475569;">Choose who should receive a sample reminder email, then click Test Send.</p>' +
-              '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-top:12px;">' +
-                '<div class="filter-item" style="flex:1;min-width:200px;"><label for="tester-email-to">Send test to</label><input type="email" id="tester-email-to" placeholder="e.g. your@email.com" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-top:4px;box-sizing:border-box;"></div>' +
-                '<button type="button" class="btn btn-primary" id="tester-email-send-btn">Test Send</button>' +
-              '</div>' +
+      function renderReminderEmail() {
+        var panel = document.getElementById('panel-reminder-email');
+        var recipient = state.reminderRecipient || '';
+        panel.innerHTML = '<h1 class="page-title">Reminder Email</h1>' +
+          '<p style="margin:0 0 24px 0;font-size:14px;color:#374151;max-width:560px;">3 months after a match has status &quot;First Meeting Set&quot;, a reminder is sent so Dan can check in on the companionship. Set where real reminders go, send a test, and run the check below.</p>' +
+          '<div class="card" style="padding:24px;max-width:560px;margin-bottom:20px;border-left:4px solid #0d9488;">' +
+            '<h3 style="margin:0 0 8px 0;font-size:14px;font-weight:700;color:#134e4a;text-transform:uppercase;letter-spacing:0.05em;">Real reminder — where to send</h3>' +
+            '<p style="margin:0 0 16px 0;font-size:13px;color:#6b7280;">This address receives the actual 3‑month check-in reminders (one per due match).</p>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">' +
+              '<div class="filter-item" style="flex:1;min-width:220px;"><label for="reminder-recipient-input">Email for real reminders</label><input type="email" id="reminder-recipient-input" value="' + escapeHtml(recipient) + '" placeholder="e.g. danfrey76@gmail.com" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-top:4px;box-sizing:border-box;"></div>' +
+              '<button type="button" class="btn btn-primary" id="save-reminder-recipient-btn">Save</button>' +
             '</div>' +
-            '<p style="margin:0;font-size:12px;color:#6b7280;">To change where real reminders are sent, go to the <strong>Criteria</strong> tab and update &quot;Reminder sent to&quot;.</p>' +
+          '</div>' +
+          '<div class="card" style="padding:24px;max-width:560px;margin-bottom:20px;border-left:4px solid #6b7280;background:#f9fafb;">' +
+            '<h3 style="margin:0 0 8px 0;font-size:14px;font-weight:700;color:#4b5563;text-transform:uppercase;letter-spacing:0.05em;">Test email only</h3>' +
+            '<p style="margin:0 0 16px 0;font-size:13px;color:#6b7280;">Send a sample reminder to any address. No real reminder is sent; use this to preview the message.</p>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">' +
+              '<div class="filter-item" style="flex:1;min-width:220px;"><label for="tester-email-to">Send test to</label><input type="email" id="tester-email-to" placeholder="e.g. your@email.com" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-top:4px;box-sizing:border-box;"></div>' +
+              '<button type="button" class="btn btn-secondary" id="tester-email-send-btn">Test Send</button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="card" style="padding:24px;max-width:560px;border-left:4px solid #0f766e;">' +
+            '<h3 style="margin:0 0 8px 0;font-size:14px;font-weight:700;color:#134e4a;text-transform:uppercase;letter-spacing:0.05em;">Send due reminders now</h3>' +
+            '<p style="margin:0 0 12px 0;font-size:13px;color:#6b7280;">Refresh updates the &quot;Reminder Schedule&quot; sheet. Run check sends real 3‑month reminder emails to the address above for any matches that are due.</p>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:12px;">' +
+              '<button type="button" class="btn btn-primary" id="refresh-reminder-sheet-btn">Refresh Reminder Schedule sheet</button>' +
+              '<button type="button" class="btn btn-primary" id="run-reminder-check-btn">Run reminder check now</button>' +
+            '</div>' +
+            '<p style="margin:16px 0 0 0;font-size:12px;color:#6b7280;">For automatic daily emails: Apps Script editor &gt; Triggers &gt; Add trigger &gt; runScheduledReminders, Time-driven, Day timer.</p>' +
           '</div>';
+        document.getElementById('save-reminder-recipient-btn').addEventListener('click', function() {
+          var email = (document.getElementById('reminder-recipient-input') || {}).value.trim();
+          google.script.run.withSuccessHandler(function() { state.reminderRecipient = email; alert('Real reminder recipient saved.'); }).withFailureHandler(function(err) { alert('Failed: ' + (err && err.message ? err : String(err))); }).saveReminderRecipient(email);
+        });
         document.getElementById('tester-email-send-btn').addEventListener('click', function() {
           var email = (document.getElementById('tester-email-to') || {}).value.trim();
           if (!email) { alert('Please enter an email address to send the test to.'); return; }
@@ -939,9 +936,15 @@
             .withFailureHandler(function(err) {
               btn.disabled = false;
               btn.textContent = 'Test Send';
-              alert('Failed to send: ' + (err && err.message ? err.message : String(err)) + '\n\nIf using Apps Script, ensure the script is authorized to send email (run once from the script editor and approve permissions).');
+              alert('Failed to send: ' + (err && err.message ? err.message : String(err)) + '\n\nIf using Apps Script, run authorizeEmailPermission once in the script editor and approve permissions.');
             })
             .sendTestReminderEmail(email);
+        });
+        document.getElementById('refresh-reminder-sheet-btn').addEventListener('click', function() {
+          google.script.run.withSuccessHandler(function() { alert('Reminder Schedule sheet updated.'); }).withFailureHandler(function(err) { alert('Failed: ' + (err && err.message ? err.message : String(err))); }).updateReminderSheet();
+        });
+        document.getElementById('run-reminder-check-btn').addEventListener('click', function() {
+          google.script.run.withSuccessHandler(function() { alert('Reminder check complete. Due emails sent; Reminder Schedule sheet updated.'); }).withFailureHandler(function(err) { alert('Failed: ' + (err && err.message ? err.message : String(err))); }).runScheduledReminders();
         });
       }
 
