@@ -59,7 +59,7 @@ function doGet(e) {
 
 function onOpen() {
   SpreadsheetApp.getUi()
-    .createMenu('Friendship Squad')
+    .createMenu('Companionship Connections')
     .addItem('Open Dashboard', 'openApp')
     .addItem('Run 3‑month reminder check now', 'runScheduledReminders')
     .addToUi();
