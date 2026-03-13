@@ -1,0 +1,16 @@
+---
+description: Always push code changes to GitHub after edits
+alwaysApply: true
+---
+
+# Push changes to GitHub
+
+After making code changes in this project:
+
+1. Run `git status` to see what changed.
+2. If there are modified or new files, stage them (`git add`), commit with a clear message, and push to `origin main`:
+   - `git add <files>` or `git add -A`
+   - `git commit -m "Brief description of the change"`
+   - `git push origin main`
+
+Do this as part of the same response where you made the changes, unless the user asks not to push.
