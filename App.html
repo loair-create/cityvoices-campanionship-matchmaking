@@ -1122,15 +1122,21 @@
           '</tr>';
         }).join('');
         panel.innerHTML = '<h1 class="page-title">Settings</h1>' +
-          '<p style="margin:0 0 20px 0;font-size:14px;color:#374151;max-width:720px;">Every sheet column <strong>A through BB</strong> is listed below (54 columns). Use <strong>Show on profile</strong> to control the companion pop-up and shareable profile link. Use <strong>Display label</strong> to shorten long question text. Empty header cells appear as &quot;Column X&quot; and default to hidden on profiles until you turn them on.</p>' +
+          '<p style="margin:0 0 20px 0;font-size:14px;color:#374151;max-width:720px;">Every sheet column <strong>A through BB</strong> is listed below (54 columns). Use <strong>Show on profile</strong> to control the companion pop-up and shareable profile link. Use <strong>Display label</strong> to shorten long question text. Empty header cells appear as &quot;Column X&quot; and default to hidden on profiles until you turn them on. <strong>Click Save</strong> after you change anything.</p>' +
           '<div class="card" style="padding:24px;max-width:960px;">' +
-            '<h3 style="margin:0 0 16px 0;font-size:14px;font-weight:700;color:#134e4a;">Profile pop-up fields (A–BB)</h3>' +
+            '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #e5e7eb;">' +
+              '<h3 style="margin:0;font-size:14px;font-weight:700;color:#134e4a;">Profile pop-up fields (A–BB)</h3>' +
+              '<button type="button" class="btn btn-primary save-profile-settings-btn">Save</button>' +
+            '</div>' +
             '<div style="max-height:70vh;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;">' +
             '<table class="criteria-table" style="margin:0;"><thead><tr><th style="width:56px;">Col</th><th>Form question (header row)</th><th style="width:120px;">Show on profile</th><th>Display label</th></tr></thead><tbody>' + rows + '</tbody></table>' +
             '</div>' +
-            '<div style="margin-top:16px;"><button type="button" class="btn btn-primary" id="save-profile-settings-btn">Save profile field settings</button></div>' +
+            '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #e5e7eb;display:flex;flex-wrap:wrap;align-items:center;gap:12px;">' +
+              '<button type="button" class="btn btn-primary save-profile-settings-btn">Save</button>' +
+              '<span style="font-size:13px;color:#6b7280;">Saves show-on-profile checkboxes and display labels to the app.</span>' +
+            '</div>' +
           '</div>';
-        document.getElementById('save-profile-settings-btn').addEventListener('click', function() {
+        function runSaveProfileSettings() {
           var newSettings = settings.map(function(s, idx) {
             var showCb = panel.querySelector('.settings-show-cb[data-idx="' + idx + '"]');
             var labelInp = panel.querySelector('.settings-label-inp[data-idx="' + idx + '"]');
@@ -1142,8 +1148,11 @@
           });
           google.script.run.withSuccessHandler(function() {
             state.profileFieldSettings = newSettings;
-            alert('Profile field settings saved.');
-          }).withFailureHandler(function(err) { alert('Failed: ' + (err && err.message ? err.message : String(err)));           }).saveProfileFieldSettings(JSON.stringify(newSettings));
+            alert('Settings saved.');
+          }).withFailureHandler(function(err) { alert('Failed: ' + (err && err.message ? err.message : String(err))); }).saveProfileFieldSettings(JSON.stringify(newSettings));
+        }
+        panel.querySelectorAll('.save-profile-settings-btn').forEach(function(btn) {
+          btn.addEventListener('click', runSaveProfileSettings);
         });
       }
 
