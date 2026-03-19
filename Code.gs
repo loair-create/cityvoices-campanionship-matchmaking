@@ -239,6 +239,24 @@ function isSyntheticFormHeader_(header) {
   return /^Column [A-Z]+$/.test(String(header || '').trim());
 }
 
+function pad2Gs_(n) {
+  const s = String(Math.floor(Number(n)));
+  return s.length >= 2 ? s : ('0' + s);
+}
+
+/**
+ * Display dates as MMDDYYYY (e.g. 03132026). Used for Timestamp / column A and enrollment lines.
+ * Returns null if value is not a parseable date.
+ */
+function formatTimestampMMDDYYYY_(v) {
+  if (v == null || v === '') return null;
+  let d;
+  if (v instanceof Date) d = v;
+  else d = new Date(v);
+  if (isNaN(d.getTime())) return null;
+  return pad2Gs_(d.getMonth() + 1) + pad2Gs_(d.getDate()) + d.getFullYear();
+}
+
 /**
  * Parse a cell value into 1–5 for loneliness / isolation scale questions.
  * Accepts: numbers 1–5, "1. Never", "2. Rarely", text containing Never/Rarely/Sometimes/Often/Always.
@@ -920,6 +938,13 @@ function parseCompanion(row, headers, rowNum) {
       raw[key] = v;
     });
 
+    // Column A = Timestamp: show as MMDDYYYY everywhere raw is used (profile, Settings preview).
+    const colAKey = safeHeaders[0].trim();
+    if (colAKey) {
+      const tsDisplay = formatTimestampMMDDYYYY_(rowValues[0]);
+      if (tsDisplay != null) raw[colAKey] = tsDisplay;
+    }
+
     // Google Form often uses long headers without the word "waiver" (e.g. Companionship Agreement confirmation).
     const waiveIdx = safeHeaders.findIndex(h =>
       /\bwaiver\b/i.test(h) ||
@@ -1023,10 +1048,7 @@ function getCompanionForProfile(companionId) {
   const c = parseCompanion(row, headers, rowNum);
   if (!c) return null;
   const dateEnrolled = c.dateEnrolled || null;
-  const dateEnrolledFormatted = dateEnrolled ? (function() {
-    const d = new Date(dateEnrolled);
-    return isNaN(d.getTime()) ? '' : (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear();
-  })() : '';
+  const dateEnrolledFormatted = dateEnrolled ? (formatTimestampMMDDYYYY_(dateEnrolled) || '') : '';
   const settings = getProfileFieldSettings(formHeaders);
   const profileFields = settings.filter(s => s.showOnProfile).map(s => ({
     label: s.label || s.header,
