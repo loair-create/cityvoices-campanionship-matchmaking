@@ -198,17 +198,19 @@ function getPostSurveyLastColumn_() {
   return 20;
 }
 
-/** Tab names for post survey — excluded from main enrollment sheet auto-pick. */
+/** Post-survey tab (exact name Form Responses 2) — excluded from main enrollment sheet auto-pick. */
 function isReservedPostSurveySheetName_(sheetName) {
   const key = String(sheetName || '').toLowerCase().replace(/[\s_\-]/g, '');
   return key === 'formresponses2' || key === 'formresponsesii';
 }
 
 /**
- * Post-program (Form Responses 2) sheet. Optional. Script property POST_SURVEY_SHEET_NAME overrides.
+ * Post-program sheet. Expected tab name: exactly "Form Responses 2".
+ * If your tab uses a different name, set Script property POST_SURVEY_SHEET_NAME to that exact string.
  */
 function getPostSurveySheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const defaultName = 'Form Responses 2';
   try {
     const o = String(PropertiesService.getScriptProperties().getProperty('POST_SURVEY_SHEET_NAME') || '').trim();
     if (o) {
@@ -216,12 +218,8 @@ function getPostSurveySheet() {
       if (sh) return sh;
     }
   } catch (e) {}
-  const tryNames = ['Form Responses 2', 'Form_Responses2', 'Form Responses2'];
-  for (let i = 0; i < tryNames.length; i++) {
-    const sh = ss.getSheetByName(tryNames[i]);
-    if (sh) return sh;
-  }
-  return null;
+  const sh = ss.getSheetByName(defaultName);
+  return sh || null;
 }
 
 function getPostSurveySheetValues_(sheet) {
