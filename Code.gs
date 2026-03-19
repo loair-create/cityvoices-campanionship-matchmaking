@@ -23,8 +23,6 @@ function doGet(e) {
     const t = HtmlService.createTemplateFromFile('App');
     t.page = 'profile';
     t.firstName = profile.firstName || '';
-    t.dateEnrolled = profile.dateEnrolled || '';
-    t.durationInProgram = profile.durationInProgram || '';
     t.profileFields = profile.profileFields || [];
     t.availabilityJson = profile.availabilityJson || '{}';
     return t.evaluate()
@@ -291,6 +289,61 @@ function formatTimestampMMDDYYYY_(v) {
   else d = new Date(v);
   if (isNaN(d.getTime())) return null;
   return pad2Gs_(d.getMonth() + 1) + pad2Gs_(d.getDate()) + d.getFullYear();
+}
+
+/** Shareable public profile: dates as MM/DD/YYYY (slashes). */
+function formatDateMMDDYYYYSlashes_(v) {
+  if (v == null || v === '') return '';
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    return pad2Gs_(v.getMonth() + 1) + '/' + pad2Gs_(v.getDate()) + '/' + v.getFullYear();
+  }
+  const s = String(v).trim();
+  if (/^\d{8}$/.test(s)) {
+    return s.slice(0, 2) + '/' + s.slice(2, 4) + '/' + s.slice(4);
+  }
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return pad2Gs_(d.getMonth() + 1) + '/' + pad2Gs_(d.getDate()) + '/' + d.getFullYear();
+  }
+  return s;
+}
+
+/**
+ * Omit from copyable public profile: contact, enrollment date, last name, per-day availability (shown in grid only).
+ */
+function shouldExcludeFieldFromPublicProfile_(header, label) {
+  const h = String(header || '').toLowerCase();
+  const l = String(label || '').toLowerCase();
+  const t = h + ' | ' + l;
+  if (/\bemail\b|\be-mail\b/.test(t)) return true;
+  if (/\bphone\b|\bmobile\b|\bcell\b/.test(t)) return true;
+  if (/\blast\s*name\b/.test(t)) return true;
+  if (/\btimestamp\b/.test(h)) return true;
+  if (/date\s*of\s*enrollment|enrollment\s*date/.test(t)) return true;
+  if (/preferred.*contact|method of contact|contact method/i.test(t)) return true;
+  if (/\[(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\]/i.test(h + l)) return true;
+  if (/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b.*\bavailability\b/i.test(t)) return true;
+  if (/\bavailability\b.*\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(t)) return true;
+  if (/^my\s+availability\s+/i.test(l)) return true;
+  return false;
+}
+
+function formatProfileFieldValueForPublic_(header, rawStr) {
+  const s = String(rawStr == null ? '' : rawStr).trim();
+  if (!s) return '';
+  const h = String(header || '').toLowerCase();
+  if (/^\d{8}$/.test(s)) {
+    return s.slice(0, 2) + '/' + s.slice(2, 4) + '/' + s.slice(4);
+  }
+  if (/\btimestamp\b/.test(h) || /\bdate\b/.test(h)) {
+    const out = formatDateMMDDYYYYSlashes_(s);
+    if (out && out !== s) return out;
+  }
+  const d = new Date(s);
+  if (!isNaN(d.getTime()) && (/\d{1,2}\/\d{1,2}\/\d{4}/.test(s) || /^\d{4}-\d{2}-\d{2}/.test(s) || (s.indexOf('T') > 0 && s.length > 10))) {
+    return pad2Gs_(d.getMonth() + 1) + '/' + pad2Gs_(d.getDate()) + '/' + d.getFullYear();
+  }
+  return s;
 }
 
 /**
@@ -1364,17 +1417,19 @@ function getCompanionForProfile(companionId) {
   const row = formData[rowNum - 1];
   const c = parseCompanion(row, headers, rowNum);
   if (!c) return null;
-  const dateEnrolled = c.dateEnrolled || null;
-  const dateEnrolledFormatted = dateEnrolled ? (formatTimestampMMDDYYYY_(dateEnrolled) || '') : '';
   const settings = getProfileFieldSettings(formHeaders);
-  const profileFields = settings.filter(s => s.showOnProfile).map(s => ({
-    label: s.label || s.header,
-    value: (c.raw && c.raw[s.header] != null) ? String(c.raw[s.header]) : ''
-  }));
+  const profileFields = [];
+  settings.forEach(s => {
+    if (!s.showOnProfile) return;
+    if (shouldExcludeFieldFromPublicProfile_(s.header, s.label)) return;
+    const rawVal = (c.raw && c.raw[s.header] != null) ? String(c.raw[s.header]) : '';
+    profileFields.push({
+      label: s.label || s.header,
+      value: formatProfileFieldValueForPublic_(s.header, rawVal)
+    });
+  });
   return {
     firstName: c.firstName || '',
-    dateEnrolled: dateEnrolledFormatted,
-    durationInProgram: getDurationInProgramText(dateEnrolled),
     profileFields: profileFields,
     availabilityJson: JSON.stringify(c.availability || {})
   };
