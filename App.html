@@ -42,32 +42,10 @@
       <div class="profile-row"><dt>Time in program</dt><dd><?= durationInProgram || '—' ?></dd></div>
     </div>
     <div class="profile-section">
-      <h2>Location & identity</h2>
-      <div class="profile-row"><dt>Borough</dt><dd><?= borough || '—' ?></dd></div>
-      <div class="profile-row"><dt>Neighborhood</dt><dd><?= neighborhood || '—' ?></dd></div>
-      <div class="profile-row"><dt>Age</dt><dd><?= age || '—' ?></dd></div>
-      <div class="profile-row"><dt>Pronouns</dt><dd><?= pronouns || '—' ?></dd></div>
-      <div class="profile-row"><dt>Gender</dt><dd><?= gender || '—' ?></dd></div>
-      <div class="profile-row"><dt>Race/Ethnicity</dt><dd><?= raceEthnicity || '—' ?></dd></div>
-      <div class="profile-row"><dt>Do you consider yourself to be a part of the LGBTQ+ community?</dt><dd><?= lgbtq || '—' ?></dd></div>
-      <div class="profile-row"><dt>Are you currently in a committed relationship (e.g. married, partner, boyfriend/girlfriend)?</dt><dd><?= relationshipStatus || '—' ?></dd></div>
-      <div class="profile-row"><dt>Willing to travel</dt><dd><?= willingToTravel || '—' ?></dd></div>
-    </div>
-    <div class="profile-section">
-      <h2>Lived experience</h2>
-      <div class="profile-row"><dt>Have you ever experienced domestic violence?</dt><dd><?= hasExperiencedDV || '—' ?></dd></div>
-      <div class="profile-row"><dt>Are you a survivor of being incarcerated in prison or jail?</dt><dd><?= hasBeenIncarcerated || '—' ?></dd></div>
-      <div class="profile-row"><dt>Have you ever experienced homelessness?</dt><dd><?= hasExperiencedHomelessness || '—' ?></dd></div>
-      <div class="profile-row"><dt>Are you currently receiving mental health services?</dt><dd><?= receivingMentalHealthServices || '—' ?></dd></div>
-      <div class="profile-row"><dt>Are you currently receiving substance use services?</dt><dd><?= receivingSubstanceUseServices || '—' ?></dd></div>
-      <div class="profile-row"><dt>Have you ever received mental health services?</dt><dd><?= historyMentalHealthServices || '—' ?></dd></div>
-      <div class="profile-row"><dt>Have you ever received substance use services?</dt><dd><?= historySubstanceUseServices || '—' ?></dd></div>
-      <div class="profile-row"><dt>Are you a military veteran?</dt><dd><?= isVeteran || '—' ?></dd></div>
-    </div>
-    <div class="profile-section">
-      <h2>Other</h2>
-      <div class="profile-row"><dt>Are you interested in professional peer support work? (it's ok if you're not)</dt><dd><?= interestedInPeerSupport || '—' ?></dd></div>
-      <div class="profile-row"><dt>Do you have any accessibility needs? If so, please let us know below.</dt><dd><?= accessibilityNeeds || '—' ?></dd></div>
+      <h2>Profile</h2>
+      <? var pf = profileFields || []; for (var i = 0; i < pf.length; i++) { var f = pf[i]; if (!f.label && !f.value) continue; ?>
+      <div class="profile-row"><dt><?= f.label || '—' ?></dt><dd><?= f.value || '—' ?></dd></div>
+      <? } ?>
     </div>
     <div class="profile-section">
       <h2>Availability</h2>
@@ -81,17 +59,6 @@
         </div>
         <? } ?>
       </div>
-    </div>
-    <div class="profile-section">
-      <h2>Essay responses</h2>
-      <? var essays = {}; try { essays = JSON.parse(essaysJson || '{}'); } catch(e) {} ?>
-      <? var essayKeys = ['creativity','hobbies','expectations','sharedExperiences','motivation']; var essayLabels = { creativity: 'How do you express your creativity?', hobbies: 'What are your hobbies?', expectations: 'What are the most important things that you want from a companion?', sharedExperiences: 'What life experiences do you feel that you and your companion should have in common?', motivation: 'Why are you interested in Companion Connections and what qualities would you bring to the Companionship?' }; ?>
-      <? for (var i = 0; i < essayKeys.length; i++) { var key = essayKeys[i]; var text = essays[key] || '—'; ?>
-      <div class="profile-essay">
-        <h3><?= essayLabels[key] ?></h3>
-        <p><?= text ?></p>
-      </div>
-      <? } ?>
     </div>
   </div>
 </body>
@@ -200,6 +167,7 @@
       <button type="button" class="tab-btn" data-tab="matches">Matches</button>
       <button type="button" class="tab-btn" data-tab="criteria">Criteria</button>
       <button type="button" class="tab-btn" data-tab="reminder-email">Reminder Email</button>
+      <button type="button" class="tab-btn" data-tab="settings">Settings</button>
     </aside>
     <main class="main">
       <div id="loading" style="padding: 40px; text-align: center;">
@@ -211,6 +179,7 @@
         <div id="panel-matches" class="tab-panel"></div>
         <div id="panel-criteria" class="tab-panel"></div>
         <div id="panel-reminder-email" class="tab-panel"></div>
+        <div id="panel-settings" class="tab-panel"></div>
       </div>
     </main>
   </div>
@@ -229,22 +198,19 @@
         { key: 'gender', label: 'Gender', weight: 3, category: 'Identity', enabled: true },
         { key: 'raceEthnicity', label: 'Race/Ethnicity', weight: 2, category: 'Identity', enabled: true },
         { key: 'lgbtq', label: 'LGBTQ+', weight: 9, category: 'Identity', enabled: true },
-        { key: 'relationshipStatus', label: 'Committed relationship', weight: 2, category: 'Identity', enabled: true },
         { key: 'hasExperiencedDV', label: 'Domestic violence', weight: 2, category: 'Experience', enabled: true },
         { key: 'hasBeenIncarcerated', label: 'Incarceration', weight: 2, category: 'Experience', enabled: true },
         { key: 'hasExperiencedHomelessness', label: 'Homelessness', weight: 1, category: 'Experience', enabled: true },
         { key: 'mentalHealthServices', label: 'Mental health services', weight: 2, category: 'Experience', enabled: true },
         { key: 'substanceUseServices', label: 'Substance use services', weight: 2, category: 'Experience', enabled: true },
-        { key: 'isVeteran', label: 'Veteran', weight: 2, category: 'Experience', enabled: true },
-        { key: 'interestedInPeerSupport', label: 'Peer support interest', weight: 0, category: 'Other', enabled: true }
+        { key: 'isVeteran', label: 'Veteran', weight: 2, category: 'Experience', enabled: true }
       ];
 
       var ESSAY_LABELS = {
-        hobbies: 'What are your hobbies?',
+        hobbiesAndCreativity: 'Hobbies & creativity',
         expectations: 'What do you want from a Companion?',
         sharedExperiences: 'Life experiences in common?',
-        motivation: 'Why are you interested?',
-        creativity: 'How do you express creativity?'
+        motivation: 'Why are you interested?'
       };
 
       var state = {
@@ -252,6 +218,8 @@
         matches: [],
         criteria: [],
         reminderRecipient: 'danfrey76@gmail.com',
+        formHeaders: [],
+        profileFieldSettings: [],
         activeTab: 'directory',
         selectedCompanion: null,
         directoryFilters: {}
@@ -271,7 +239,7 @@
         { key: 'hasExperiencedDV', label: 'DV Survivor' },
         { key: 'hasBeenIncarcerated', label: 'Incarceration' },
         { key: 'hasExperiencedHomelessness', label: 'Homelessness' },
-        { key: 'receivingMentalHealthServices', label: 'Mental Health Svcs' },
+        { key: 'mentalHealthServices', label: 'Mental Health Svcs' },
         { key: 'receivingSubstanceUseServices', label: 'Substance Use Svcs' },
         { key: 'isVeteran', label: 'Veteran' }
       ];
@@ -332,6 +300,8 @@
               Object.keys(byKey).forEach(function(k) {
                 if (!DEFAULT_CRITERIA.some(function(d) { return d.key === k; })) state.criteria.push(byKey[k]);
               });
+              state.formHeaders = (data && data.formHeaders) ? data.formHeaders : [];
+              state.profileFieldSettings = (data && data.profileFieldSettings) ? data.profileFieldSettings : [];
               showContentAndTab();
               if (data && data.loadError && contentEl) {
                 banner = document.getElementById('load-error-banner');
@@ -367,6 +337,7 @@
         else if (tabName === 'matches') renderMatches();
         else if (tabName === 'criteria') renderCriteria();
         else if (tabName === 'reminder-email') renderReminderEmail();
+        else if (tabName === 'settings') renderSettings();
       }
 
       function getOverlappingDays(c1, c2) {
@@ -413,7 +384,6 @@
         if (c1.gender === c2.gender && c1.gender && cm.gender && cm.gender.enabled) { score += (cm.gender.weight || 3); reasons.push('Same gender'); }
         if (c1.lgbtq === 'Yes' && c2.lgbtq === 'Yes' && cm.lgbtq && cm.lgbtq.enabled) { score += (cm.lgbtq.weight || 9); reasons.push('Both LGBTQ+'); }
         if (c1.raceEthnicity === c2.raceEthnicity && c1.raceEthnicity && cm.raceEthnicity && cm.raceEthnicity.enabled) { score += (cm.raceEthnicity.weight || 2); reasons.push('Same race/ethnicity'); }
-        if (c1.relationshipStatus === c2.relationshipStatus && c1.relationshipStatus && cm.relationshipStatus && cm.relationshipStatus.enabled) { score += (cm.relationshipStatus.weight || 2); reasons.push('Same relationship status'); }
         var overlaps = getOverlappingDays(c1, c2);
         if (overlaps.length > 0 && cm.availability && cm.availability.enabled) {
           score += ((cm.availability.weight || 24) * Math.min(1, overlaps.length / 3));
@@ -422,7 +392,7 @@
         if (sameVal(c1.hasExperiencedDV, c2.hasExperiencedDV) && cm.hasExperiencedDV && cm.hasExperiencedDV.enabled) { score += (cm.hasExperiencedDV.weight || 2); reasons.push('DV experience match'); }
         if (sameVal(c1.hasBeenIncarcerated, c2.hasBeenIncarcerated) && cm.hasBeenIncarcerated && cm.hasBeenIncarcerated.enabled) { score += (cm.hasBeenIncarcerated.weight || 2); reasons.push('Incarceration experience match'); }
         if (sameVal(c1.hasExperiencedHomelessness, c2.hasExperiencedHomelessness) && cm.hasExperiencedHomelessness && cm.hasExperiencedHomelessness.enabled) { score += (cm.hasExperiencedHomelessness.weight || 1); reasons.push('Homelessness experience match'); }
-        if (cm.mentalHealthServices && cm.mentalHealthServices.enabled && (sameVal(c1.receivingMentalHealthServices, c2.receivingMentalHealthServices) || sameVal(c1.historyMentalHealthServices, c2.historyMentalHealthServices))) { score += (cm.mentalHealthServices.weight || 2); reasons.push('Mental health services match'); }
+        if (cm.mentalHealthServices && cm.mentalHealthServices.enabled && sameVal(c1.mentalHealthServices, c2.mentalHealthServices)) { score += (cm.mentalHealthServices.weight || 2); reasons.push('Mental health services match'); }
         if (cm.substanceUseServices && cm.substanceUseServices.enabled && (sameVal(c1.receivingSubstanceUseServices, c2.receivingSubstanceUseServices) || sameVal(c1.historySubstanceUseServices, c2.historySubstanceUseServices))) { score += (cm.substanceUseServices.weight || 2); reasons.push('Substance use services match'); }
         if (sameVal(c1.isVeteran, c2.isVeteran) && cm.isVeteran && cm.isVeteran.enabled) { score += (cm.isVeteran.weight || 2); reasons.push('Veteran status match'); }
         return { percent: Math.round((score / maxScore) * 100), reasons: reasons };
@@ -598,7 +568,6 @@
             addLine('Gender', c.gender);
             addLine('Race/Ethnicity', c.raceEthnicity);
             addLine('LGBTQ+', c.lgbtq);
-            addLine('Relationship Status', c.relationshipStatus);
             y += 4;
             doc.setFont(undefined, 'bold');
             doc.setFontSize(10);
@@ -608,7 +577,7 @@
             addLine('Experienced Domestic Violence', c.hasExperiencedDV);
             addLine('Been Incarcerated', c.hasBeenIncarcerated);
             addLine('Experienced Homelessness', c.hasExperiencedHomelessness);
-            addLine('Receiving Mental Health Services', c.receivingMentalHealthServices);
+            addLine('Mental Health Services', c.mentalHealthServices);
             addLine('Receiving Substance Use Services', c.receivingSubstanceUseServices);
             addLine('Veteran', c.isVeteran);
             y += 4;
@@ -623,7 +592,7 @@
             doc.text('Essay Responses', margin, y);
             y += lineH;
             doc.setFont(undefined, 'normal');
-            ['hobbies','expectations','sharedExperiences','motivation','creativity'].forEach(function(k) {
+            ['hobbiesAndCreativity','expectations','sharedExperiences','motivation'].forEach(function(k) {
               var q = ESSAY_LABELS[k] || k;
               var text = (c.essays && c.essays[k]) || '—';
               doc.setFont(undefined, 'bold');
@@ -678,15 +647,13 @@
         var days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
         var availHtml = days.map(function(d) { return d + ': ' + (avail[d.toLowerCase()] || '—'); }).join(' | ');
         var enrollment = '<div class="detail-section"><h3>Enrollment</h3>' + dr('Date of enrollment', formatEnrollmentDate(c.dateEnrolled)) + dr('Time in program', getDurationText(c.dateEnrolled)) + '</div>';
-        var contact = dr('Preferred Contact Method', c.preferredContact) + dr('Email', c.email) + dr('Phone', c.phone) + dr('Willing To Travel', c.willingToTravel) + dr('Accessibility Needs', c.accessibilityNeeds);
-        var identity = dr('Borough', c.borough) + dr('Neighborhood', c.neighborhood) + dr('Age', c.age) + dr('Pronouns', c.pronouns) + dr('Gender', c.gender) + dr('Race/Ethnicity', c.raceEthnicity) + dr('LGBTQ+', c.lgbtq) + dr('Relationship Status', c.relationshipStatus);
-        var lived = dr('Experienced Domestic Violence', c.hasExperiencedDV) + dr('Been Incarcerated', c.hasBeenIncarcerated) + dr('Experienced Homelessness', c.hasExperiencedHomelessness) + dr('Receiving Mental Health Services', c.receivingMentalHealthServices) + dr('Receiving Substance Use Services', c.receivingSubstanceUseServices) + dr('Ever Received Mental Health Services', c.historyMentalHealthServices) + dr('Ever Received Substance Use Services', c.historySubstanceUseServices) + dr('Veteran', c.isVeteran);
-        var essaysHtml = '';
-        ['hobbies','expectations','sharedExperiences','motivation','creativity'].forEach(function(k) {
-          var q = ESSAY_LABELS[k] || k;
-          var text = (c.essays && c.essays[k]) || '—';
-          essaysHtml += '<div class="essay-block"><h4>' + escapeHtml(q) + '</h4><p>' + escapeHtml(text) + '</p></div>';
+        var profileHtml = '';
+        (state.profileFieldSettings || []).forEach(function(s) {
+          if (!s.showOnProfile) return;
+          var val = (c.raw && c.raw[s.header] != null) ? String(c.raw[s.header]) : '';
+          if (val || s.label) profileHtml += dr(s.label || s.header, val);
         });
+        var profileSection = profileHtml ? '<div class="detail-section"><h3>Profile</h3>' + profileHtml + '</div>' : '';
         var matchInfo = getCompanionMatchInfo(c.id);
         var matchSection = '<div class="detail-section"><h3>Matches</h3>' +
           (matchInfo.count === 0
@@ -694,13 +661,10 @@
             : '<div class="detail-row"><dt>Matched with (' + matchInfo.count + ')</dt><dd>' + escapeHtml(matchInfo.names.join(', ')) + '</dd></div><div class="detail-row"><dt>Note</dt><dd>One person can have multiple matches. Use Find Match to add another.</dd></div>') +
           '</div>';
         var body = enrollment +
-          '<div class="detail-section"><h3>Contact & Logistics</h3>' + contact + '</div>' +
-          '<div class="detail-section"><h3>Identity</h3>' + identity + '</div>' +
+          profileSection +
           matchSection +
-          '<div class="detail-section"><h3>Lived Experience</h3>' + lived + '</div>' +
           '<div class="detail-section"><h3>Availability</h3><div class="detail-row"><dt>Days</dt><dd>' + escapeHtml(availHtml) + '</dd></div></div>' +
           (c.internalNotes ? '<div class="detail-section"><h3>Internal Notes</h3>' + dr('', c.internalNotes) + '</div>' : '') +
-          '<div class="detail-section"><h3>Essay Responses</h3>' + essaysHtml + '</div>' +
           '<div style="margin-top:20px;">' +
             (!c.waiverSigned ? '<div style="margin-bottom:12px;padding:10px;background:#fef3c7;border-radius:6px;font-size:13px;color:#92400e;">Note: Waiver not signed (column B in form responses).</div>' : '') +
             '<button type="button" class="btn btn-secondary" onclick="window.downloadCompanionPDF(\'' + c.id + '\')">Download PDF</button> ' +
@@ -932,7 +896,7 @@
         tableRows += '<tr class="' + (overlaps.length ? 'compare-match-row' : '') + '"><td class="criteria-label">Overlapping Days</td><td>' + escapeHtml(overlapTxt) + '</td><td>' + escapeHtml(overlapTxt) + '</td></tr>';
 
         var essayHtml = '';
-        var essayKeys = ['hobbies', 'expectations', 'sharedExperiences', 'motivation', 'creativity'];
+        var essayKeys = ['hobbiesAndCreativity', 'expectations', 'sharedExperiences', 'motivation'];
         essayKeys.forEach(function(k) {
           var q = ESSAY_LABELS[k] || k;
           var t1 = (c1.essays && c1.essays[k]) || '—';
@@ -1056,6 +1020,44 @@
         });
         document.getElementById('run-reminder-check-btn').addEventListener('click', function() {
           google.script.run.withSuccessHandler(function() { alert('Reminder check complete. Due emails sent; Reminder Schedule sheet updated.'); }).withFailureHandler(function(err) { alert('Failed: ' + (err && err.message ? err.message : String(err))); }).runScheduledReminders();
+        });
+      }
+
+      function renderSettings() {
+        var panel = document.getElementById('panel-settings');
+        var settings = state.profileFieldSettings || [];
+        if (!settings.length) {
+          panel.innerHTML = '<h1 class="page-title">Settings</h1><p style="color:#6b7280;">Profile field settings come from the form spreadsheet. Refresh the app (or open Directory) to load form columns, then new questions will appear here and on profile pop-ups.</p>';
+          return;
+        }
+        var rows = settings.map(function(s, idx) {
+          return '<tr>' +
+            '<td style="font-size:13px;color:#374151;">' + escapeHtml(s.header) + '</td>' +
+            '<td><input type="checkbox" class="settings-show-cb" data-idx="' + idx + '" ' + (s.showOnProfile ? 'checked' : '') + '></td>' +
+            '<td><input type="text" class="settings-label-inp" data-idx="' + idx + '" value="' + escapeHtml(s.label || s.header) + '" placeholder="Short label" style="width:100%;max-width:240px;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box;"></td>' +
+          '</tr>';
+        }).join('');
+        panel.innerHTML = '<h1 class="page-title">Settings</h1>' +
+          '<p style="margin:0 0 20px 0;font-size:14px;color:#374151;max-width:640px;">Control which form questions appear on everyone\'s profile pop-up and on the shareable profile link. Use <strong>Display label</strong> to shorten the question text. New columns added to the form will appear here after you refresh; they are shown on profiles by default.</p>' +
+          '<div class="card" style="padding:24px;max-width:900px;">' +
+            '<h3 style="margin:0 0 16px 0;font-size:14px;font-weight:700;color:#134e4a;">Profile pop-up fields</h3>' +
+            '<table class="criteria-table"><thead><tr><th>Form question (column)</th><th style="width:120px;">Show on profile</th><th>Display label</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+            '<div style="margin-top:16px;"><button type="button" class="btn btn-primary" id="save-profile-settings-btn">Save profile field settings</button></div>' +
+          '</div>';
+        document.getElementById('save-profile-settings-btn').addEventListener('click', function() {
+          var newSettings = settings.map(function(s, idx) {
+            var showCb = panel.querySelector('.settings-show-cb[data-idx="' + idx + '"]');
+            var labelInp = panel.querySelector('.settings-label-inp[data-idx="' + idx + '"]');
+            return {
+              header: s.header,
+              label: (labelInp && labelInp.value.trim()) ? labelInp.value.trim() : s.header,
+              showOnProfile: showCb ? showCb.checked : true
+            };
+          });
+          google.script.run.withSuccessHandler(function() {
+            state.profileFieldSettings = newSettings;
+            alert('Profile field settings saved.');
+          }).withFailureHandler(function(err) { alert('Failed: ' + (err && err.message ? err.message : String(err))); }).saveProfileFieldSettings(JSON.stringify(newSettings));
         });
       }
 

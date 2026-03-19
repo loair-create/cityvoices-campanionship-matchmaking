@@ -25,27 +25,8 @@ function doGet(e) {
     t.firstName = profile.firstName || '';
     t.dateEnrolled = profile.dateEnrolled || '';
     t.durationInProgram = profile.durationInProgram || '';
-    t.borough = profile.borough || '';
-    t.neighborhood = profile.neighborhood || '';
-    t.age = profile.age || '';
-    t.pronouns = profile.pronouns || '';
-    t.gender = profile.gender || '';
-    t.raceEthnicity = profile.raceEthnicity || '';
-    t.lgbtq = profile.lgbtq || '';
-    t.relationshipStatus = profile.relationshipStatus || '';
-    t.willingToTravel = profile.willingToTravel || '';
-    t.accessibilityNeeds = profile.accessibilityNeeds || '';
-    t.hasExperiencedDV = profile.hasExperiencedDV || '';
-    t.hasBeenIncarcerated = profile.hasBeenIncarcerated || '';
-    t.hasExperiencedHomelessness = profile.hasExperiencedHomelessness || '';
-    t.receivingMentalHealthServices = profile.receivingMentalHealthServices || '';
-    t.receivingSubstanceUseServices = profile.receivingSubstanceUseServices || '';
-    t.historyMentalHealthServices = profile.historyMentalHealthServices || '';
-    t.historySubstanceUseServices = profile.historySubstanceUseServices || '';
-    t.isVeteran = profile.isVeteran || '';
-    t.interestedInPeerSupport = profile.interestedInPeerSupport || '';
-    t.essaysJson = JSON.stringify(profile.essays || {});
-    t.availabilityJson = JSON.stringify(profile.availability || {});
+    t.profileFields = profile.profileFields || [];
+    t.availabilityJson = profile.availabilityJson || '{}';
     return t.evaluate()
       .setTitle('Companion Profile')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1')
@@ -111,6 +92,7 @@ function getData() {
   let criteria = null;
   let reminderRecipient = 'danfrey76@gmail.com';
   let loadError = null;
+  let formHeaders = [];
 
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -119,6 +101,7 @@ function getData() {
       const formSheet = getResponsesSheet();
       const formData = formSheet.getDataRange().getValues();
       const headers = formData[0] || [];
+      formHeaders = headers.map(h => String(h || '').trim()).filter(h => h.length > 0);
       const rows = (formData.length > 1) ? formData.slice(1) : [];
       companions = rows
         .map((row, i) => {
@@ -176,7 +159,44 @@ function getData() {
     loadError = e.message || String(e);
   }
 
-  return { companions, matches, criteria, reminderRecipient, loadError: loadError || null };
+  let profileFieldSettings = [];
+  try {
+    profileFieldSettings = getProfileFieldSettings(formHeaders);
+  } catch (e) {}
+
+  return { companions, matches, criteria, reminderRecipient, loadError: loadError || null, formHeaders, profileFieldSettings };
+}
+
+/**
+ * Get profile field settings (which form columns to show on profile, and display labels).
+ * Merges saved settings with current form headers; new headers get showOnProfile: true and label = header.
+ */
+function getProfileFieldSettings(formHeaders) {
+  let saved = {};
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty('PROFILE_FIELD_SETTINGS');
+    if (raw && raw.trim()) {
+      JSON.parse(raw).forEach(function(item) {
+        saved[item.header] = { header: item.header, label: item.label || item.header, showOnProfile: item.showOnProfile !== false };
+      });
+    }
+  } catch (e) {}
+  return (formHeaders || []).map(function(header) {
+    const s = saved[header];
+    return s ? { header: header, label: s.label || header, showOnProfile: s.showOnProfile !== false } : { header: header, label: header, showOnProfile: true };
+  });
+}
+
+/**
+ * Save profile field settings (which form columns to show on profile, and display labels).
+ */
+function saveProfileFieldSettings(settingsJson) {
+  try {
+    PropertiesService.getScriptProperties().setProperty('PROFILE_FIELD_SETTINGS', settingsJson);
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 /**
@@ -575,6 +595,7 @@ function deleteCompanion(rowNumber) {
 
 // --- PARSER ---
 // Column B (index 1) = Waiver. If empty or not signed, person is ineligible to match.
+// Builds fixed keys for matching + raw[header]=value for every column so profile can be driven by Settings.
 function parseCompanion(row, headers, rowNum) {
   const getVal = (str) => {
     const idx = headers.findIndex(h => h.toLowerCase().includes(str.toLowerCase()));
@@ -585,11 +606,20 @@ function parseCompanion(row, headers, rowNum) {
     return idx > -1 ? String(row[idx]) : "Unavailable";
   };
 
+  const raw = {};
+  (headers || []).forEach((h, idx) => {
+    const key = String(h || '').trim();
+    if (!key) return;
+    let v = row[idx];
+    if (v instanceof Date) v = v.toISOString ? v.toISOString() : String(v);
+    else v = String(v == null ? '' : v).trim();
+    raw[key] = v;
+  });
+
   const waiverCell = row[1];
   const waiverVal = String(waiverCell || '').trim();
   const waiverSigned = waiverVal.length > 0 && waiverVal.toLowerCase() !== 'no';
 
-  // Column A = Timestamp (date form was submitted = enrollment date)
   let dateEnrolled = null;
   const rawTimestamp = row[0];
   if (rawTimestamp) {
@@ -599,10 +629,16 @@ function parseCompanion(row, headers, rowNum) {
   }
   if (dateEnrolled && isNaN(dateEnrolled.getTime())) dateEnrolled = null;
 
+  // Combined mental health: one question "currently receiving or have ever received mental health services"
+  const mentalHealthServices = getVal('mental health') || getVal('currently receiving mental health') || getVal('ever received mental health');
+  // Combined hobbies + creativity: one question
+  const hobbiesAndCreativity = getVal('hobbies') || getVal('express your creativity') || getVal('creativity');
+
   return {
     id: String(rowNum),
     dateEnrolled: dateEnrolled ? dateEnrolled.toISOString() : null,
     waiverSigned,
+    raw,
     preferredContact: getVal('preferred method of contact') || getVal('preferred contact') || "",
     firstName: getVal('First Name'),
     lastName: getVal('Last Name'),
@@ -616,30 +652,21 @@ function parseCompanion(row, headers, rowNum) {
     raceEthnicity: getVal('race/s'),
     gender: getVal('describe your gender'),
     lgbtq: getVal('LGBTQ'),
-    relationshipStatus: getVal('committed relationship'),
-    
-    // Lived Experiences
     hasExperiencedDV: getVal('domestic violence'),
     hasBeenIncarcerated: getVal('incarcerated'),
     hasExperiencedHomelessness: getVal('homelessness'),
-    receivingMentalHealthServices: getVal('currently receiving mental health'),
+    mentalHealthServices: mentalHealthServices || getVal('currently receiving mental health') || getVal('ever received mental health'),
     receivingSubstanceUseServices: getVal('currently receiving substance use'),
-    historyMentalHealthServices: getVal('ever received mental health'),
     historySubstanceUseServices: getVal('ever received substance use'),
     isVeteran: getVal('veteran'),
-    interestedInPeerSupport: getVal('peer support') || getVal('professional peer support'),
     accessibilityNeeds: getVal('accessibility needs'),
     internalNotes: getVal('INTERNAL NOTES'),
-    
-    // Essays
     essays: {
-      hobbies: getVal('hobbies'),
+      hobbiesAndCreativity: hobbiesAndCreativity,
       expectations: getVal('important things that you want'),
       sharedExperiences: getVal('experiences do you feel that you and your friend should have'),
-      motivation: getVal('Why are you interested'),
-      creativity: getVal('express your creativity')
+      motivation: getVal('Why are you interested')
     },
-
     availability: {
       monday: getAvail('monday'),
       tuesday: getAvail('tuesday'),
@@ -668,12 +695,13 @@ function getDurationInProgramText(isoDateOrNull) {
 }
 
 /**
- * Get companion data for public profile view. Strips last name and all contact info.
+ * Get companion data for public profile view. Uses profile field settings to decide which columns to show and their labels.
  */
 function getCompanionForProfile(companionId) {
   const formSheet = getResponsesSheet();
   const formData = formSheet.getDataRange().getValues();
-  const headers = formData[0];
+  const headers = formData[0] || [];
+  const formHeaders = headers.map(h => String(h || '').trim()).filter(h => h.length > 0);
   const rowNum = parseInt(companionId, 10);
   if (rowNum < 2 || rowNum > formData.length) return null;
   const row = formData[rowNum - 1];
@@ -684,31 +712,17 @@ function getCompanionForProfile(companionId) {
     const d = new Date(dateEnrolled);
     return isNaN(d.getTime()) ? '' : (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear();
   })() : '';
+  const settings = getProfileFieldSettings(formHeaders);
+  const profileFields = settings.filter(s => s.showOnProfile).map(s => ({
+    label: s.label || s.header,
+    value: (c.raw && c.raw[s.header] != null) ? String(c.raw[s.header]) : ''
+  }));
   return {
     firstName: c.firstName || '',
     dateEnrolled: dateEnrolledFormatted,
     durationInProgram: getDurationInProgramText(dateEnrolled),
-    borough: c.borough || '',
-    neighborhood: c.neighborhood || '',
-    age: c.age || '',
-    pronouns: c.pronouns || '',
-    gender: c.gender || '',
-    raceEthnicity: c.raceEthnicity || '',
-    lgbtq: c.lgbtq || '',
-    relationshipStatus: c.relationshipStatus || '',
-    willingToTravel: c.willingToTravel || '',
-    accessibilityNeeds: c.accessibilityNeeds || '',
-    hasExperiencedDV: c.hasExperiencedDV,
-    hasBeenIncarcerated: c.hasBeenIncarcerated,
-    hasExperiencedHomelessness: c.hasExperiencedHomelessness,
-    receivingMentalHealthServices: c.receivingMentalHealthServices,
-    receivingSubstanceUseServices: c.receivingSubstanceUseServices,
-    historyMentalHealthServices: c.historyMentalHealthServices,
-    historySubstanceUseServices: c.historySubstanceUseServices,
-    isVeteran: c.isVeteran,
-    interestedInPeerSupport: c.interestedInPeerSupport,
-    essays: c.essays || {},
-    availability: c.availability || {}
+    profileFields: profileFields,
+    availabilityJson: JSON.stringify(c.availability || {})
   };
 }
 
