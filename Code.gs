@@ -101,16 +101,10 @@ function getData() {
       const formSheet = getResponsesSheet();
       const formData = formSheet.getDataRange().getValues();
       const headers = formData[0] || [];
-      formHeaders = headers.map(h => String(h || '').trim()).filter(h => h.length > 0);
+      formHeaders = (headers || []).map(h => String(h == null ? '' : h).trim()).filter(h => h.length > 0);
       const rows = (formData.length > 1) ? formData.slice(1) : [];
       companions = rows
-        .map((row, i) => {
-          try {
-            return parseCompanion(row, headers, i + 2);
-          } catch (parseErr) {
-            return null;
-          }
-        })
+        .map((row, i) => parseCompanion(row, headers, i + 2))
         .filter(c => c != null);
     } catch (e) {
       loadError = (loadError ? loadError + ' ' : '') + ('Companions: ' + (e.message || String(e)));
@@ -597,86 +591,89 @@ function deleteCompanion(rowNumber) {
 // Column B (index 1) = Waiver. If empty or not signed, person is ineligible to match.
 // Builds fixed keys for matching + raw[header]=value for every column so profile can be driven by Settings.
 function parseCompanion(row, headers, rowNum) {
-  const getVal = (str) => {
-    const idx = headers.findIndex(h => h.toLowerCase().includes(str.toLowerCase()));
-    return idx > -1 ? String(row[idx] || '').trim() : "";
-  };
-  const getAvail = (day) => {
-    const idx = headers.findIndex(h => h.toLowerCase().includes(`[${day}]`));
-    return idx > -1 ? String(row[idx]) : "Unavailable";
-  };
+  try {
+    const safeHeaders = (headers || []).map(h => String(h == null ? '' : h));
+    const getVal = (str) => {
+      const idx = safeHeaders.findIndex(h => h.toLowerCase().includes(String(str || '').toLowerCase()));
+      return idx > -1 ? String((row && row[idx]) != null ? row[idx] : '').trim() : "";
+    };
+    const getAvail = (day) => {
+      const idx = safeHeaders.findIndex(h => h.toLowerCase().includes('[' + (day || '') + ']'));
+      return idx > -1 ? String((row && row[idx]) != null ? row[idx] : 'Unavailable') : "Unavailable";
+    };
 
-  const raw = {};
-  (headers || []).forEach((h, idx) => {
-    const key = String(h || '').trim();
-    if (!key) return;
-    let v = row[idx];
-    if (v instanceof Date) v = v.toISOString ? v.toISOString() : String(v);
-    else v = String(v == null ? '' : v).trim();
-    raw[key] = v;
-  });
+    const raw = {};
+    safeHeaders.forEach((h, idx) => {
+      const key = h.trim();
+      if (!key) return;
+      let v = (row && row[idx]) != null ? row[idx] : '';
+      if (v instanceof Date) v = (v.toISOString && v.toISOString()) || String(v);
+      else v = String(v == null ? '' : v).trim();
+      raw[key] = v;
+    });
 
-  const waiverCell = row[1];
-  const waiverVal = String(waiverCell || '').trim();
-  const waiverSigned = waiverVal.length > 0 && waiverVal.toLowerCase() !== 'no';
+    const waiverCell = (row && row[1]) != null ? row[1] : '';
+    const waiverVal = String(waiverCell || '').trim();
+    const waiverSigned = waiverVal.length > 0 && waiverVal.toLowerCase() !== 'no';
 
-  let dateEnrolled = null;
-  const rawTimestamp = row[0];
-  if (rawTimestamp) {
-    if (rawTimestamp instanceof Date) dateEnrolled = rawTimestamp;
-    else if (typeof rawTimestamp === 'string' && rawTimestamp.trim()) dateEnrolled = new Date(rawTimestamp);
-    else dateEnrolled = new Date(rawTimestamp);
-  }
-  if (dateEnrolled && isNaN(dateEnrolled.getTime())) dateEnrolled = null;
-
-  // Combined mental health: one question "currently receiving or have ever received mental health services"
-  const mentalHealthServices = getVal('mental health') || getVal('currently receiving mental health') || getVal('ever received mental health');
-  // Combined hobbies + creativity: one question
-  const hobbiesAndCreativity = getVal('hobbies') || getVal('express your creativity') || getVal('creativity');
-
-  return {
-    id: String(rowNum),
-    dateEnrolled: dateEnrolled ? dateEnrolled.toISOString() : null,
-    waiverSigned,
-    raw,
-    preferredContact: getVal('preferred method of contact') || getVal('preferred contact') || "",
-    firstName: getVal('First Name'),
-    lastName: getVal('Last Name'),
-    email: getVal('Email'),
-    phone: getVal('Phone Number'),
-    borough: getVal('Borough'),
-    neighborhood: getVal('neighborhood'),
-    willingToTravel: getVal('willing to travel'),
-    age: getVal('age'),
-    pronouns: getVal('pronouns'),
-    raceEthnicity: getVal('race/s'),
-    gender: getVal('describe your gender'),
-    lgbtq: getVal('LGBTQ'),
-    hasExperiencedDV: getVal('domestic violence'),
-    hasBeenIncarcerated: getVal('incarcerated'),
-    hasExperiencedHomelessness: getVal('homelessness'),
-    mentalHealthServices: mentalHealthServices || getVal('currently receiving mental health') || getVal('ever received mental health'),
-    receivingSubstanceUseServices: getVal('currently receiving substance use'),
-    historySubstanceUseServices: getVal('ever received substance use'),
-    isVeteran: getVal('veteran'),
-    accessibilityNeeds: getVal('accessibility needs'),
-    internalNotes: getVal('INTERNAL NOTES'),
-    essays: {
-      hobbiesAndCreativity: hobbiesAndCreativity,
-      expectations: getVal('important things that you want'),
-      sharedExperiences: getVal('experiences do you feel that you and your friend should have'),
-      motivation: getVal('Why are you interested')
-    },
-    availability: {
-      monday: getAvail('monday'),
-      tuesday: getAvail('tuesday'),
-      wednesday: getAvail('wednesday'),
-      thursday: getAvail('thursday'),
-      friday: getAvail('friday'),
-      saturday: getAvail('saturday'),
-      sunday: getAvail('sunday')
+    let dateEnrolled = null;
+    const rawTimestamp = (row && row[0]) != null ? row[0] : null;
+    if (rawTimestamp) {
+      if (rawTimestamp instanceof Date) dateEnrolled = rawTimestamp;
+      else if (typeof rawTimestamp === 'string' && rawTimestamp.trim()) dateEnrolled = new Date(rawTimestamp);
+      else dateEnrolled = new Date(rawTimestamp);
     }
-  };
+    if (dateEnrolled && isNaN(dateEnrolled.getTime())) dateEnrolled = null;
+
+    const mentalHealthServices = getVal('mental health') || getVal('currently receiving mental health') || getVal('ever received mental health');
+    const hobbiesAndCreativity = getVal('hobbies') || getVal('express your creativity') || getVal('creativity');
+
+    return {
+      id: String(rowNum),
+      dateEnrolled: dateEnrolled ? dateEnrolled.toISOString() : null,
+      waiverSigned,
+      raw,
+      preferredContact: getVal('preferred method of contact') || getVal('preferred contact') || "",
+      firstName: getVal('First Name'),
+      lastName: getVal('Last Name'),
+      email: getVal('Email'),
+      phone: getVal('Phone Number'),
+      borough: getVal('Borough'),
+      neighborhood: getVal('neighborhood'),
+      willingToTravel: getVal('willing to travel'),
+      age: getVal('age'),
+      pronouns: getVal('pronouns'),
+      raceEthnicity: getVal('race/s'),
+      gender: getVal('describe your gender'),
+      lgbtq: getVal('LGBTQ'),
+      hasExperiencedDV: getVal('domestic violence'),
+      hasBeenIncarcerated: getVal('incarcerated'),
+      hasExperiencedHomelessness: getVal('homelessness'),
+      mentalHealthServices: mentalHealthServices || getVal('currently receiving mental health') || getVal('ever received mental health'),
+      receivingSubstanceUseServices: getVal('currently receiving substance use'),
+      historySubstanceUseServices: getVal('ever received substance use'),
+      isVeteran: getVal('veteran'),
+      accessibilityNeeds: getVal('accessibility needs'),
+      internalNotes: getVal('INTERNAL NOTES'),
+      essays: {
+        hobbiesAndCreativity: hobbiesAndCreativity,
+        expectations: getVal('important things that you want'),
+        sharedExperiences: getVal('experiences do you feel that you and your friend should have'),
+        motivation: getVal('Why are you interested')
+      },
+      availability: {
+        monday: getAvail('monday'),
+        tuesday: getAvail('tuesday'),
+        wednesday: getAvail('wednesday'),
+        thursday: getAvail('thursday'),
+        friday: getAvail('friday'),
+        saturday: getAvail('saturday'),
+        sunday: getAvail('sunday')
+      }
+    };
+  } catch (e) {
+    return null;
+  }
 }
 
 /**

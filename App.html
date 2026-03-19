@@ -434,6 +434,7 @@
 
       function renderDirectory() {
         var panel = document.getElementById('panel-directory');
+        if (!panel) return;
         var search = (panel.querySelector('.search-input') && panel.querySelector('.search-input').value) || '';
         var filtersHtml = FILTER_FIELDS.map(function(f) {
           var val = state.directoryFilters[f.key] || '';
@@ -499,6 +500,14 @@
           }
         }
         var grid = document.getElementById('directory-grid');
+        if (!grid) return;
+        if (list.length === 0) {
+          var emptyMsg = state.companions.length === 0
+            ? 'No companions loaded. Make sure your form responses sheet has the correct name (<strong>City Voices Companionship v2 (Responses)</strong> or <strong>Form Responses 1</strong>) and has at least one row of data. Then click <strong>Refresh</strong>.'
+            : 'No companions match your search or filters. Try clearing the search box or changing filters.';
+          grid.innerHTML = '<div style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;color:#374151;font-size:14px;line-height:1.5;">' + emptyMsg + '</div>';
+          return;
+        }
         list.forEach(function(c) {
           var card = document.createElement('div');
           card.className = 'card';
@@ -810,10 +819,12 @@
 
       function renderMatches() {
         var panel = document.getElementById('panel-matches');
+        if (!panel) return;
         panel.innerHTML = '<h1 class="page-title">Matches</h1><div id="matches-list"></div>';
         var list = document.getElementById('matches-list');
+        if (!list) return;
         if (state.matches.length === 0) {
-          list.innerHTML = '<p style="color:#6b7280;">No matches yet. Use Directory to find a match for a companion.</p>';
+          list.innerHTML = '<div style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;color:#374151;"><p style="margin:0;">No matches yet. Open the <strong>Directory</strong> tab, click a person, then click <strong>Find Match</strong> to pair them with someone.</p></div>';
           return;
         }
         state.matches.forEach(function(m) {
@@ -1025,9 +1036,10 @@
 
       function renderSettings() {
         var panel = document.getElementById('panel-settings');
+        if (!panel) return;
         var settings = state.profileFieldSettings || [];
         if (!settings.length) {
-          panel.innerHTML = '<h1 class="page-title">Settings</h1><p style="color:#6b7280;">Profile field settings come from the form spreadsheet. Refresh the app (or open Directory) to load form columns, then new questions will appear here and on profile pop-ups.</p>';
+          panel.innerHTML = '<h1 class="page-title">Settings</h1><div style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;color:#374151;max-width:560px;"><p style="margin:0 0 12px 0;">Profile field settings come from the form spreadsheet. If the <strong>Directory</strong> is also empty, check that your form responses sheet is named <strong>City Voices Companionship v2 (Responses)</strong> or <strong>Form Responses 1</strong> and has at least one data row.</p><p style="margin:0;">Click <strong>Refresh</strong> (on the Directory tab) to load form columns; then new questions will appear here and on profile pop-ups.</p></div>';
           return;
         }
         var rows = settings.map(function(s, idx) {
