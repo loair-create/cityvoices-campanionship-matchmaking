@@ -157,6 +157,17 @@
     .essay-col strong { display: block; font-size: 11px; color: #6b7280; margin-bottom: 4px; }
     .essay-col p { margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
     .modal-wide { max-width: 900px; }
+    .analysis-intro { font-size: 14px; color: #374151; max-width: 720px; margin-bottom: 20px; line-height: 1.5; }
+    .analysis-card { background: white; border-radius: 10px; border: 1px solid #e5e7eb; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+    .analysis-card h3 { margin: 0 0 8px 0; font-size: 15px; font-weight: 600; color: #111; line-height: 1.35; }
+    .analysis-meta { font-size: 13px; color: #6b7280; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .analysis-polarity { font-size: 12px; padding: 2px 8px; border-radius: 6px; background: #f3f4f6; color: #4b5563; }
+    .analysis-bar-wrap { margin-top: 8px; }
+    .analysis-bar { display: flex; height: 28px; border-radius: 6px; overflow: hidden; border: 1px solid #e5e7eb; }
+    .analysis-bar-seg { display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #fff; min-width: 0; }
+    .analysis-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 10px; font-size: 12px; color: #6b7280; }
+    .analysis-legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .analysis-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
   </style>
 </head>
 <body>
@@ -168,6 +179,7 @@
       <button type="button" class="tab-btn" data-tab="criteria">Criteria</button>
       <button type="button" class="tab-btn" data-tab="reminder-email">Reminder Email</button>
       <button type="button" class="tab-btn" data-tab="settings">Settings</button>
+      <button type="button" class="tab-btn" data-tab="analysis">Analysis</button>
     </aside>
     <main class="main">
       <div id="loading" style="padding: 40px; text-align: center;">
@@ -180,6 +192,7 @@
         <div id="panel-criteria" class="tab-panel"></div>
         <div id="panel-reminder-email" class="tab-panel"></div>
         <div id="panel-settings" class="tab-panel"></div>
+        <div id="panel-analysis" class="tab-panel"></div>
       </div>
     </main>
   </div>
@@ -338,6 +351,7 @@
         else if (tabName === 'criteria') renderCriteria();
         else if (tabName === 'reminder-email') renderReminderEmail();
         else if (tabName === 'settings') renderSettings();
+        else if (tabName === 'analysis') renderAnalysis();
       }
 
       function getOverlappingDays(c1, c2) {
@@ -1069,8 +1083,67 @@
           google.script.run.withSuccessHandler(function() {
             state.profileFieldSettings = newSettings;
             alert('Profile field settings saved.');
-          }).withFailureHandler(function(err) { alert('Failed: ' + (err && err.message ? err.message : String(err))); }).saveProfileFieldSettings(JSON.stringify(newSettings));
+          }).withFailureHandler(function(err) { alert('Failed: ' + (err && err.message ? err.message : String(err)));           }).saveProfileFieldSettings(JSON.stringify(newSettings));
         });
+      }
+
+      var ANALYSIS_SCALE_COLORS = ['#0f766e', '#14b8a6', '#fbbf24', '#f97316', '#dc2626'];
+      var ANALYSIS_SCALE_LABELS = ['1 Never', '2 Rarely', '3 Sometimes', '4 Often', '5 Always'];
+
+      function renderAnalysis() {
+        var panel = document.getElementById('panel-analysis');
+        if (!panel) return;
+        panel.innerHTML = '<h1 class="page-title">Scale analysis</h1><p class="analysis-intro">Loading aggregated responses…</p>';
+        google.script.run
+          .withSuccessHandler(function(res) {
+            if (!panel.parentNode) return;
+            if (res && res.error) {
+              panel.innerHTML = '<h1 class="page-title">Scale analysis</h1><p style="color:#b91c1c;">Could not load: ' + escapeHtml(res.error) + '</p>';
+              return;
+            }
+            var questions = (res && res.questions) ? res.questions : [];
+            var totalRows = (res && res.totalRows) ? res.totalRows : 0;
+            var intro = '<div class="toolbar" style="margin-bottom:16px;"><button type="button" class="btn btn-secondary" onclick="window.refreshAnalysis()">Refresh data</button></div>' +
+              '<p class="analysis-intro">This page summarizes all <strong>1–5 scale</strong> questions from your form responses sheet (columns whose headers mention a 1–5 scale or &quot;Please respond… scale&quot;). Each bar shows how many submissions chose each answer (1 = Never … 5 = Always). Blank or unparseable cells are skipped.</p>' +
+              '<p style="font-size:13px;color:#6b7280;margin:-8px 0 20px 0;">Data rows in sheet: <strong>' + totalRows + '</strong> · Questions detected: <strong>' + questions.length + '</strong></p>';
+            if (!questions.length) {
+              panel.innerHTML = '<h1 class="page-title">Scale analysis</h1>' + intro +
+                '<div class="card" style="padding:24px;max-width:560px;"><p style="margin:0;color:#374151;">No scale columns were found. Add questions to your Google Form that use wording like <strong>&quot;Please respond on a 1–5 scale&quot;</strong> (or headers containing <strong>1–5</strong> or <strong>1-5</strong>), then submit the form so responses appear in the linked sheet. Click <strong>Refresh data</strong>.</p></div>';
+              return;
+            }
+            var cards = questions.map(function(q) {
+              var n = q.n || 0;
+              var polarityNote = '';
+              if (q.polarity === 'higher_more_concern') polarityNote = '<span class="analysis-polarity">Interpretation: higher scores often mean more concern on this item</span>';
+              else if (q.polarity === 'higher_more_positive') polarityNote = '<span class="analysis-polarity">Interpretation: higher scores often mean more connection / positive engagement</span>';
+              var segs = '';
+              for (var k = 1; k <= 5; k++) {
+                var c = (q.counts && q.counts[k]) ? q.counts[k] : 0;
+                var pct = n ? Math.round((c / n) * 1000) / 10 : 0;
+                var w = n ? (c / n) * 100 : 0;
+                var label = c ? (c + ' (' + pct + '%)') : '';
+                segs += '<div class="analysis-bar-seg" style="width:' + w + '%;background:' + ANALYSIS_SCALE_COLORS[k - 1] + ';" title="' + escapeHtml(ANALYSIS_SCALE_LABELS[k - 1] + ': ' + c + ' responses') + '">' + (w > 8 ? label : '') + '</div>';
+              }
+              var legend = ANALYSIS_SCALE_LABELS.map(function(lbl, i) {
+                var c = (q.counts && q.counts[i + 1]) ? q.counts[i + 1] : 0;
+                return '<span><i style="background:' + ANALYSIS_SCALE_COLORS[i] + '"></i>' + escapeHtml(lbl) + ': <strong>' + c + '</strong></span>';
+              }).join('');
+              return '<div class="analysis-card">' +
+                '<h3>' + escapeHtml(q.shortLabel || q.header) + '</h3>' +
+                '<div class="analysis-meta"><span><strong>n = ' + n + '</strong></span><span>Mean: <strong>' + (q.mean != null ? q.mean : '—') + '</strong> (1–5)</span>' + polarityNote + '</div>' +
+                '<div class="analysis-bar-wrap"><div class="analysis-bar">' + segs + '</div><div class="analysis-legend">' + legend + '</div></div>' +
+                '</div>';
+            }).join('');
+            panel.innerHTML = '<h1 class="page-title">Scale analysis</h1>' + intro + cards;
+          })
+          .withFailureHandler(function(err) {
+            panel.innerHTML = '<h1 class="page-title">Scale analysis</h1><p style="color:#b91c1c;">Failed: ' + escapeHtml(err && err.message ? err.message : String(err)) + '</p>';
+          })
+          .getScaleAggregates();
+      }
+
+      function refreshAnalysis() {
+        renderAnalysis();
       }
 
       function copyProfileLink(companionId) {
@@ -1093,6 +1166,7 @@
       });
 
       window.appRefresh = appRefresh;
+      window.refreshAnalysis = refreshAnalysis;
       window.showFindMatch = showFindMatch;
       window.createMatch = createMatch;
       window.deleteCompanion = deleteCompanion;

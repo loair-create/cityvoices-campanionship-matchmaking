@@ -82,6 +82,125 @@ function getResponsesSheet() {
 }
 
 /**
+ * Parse a cell value into 1–5 for loneliness / isolation scale questions.
+ * Accepts: numbers 1–5, "1. Never", "2. Rarely", text containing Never/Rarely/Sometimes/Often/Always.
+ */
+function parseScaleResponse_(cell) {
+  if (cell == null || cell === '') return null;
+  if (typeof cell === 'number' && !isNaN(cell)) {
+    const n = Math.round(cell);
+    if (n >= 1 && n <= 5) return n;
+    return null;
+  }
+  const s = String(cell).trim();
+  if (!s) return null;
+  const m = s.match(/^(\d)(?:\s*[.\-]|\s|$)/);
+  if (m) {
+    const d = parseInt(m[1], 10);
+    if (d >= 1 && d <= 5) return d;
+  }
+  const m2 = s.match(/^(\d)\./);
+  if (m2) {
+    const d = parseInt(m2[1], 10);
+    if (d >= 1 && d <= 5) return d;
+  }
+  const low = s.toLowerCase();
+  if (/\bnever\b/.test(low) && !/\brarely\b/.test(low)) return 1;
+  if (/\brarely\b/.test(low)) return 2;
+  if (/\bsometimes\b/.test(low)) return 3;
+  if (/\boften\b/.test(low) && !/\balways\b/.test(low)) return 4;
+  if (/\balways\b/.test(low)) return 5;
+  const onlyNum = parseInt(s.replace(/[^\d]/g, ''), 10);
+  if (onlyNum >= 1 && onlyNum <= 5 && String(onlyNum).length <= 1) return onlyNum;
+  return null;
+}
+
+/**
+ * True if column header looks like a 1–5 scale question (loneliness / connection survey).
+ */
+function isScaleQuestionHeader_(header) {
+  const h = String(header || '').toLowerCase();
+  if (!h) return false;
+  if (h.includes('1–5') || h.includes('1-5') || h.includes('1 to 5')) return true;
+  if (h.includes('please respond') && h.includes('scale')) return true;
+  if (h.includes('feel lonely')) return true;
+  if (h.includes('how often do you feel lonely')) return true;
+  return false;
+}
+
+/**
+ * Short label for charts (text inside [...] or trimmed header).
+ */
+function shortScaleQuestionLabel_(header) {
+  const h = String(header || '');
+  const bracket = h.match(/\[\s*([^\]]+)\s*\]/);
+  if (bracket) return bracket[1].trim();
+  return h.replace(/^please respond on a\s*1[–-]5\s*scale:\s*/i, '').trim() || h;
+}
+
+/**
+ * Rough polarity for interpretation note (higher score = more "risk" vs more "connection").
+ */
+function scaleQuestionPolarity_(header) {
+  const h = String(header || '').toLowerCase();
+  if (h.includes('isolated') || h.includes('left out') || h.includes('lack companionship') ||
+      h.includes('avoid social') || h.includes('anxiety') || h.includes('fear') || h.includes('lonely')) {
+    return 'higher_more_concern';
+  }
+  if (h.includes('talk to') || h.includes('understand me') || h.includes('connected to') ||
+      h.includes('meaningful') || h.includes('spend time with another') || h.includes('initiate contact') ||
+      h.includes('community activities') || h.includes('motivated to connect')) {
+    return 'higher_more_positive';
+  }
+  return 'neutral';
+}
+
+/**
+ * Aggregated 1–5 scale responses across all form rows (for Analysis page).
+ * @returns {{ questions: Array, totalRows: number, error: string|null }}
+ */
+function getScaleAggregates() {
+  try {
+    const sheet = getResponsesSheet();
+    const data = sheet.getDataRange().getValues();
+    if (!data || data.length < 2) {
+      return { questions: [], totalRows: 0, error: null };
+    }
+    const headers = data[0] || [];
+    const rows = data.slice(1);
+    const questions = [];
+    for (let j = 0; j < headers.length; j++) {
+      const header = String(headers[j] == null ? '' : headers[j]).trim();
+      if (!isScaleQuestionHeader_(header)) continue;
+      const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      let sum = 0;
+      let n = 0;
+      for (let r = 0; r < rows.length; r++) {
+        const row = rows[r];
+        const val = parseScaleResponse_(row && row[j]);
+        if (val != null) {
+          counts[val]++;
+          sum += val;
+          n++;
+        }
+      }
+      if (n === 0) continue;
+      questions.push({
+        header: header,
+        shortLabel: shortScaleQuestionLabel_(header),
+        polarity: scaleQuestionPolarity_(header),
+        counts: counts,
+        n: n,
+        mean: Math.round((sum / n) * 10) / 10
+      });
+    }
+    return { questions: questions, totalRows: rows.length, error: null };
+  } catch (e) {
+    return { questions: [], totalRows: 0, error: e.message || String(e) };
+  }
+}
+
+/**
  * FETCH DATA
  * Returns a valid payload even on error so the UI never stays stuck on "Loading".
  * On error, returns { companions: [], matches: [], criteria: null, reminderRecipient, loadError: "message" }.
