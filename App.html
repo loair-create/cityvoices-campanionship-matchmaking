@@ -276,32 +276,80 @@
         { key: 'isVeteran', label: 'Veteran' }
       ];
 
+      var loadTimeoutId = null;
+
       function loadData() {
+        var loadingEl = document.getElementById('loading');
+        var contentEl = document.getElementById('content');
+        if (!loadingEl) return;
+
         if (typeof google === 'undefined' || !google.script || !google.script.run) {
-          document.getElementById('loading').innerHTML = '<p style="color: #b91c1c;">This app must be run from Google Apps Script (Deploy as web app or Test as web app).</p>';
+          loadingEl.innerHTML = '<p style="color: #b91c1c;">This app must be run from Google Apps Script (Deploy as web app or Test as web app).</p>';
           return;
         }
+
+        function showContentAndTab() {
+          try {
+            if (loadTimeoutId) { clearTimeout(loadTimeoutId); loadTimeoutId = null; }
+            loadingEl.style.display = 'none';
+            if (contentEl) contentEl.style.display = 'flex';
+            showTab('directory');
+          } catch (e) {
+            loadingEl.innerHTML = '<p style="color: #b91c1c;">Error: ' + (e.message || String(e)) + '</p><button type="button" class="btn btn-primary" onclick="window.appRefresh()">Retry</button>';
+            loadingEl.style.display = 'block';
+          }
+        }
+
+        function showLoadError(msg) {
+          if (loadTimeoutId) { clearTimeout(loadTimeoutId); loadTimeoutId = null; }
+          loadingEl.innerHTML = '<p style="color: #b91c1c;">' + escapeHtml(msg) + '</p><button type="button" class="btn btn-primary" onclick="window.appRefresh()">Retry</button>';
+          loadingEl.style.display = 'block';
+          if (contentEl) contentEl.style.display = 'none';
+        }
+
+        loadTimeoutId = setTimeout(function() {
+          loadTimeoutId = null;
+          if (loadingEl.style.display !== 'none') {
+            showLoadError('Loading is taking too long. The app may need authorization, or the spreadsheet may be unavailable. Click Retry after authorizing or checking the spreadsheet.');
+          }
+        }, 28000);
+
         google.script.run
           .withSuccessHandler(function(data) {
-            state.companions = data.companions || [];
-            state.matches = data.matches || [];
-            state.reminderRecipient = data.reminderRecipient || 'danfrey76@gmail.com';
-            var saved = (data.criteria && data.criteria.length) ? data.criteria : [];
-            var byKey = {};
-            saved.forEach(function(item) { byKey[item.key] = item; });
-            state.criteria = DEFAULT_CRITERIA.map(function(defaultItem) {
-              var s = byKey[defaultItem.key];
-              return s ? { key: s.key, label: s.label || defaultItem.label, weight: s.weight, category: s.category || defaultItem.category, enabled: s.enabled !== false } : JSON.parse(JSON.stringify(defaultItem));
-            });
-            Object.keys(byKey).forEach(function(k) {
-              if (!DEFAULT_CRITERIA.some(function(d) { return d.key === k; })) state.criteria.push(byKey[k]);
-            });
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('content').style.display = 'flex';
-            showTab('directory');
+            try {
+              var banner = document.getElementById('load-error-banner');
+              if (banner) banner.style.display = 'none';
+              state.companions = data && data.companions ? data.companions : [];
+              state.matches = data && data.matches ? data.matches : [];
+              state.reminderRecipient = (data && data.reminderRecipient) ? data.reminderRecipient : 'danfrey76@gmail.com';
+              var saved = (data && data.criteria && data.criteria.length) ? data.criteria : [];
+              var byKey = {};
+              saved.forEach(function(item) { byKey[item.key] = item; });
+              state.criteria = DEFAULT_CRITERIA.map(function(defaultItem) {
+                var s = byKey[defaultItem.key];
+                return s ? { key: s.key, label: s.label || defaultItem.label, weight: s.weight, category: s.category || defaultItem.category, enabled: s.enabled !== false } : JSON.parse(JSON.stringify(defaultItem));
+              });
+              Object.keys(byKey).forEach(function(k) {
+                if (!DEFAULT_CRITERIA.some(function(d) { return d.key === k; })) state.criteria.push(byKey[k]);
+              });
+              showContentAndTab();
+              if (data && data.loadError && contentEl) {
+                banner = document.getElementById('load-error-banner');
+                if (!banner) {
+                  banner = document.createElement('div');
+                  banner.id = 'load-error-banner';
+                  banner.style.cssText = 'display:block;padding:12px 16px;margin-bottom:16px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;font-size:14px;';
+                  contentEl.insertBefore(banner, contentEl.firstChild);
+                }
+                banner.style.display = 'block';
+                banner.innerHTML = '<strong>Load problem:</strong> ' + escapeHtml(data.loadError) + ' <button type="button" class="btn btn-secondary" onclick="window.appRefresh()">Retry</button>';
+              }
+            } catch (e) {
+              showLoadError('Failed to process data: ' + (e.message || String(e)));
+            }
           })
           .withFailureHandler(function(err) {
-            document.getElementById('loading').innerHTML = '<p style="color: #b91c1c;">Failed to load: ' + (err.message || String(err)) + '</p>';
+            showLoadError('Failed to load: ' + (err && err.message ? err.message : String(err)));
           })
           .getData();
       }

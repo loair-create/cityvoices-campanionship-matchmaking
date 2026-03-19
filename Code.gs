@@ -102,74 +102,81 @@ function getResponsesSheet() {
 
 /**
  * FETCH DATA
- * Wrapped so storage/spreadsheet errors don't break deployment or first load.
+ * Returns a valid payload even on error so the UI never stays stuck on "Loading".
+ * On error, returns { companions: [], matches: [], criteria: null, reminderRecipient, loadError: "message" }.
  */
 function getData() {
   let companions = [];
   let matches = [];
   let criteria = null;
-
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-
-    // 1. Get Companions from the connected responses sheet
-    const formSheet = getResponsesSheet();
-    const formData = formSheet.getDataRange().getValues();
-    const headers = formData[0];
-    const rows = formData.slice(1);
-    companions = rows
-      .map((row, i) => parseCompanion(row, headers, i + 2))
-      .filter(c => c != null);
-  } catch (e) {
-    throw new Error('Companions: ' + (e.message || String(e)));
-  }
-
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    let matchSheet = ss.getSheetByName('Matches');
-    if (!matchSheet) {
-      matchSheet = ss.insertSheet('Matches');
-      matchSheet.appendRow(['Match ID', 'Companion 1 ID', 'Companion 2 ID', 'Status', 'Notes', 'Created At', 'C1 Name', 'C2 Name', 'First Meeting Set Date', 'Reminder Sent']);
-    }
-    const matchData = matchSheet.getDataRange().getValues();
-    const matchRows = matchData.slice(1);
-    const matchHeaders = (matchData[0] || []).map(h => String(h || '').toLowerCase());
-    const col = (name) => {
-      const i = matchHeaders.findIndex(h => h.includes(name));
-      return i >= 0 ? i : -1;
-    };
-    const idxDate = col('first meeting') >= 0 ? col('first meeting') : 8;
-    const idxReminder = col('reminder sent') >= 0 ? col('reminder sent') : 9;
-    matches = matchRows.map(r => ({
-      id: String(r[0]),
-      companion1Id: String(r[1]),
-      companion2Id: String(r[2]),
-      status: r[3],
-      notes: r[4],
-      createdAt: r[5],
-      firstMeetingSetDate: r[idxDate] ? (r[idxDate] instanceof Date ? r[idxDate] : new Date(r[idxDate])) : null,
-      reminderSent: r[idxReminder] === true || String(r[idxReminder] || '').toLowerCase() === 'yes' || r[idxReminder] === 1
-    }));
-  } catch (e) {
-    throw new Error('Matches: ' + (e.message || String(e)));
-  }
-
-  // 3. Criteria: avoid Script Properties read failure (can cause INTERNAL error)
-  try {
-    const scriptProperties = PropertiesService.getScriptProperties();
-    const savedCriteria = scriptProperties.getProperty('MATCHING_CRITERIA');
-    if (savedCriteria) criteria = JSON.parse(savedCriteria);
-  } catch (e) {
-    // Use default criteria if storage read fails
-  }
-
   let reminderRecipient = 'danfrey76@gmail.com';
-  try {
-    const r = PropertiesService.getScriptProperties().getProperty('REMINDER_RECIPIENT_EMAIL');
-    if (r && r.trim()) reminderRecipient = r.trim();
-  } catch (err) {}
+  let loadError = null;
 
-  return { companions, matches, criteria, reminderRecipient };
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    try {
+      const formSheet = getResponsesSheet();
+      const formData = formSheet.getDataRange().getValues();
+      const headers = formData[0] || [];
+      const rows = (formData.length > 1) ? formData.slice(1) : [];
+      companions = rows
+        .map((row, i) => {
+          try {
+            return parseCompanion(row, headers, i + 2);
+          } catch (parseErr) {
+            return null;
+          }
+        })
+        .filter(c => c != null);
+    } catch (e) {
+      loadError = (loadError ? loadError + ' ' : '') + ('Companions: ' + (e.message || String(e)));
+    }
+
+    try {
+      let matchSheet = ss.getSheetByName('Matches');
+      if (!matchSheet) {
+        matchSheet = ss.insertSheet('Matches');
+        matchSheet.appendRow(['Match ID', 'Companion 1 ID', 'Companion 2 ID', 'Status', 'Notes', 'Created At', 'C1 Name', 'C2 Name', 'First Meeting Set Date', 'Reminder Sent']);
+      }
+      const matchData = matchSheet.getDataRange().getValues();
+      const matchRows = (matchData.length > 1) ? matchData.slice(1) : [];
+      const matchHeaders = (matchData[0] || []).map(h => String(h || '').toLowerCase());
+      const col = (name) => {
+        const i = matchHeaders.findIndex(h => h.includes(name));
+        return i >= 0 ? i : -1;
+      };
+      const idxDate = col('first meeting') >= 0 ? col('first meeting') : 8;
+      const idxReminder = col('reminder sent') >= 0 ? col('reminder sent') : 9;
+      matches = matchRows.map(r => ({
+        id: String(r[0]),
+        companion1Id: String(r[1]),
+        companion2Id: String(r[2]),
+        status: r[3],
+        notes: r[4],
+        createdAt: r[5],
+        firstMeetingSetDate: r[idxDate] ? (r[idxDate] instanceof Date ? r[idxDate] : new Date(r[idxDate])) : null,
+        reminderSent: r[idxReminder] === true || String(r[idxReminder] || '').toLowerCase() === 'yes' || r[idxReminder] === 1
+      }));
+    } catch (e) {
+      loadError = (loadError ? loadError + ' ' : '') + ('Matches: ' + (e.message || String(e)));
+    }
+
+    try {
+      const scriptProperties = PropertiesService.getScriptProperties();
+      const savedCriteria = scriptProperties.getProperty('MATCHING_CRITERIA');
+      if (savedCriteria) criteria = JSON.parse(savedCriteria);
+    } catch (e) {}
+
+    try {
+      const r = PropertiesService.getScriptProperties().getProperty('REMINDER_RECIPIENT_EMAIL');
+      if (r && r.trim()) reminderRecipient = r.trim();
+    } catch (err) {}
+  } catch (e) {
+    loadError = e.message || String(e);
+  }
+
+  return { companions, matches, criteria, reminderRecipient, loadError: loadError || null };
 }
 
 /**
