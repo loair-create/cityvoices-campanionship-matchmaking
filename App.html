@@ -1015,10 +1015,10 @@
         var panel = document.getElementById('panel-reminder-email');
         var recipient = state.reminderRecipient || '';
         panel.innerHTML = '<h1 class="page-title">Reminder Email</h1>' +
-          '<p style="margin:0 0 24px 0;font-size:14px;color:#374151;max-width:560px;">When a match has status <strong>Active</strong>, a reminder is sent 3 months after their first meeting date so Dan can check in on the companionship. Set where real reminders go, send a test, and run the check below.</p>' +
+          '<p style="margin:0 0 24px 0;font-size:14px;color:#374151;max-width:560px;">When a match has status <strong>Active</strong> or <strong>First Meeting Set</strong>, a reminder is sent 6 months after their first meeting date so Dan can check in on the companionship. Set where real reminders go, send a test, and run the check below.</p>' +
           '<div class="card" style="padding:24px;max-width:560px;margin-bottom:20px;border-left:4px solid #0d9488;">' +
             '<h3 style="margin:0 0 8px 0;font-size:14px;font-weight:700;color:#134e4a;text-transform:uppercase;letter-spacing:0.05em;">Real reminder — where to send</h3>' +
-            '<p style="margin:0 0 16px 0;font-size:13px;color:#6b7280;">This address receives the actual 3‑month check-in reminders (one per due match).</p>' +
+            '<p style="margin:0 0 16px 0;font-size:13px;color:#6b7280;">This address receives the actual 6‑month check-in reminders (one per due match).</p>' +
             '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">' +
               '<div class="filter-item" style="flex:1;min-width:220px;"><label for="reminder-recipient-input">Email for real reminders</label><input type="email" id="reminder-recipient-input" value="' + escapeHtml(recipient) + '" placeholder="e.g. danfrey76@gmail.com" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-top:4px;box-sizing:border-box;"></div>' +
               '<button type="button" class="btn btn-primary" id="save-reminder-recipient-btn">Save</button>' +
@@ -1034,7 +1034,7 @@
           '</div>' +
           '<div class="card" style="padding:24px;max-width:560px;border-left:4px solid #0f766e;">' +
             '<h3 style="margin:0 0 8px 0;font-size:14px;font-weight:700;color:#134e4a;text-transform:uppercase;letter-spacing:0.05em;">Send due reminders now</h3>' +
-            '<p style="margin:0 0 12px 0;font-size:13px;color:#6b7280;">Refresh updates the &quot;Reminder Schedule&quot; sheet. Run check sends real 3‑month reminder emails to the address above for any matches that are due.</p>' +
+            '<p style="margin:0 0 12px 0;font-size:13px;color:#6b7280;">Refresh updates the &quot;Reminder Schedule&quot; sheet. Run check sends real 6‑month reminder emails to the address above for any matches that are due.</p>' +
             '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:12px;">' +
               '<button type="button" class="btn btn-primary" id="refresh-reminder-sheet-btn">Refresh Reminder Schedule sheet</button>' +
               '<button type="button" class="btn btn-primary" id="run-reminder-check-btn">Run reminder check now</button>' +

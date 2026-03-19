@@ -44,7 +44,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Companionship Connections')
     .addItem('Open Dashboard', 'openApp')
-    .addItem('Run 3‑month reminder check now', 'runScheduledReminders')
+    .addItem('Run 6‑month reminder check now', 'runScheduledReminders')
     .addToUi();
 }
 
@@ -61,7 +61,7 @@ function openApp() {
 /**
  * Run this once from the Apps Script editor to authorize email sending.
  * Select "authorizeEmailPermission" in the function dropdown, click Run, then approve when prompted.
- * After that, the Tester email and 3‑month reminders will work from the site/spreadsheet.
+ * After that, the Tester email and 6‑month reminders will work from the site/spreadsheet.
  */
 function authorizeEmailPermission() {
   const to = Session.getActiveUser().getEmail();
@@ -497,8 +497,8 @@ function updateCompanionNote(rowNumber, note) {
   return true;
 }
 
-// --- REMINDER EMAIL (3 months after First Meeting Set) ---
-const REMINDER_MONTHS = 3;
+// --- REMINDER EMAIL (6 months after First Meeting Set Date, for status Active or First Meeting Set) ---
+const REMINDER_MONTHS = 6;
 
 function getReminderRecipient() {
   try {
@@ -519,7 +519,7 @@ function saveReminderRecipient(email) {
 }
 
 /**
- * Returns schedule of reminders: matches with status Active, with reminder due date (3 months after First Meeting Set Date) and sent status.
+ * Returns schedule of reminders: matches with status Active or First Meeting Set, with reminder due date (6 months after First Meeting Set Date) and sent status.
  */
 function getReminderSchedule() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -557,7 +557,8 @@ function getReminderSchedule() {
     const status = r[3];
     const firstMeetingDate = r[idxDate] ? (r[idxDate] instanceof Date ? r[idxDate] : new Date(r[idxDate])) : null;
     const reminderSent = r[idxReminder] === true || String(r[idxReminder] || '').toLowerCase() === 'yes' || r[idxReminder] === 1;
-    if (status !== 'Active' || !firstMeetingDate) return;
+    const statusStr = String(status || '').trim();
+    if ((statusStr !== 'Active' && statusStr !== 'First Meeting Set') || !firstMeetingDate) return;
     const dueDate = addMonths(firstMeetingDate, REMINDER_MONTHS);
     const c1 = findCompanion(r[1]);
     const c2 = findCompanion(r[2]);
@@ -610,8 +611,8 @@ function buildReminderEmailBody(matchId) {
     const phone = c ? (c.phone || '—') : '—';
     block += (name + ':\n  Preferred contact: ' + preferred + '\n  Email: ' + email + '\n  Phone: ' + phone + '\n\n');
   });
-  const body = "This is a reminder that it's been 3 months since " + matchNames + " had their first meeting set. Remember to check in with them to see how their Companionship is going. Their preferred contact method is below.\n\n" + block;
-  const subject = "Companionship check-in: " + matchNames + " (3-month reminder)";
+  const body = "This is a reminder that it's been 6 months since " + matchNames + " had their first meeting set. Remember to check in with them to see how their Companionship is going. Their preferred contact method is below.\n\n" + block;
+  const subject = "Companionship check-in: " + matchNames + " (6-month reminder)";
   return { body, subject, c1Name, c2Name };
 }
 
@@ -662,7 +663,7 @@ function runScheduledReminders() {
 function sendTestReminderEmail(toEmail) {
   const email = String(toEmail || '').trim();
   if (!email) throw new Error('No email address provided. Enter an email in the "Send test to" field on the Tester email page, then click Test Send.');
-  const body = "This is a test reminder email for the Companionship Matching app. When a match has status \"Active\" and 3 months have passed since their first meeting date, a reminder like this is sent to the configured recipient.\n\nExample body for a real reminder:\n\nThis is a reminder that it's been 3 months since [Match Names] had their first meeting set. Remember to check in with them to see how their Companionship is going. Their preferred contact method is below.";
+  const body = "This is a test reminder email for the Companionship Matching app. When a match has status \"Active\" or \"First Meeting Set\" and 6 months have passed since their first meeting date, a reminder like this is sent to the configured recipient.\n\nExample body for a real reminder:\n\nThis is a reminder that it's been 6 months since [Match Names] had their first meeting set. Remember to check in with them to see how their Companionship is going. Their preferred contact method is below.";
   const subject = "Companionship app – test reminder";
   try {
     MailApp.sendEmail(email, subject, body);
@@ -689,7 +690,7 @@ function updateReminderSheet() {
   sheet.clearContents();
   sheet.appendRow(['Match ID', 'Match Names', 'First Meeting Set Date', 'Reminder Due Date', 'Reminder Sent', 'Next reminder to send']);
   if (schedule.length === 0) {
-    sheet.getRange(2, 1).setValue('No matches with status "Active" yet.');
+    sheet.getRange(2, 1).setValue('No matches with status "Active" or "First Meeting Set" yet.');
   } else {
     const nextDue = schedule.find(s => !s.reminderSent);
     schedule.forEach((item, i) => {
