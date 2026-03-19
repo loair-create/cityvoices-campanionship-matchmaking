@@ -1078,17 +1078,21 @@
           return;
         }
         var rows = settings.map(function(s, idx) {
+          var colLet = s.columnLetter || '';
           return '<tr>' +
-            '<td style="font-size:13px;color:#374151;">' + escapeHtml(s.header) + '</td>' +
+            '<td style="font-size:12px;font-weight:600;color:#0f766e;white-space:nowrap;">' + escapeHtml(colLet) + '</td>' +
+            '<td style="font-size:12px;color:#374151;max-width:360px;">' + escapeHtml(s.header) + '</td>' +
             '<td><input type="checkbox" class="settings-show-cb" data-idx="' + idx + '" ' + (s.showOnProfile ? 'checked' : '') + '></td>' +
             '<td><input type="text" class="settings-label-inp" data-idx="' + idx + '" value="' + escapeHtml(s.label || s.header) + '" placeholder="Short label" style="width:100%;max-width:240px;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box;"></td>' +
           '</tr>';
         }).join('');
         panel.innerHTML = '<h1 class="page-title">Settings</h1>' +
-          '<p style="margin:0 0 20px 0;font-size:14px;color:#374151;max-width:640px;">Control which form questions appear on everyone\'s profile pop-up and on the shareable profile link. Use <strong>Display label</strong> to shorten the question text. New columns added to the form will appear here after you refresh; they are shown on profiles by default.</p>' +
-          '<div class="card" style="padding:24px;max-width:900px;">' +
-            '<h3 style="margin:0 0 16px 0;font-size:14px;font-weight:700;color:#134e4a;">Profile pop-up fields</h3>' +
-            '<table class="criteria-table"><thead><tr><th>Form question (column)</th><th style="width:120px;">Show on profile</th><th>Display label</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+          '<p style="margin:0 0 20px 0;font-size:14px;color:#374151;max-width:720px;">Every sheet column <strong>A through BB</strong> is listed below (54 columns). Use <strong>Show on profile</strong> to control the companion pop-up and shareable profile link. Use <strong>Display label</strong> to shorten long question text. Empty header cells appear as &quot;Column X&quot; and default to hidden on profiles until you turn them on.</p>' +
+          '<div class="card" style="padding:24px;max-width:960px;">' +
+            '<h3 style="margin:0 0 16px 0;font-size:14px;font-weight:700;color:#134e4a;">Profile pop-up fields (A–BB)</h3>' +
+            '<div style="max-height:70vh;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;">' +
+            '<table class="criteria-table" style="margin:0;"><thead><tr><th style="width:56px;">Col</th><th>Form question (header row)</th><th style="width:120px;">Show on profile</th><th>Display label</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+            '</div>' +
             '<div style="margin-top:16px;"><button type="button" class="btn btn-primary" id="save-profile-settings-btn">Save profile field settings</button></div>' +
           '</div>';
         document.getElementById('save-profile-settings-btn').addEventListener('click', function() {

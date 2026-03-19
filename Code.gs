@@ -192,6 +192,53 @@ function serializeDateForClient_(d) {
   return isNaN(x.getTime()) ? null : x.toISOString();
 }
 
+/** Fixed width for form data + Settings: column A through BB (54 columns). */
+function getFormResponseLastColumn_() {
+  return 54;
+}
+
+/** 1 → A, 27 → AA, 54 → BB */
+function columnIndexToLetters_(column) {
+  let col = Math.floor(Number(column));
+  if (col < 1) return '';
+  let letter = '';
+  let temp;
+  while (col > 0) {
+    temp = (col - 1) % 26;
+    letter = String.fromCharCode(temp + 65) + letter;
+    col = (col - temp - 1) / 26;
+  }
+  return letter;
+}
+
+/**
+ * Read form responses from row 1 through last row, always through column BB.
+ */
+function getFormSheetValues_(formSheet) {
+  const lastRow = Math.max(formSheet.getLastRow(), 1);
+  const numCols = getFormResponseLastColumn_();
+  return formSheet.getRange(1, 1, lastRow, numCols).getValues();
+}
+
+/**
+ * Build header array of length A:BB. Empty row-1 cells become "Column X" so Settings lists every column.
+ */
+function normalizeFormHeaderRow_(headersRow) {
+  const n = getFormResponseLastColumn_();
+  const out = [];
+  for (let c = 0; c < n; c++) {
+    const raw = (headersRow && c < headersRow.length) ? headersRow[c] : '';
+    const t = raw != null ? String(raw).trim() : '';
+    out.push(t ? t : ('Column ' + columnIndexToLetters_(c + 1)));
+  }
+  return out;
+}
+
+/** Placeholder headers (empty row-1 cell) — default to hidden on public profile. */
+function isSyntheticFormHeader_(header) {
+  return /^Column [A-Z]+$/.test(String(header || '').trim());
+}
+
 /**
  * Parse a cell value into 1–5 for loneliness / isolation scale questions.
  * Accepts: numbers 1–5, "1. Never", "2. Rarely", text containing Never/Rarely/Sometimes/Often/Always.
@@ -273,14 +320,15 @@ function scaleQuestionPolarity_(header) {
 function getScaleAggregates() {
   try {
     const sheet = getResponsesSheet();
-    const data = sheet.getDataRange().getValues();
+    const data = getFormSheetValues_(sheet);
     if (!data || data.length < 2) {
       return { questions: [], totalRows: 0, error: null };
     }
     const headers = data[0] || [];
     const rows = data.slice(1);
     const questions = [];
-    for (let j = 0; j < headers.length; j++) {
+    const numCols = getFormResponseLastColumn_();
+    for (let j = 0; j < numCols; j++) {
       const header = String(headers[j] == null ? '' : headers[j]).trim();
       if (!isScaleQuestionHeader_(header)) continue;
       const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
@@ -334,9 +382,10 @@ function getData() {
     try {
       const formSheet = getResponsesSheet();
       formSheetName = formSheet.getName();
-      const formData = formSheet.getDataRange().getValues();
-      const headers = formData[0] || [];
-      formHeaders = (headers || []).map(h => String(h == null ? '' : h).trim()).filter(h => h.length > 0);
+      const formData = getFormSheetValues_(formSheet);
+      const headersRow = formData[0] || [];
+      const headers = normalizeFormHeaderRow_(headersRow);
+      formHeaders = headers;
       const rows = (formData.length > 1) ? formData.slice(1) : [];
       formRowCount = rows.length;
       companions = rows
@@ -422,9 +471,13 @@ function getProfileFieldSettings(formHeaders) {
       });
     }
   } catch (e) {}
-  return (formHeaders || []).map(function(header) {
+  return (formHeaders || []).map(function(header, idx) {
     const s = saved[header];
-    return s ? { header: header, label: s.label || header, showOnProfile: s.showOnProfile !== false } : { header: header, label: header, showOnProfile: true };
+    const columnLetter = columnIndexToLetters_(idx + 1);
+    const defaultShowOnProfile = !isSyntheticFormHeader_(header);
+    return s
+      ? { header: header, columnLetter: columnLetter, label: s.label || header, showOnProfile: s.showOnProfile !== false }
+      : { header: header, columnLetter: columnLetter, label: header, showOnProfile: defaultShowOnProfile };
   });
 }
 
@@ -626,8 +679,8 @@ function getReminderSchedule() {
   if (!matchSheet) return [];
   ensureMatchSheetColumns(matchSheet);
   const formSheet = getResponsesSheet();
-  const formData = formSheet.getDataRange().getValues();
-  const headers = formData[0];
+  const formData = getFormSheetValues_(formSheet);
+  const headers = normalizeFormHeaderRow_(formData[0] || []);
   const rows = formData.slice(1);
   const companions = [];
   rows.forEach((row, i) => {
@@ -684,8 +737,8 @@ function buildReminderEmailBody(matchId) {
   const matchSheet = ss.getSheetByName('Matches');
   if (!matchSheet) return { body: '', subject: '', c1Name: '', c2Name: '' };
   const formSheet = getResponsesSheet();
-  const formData = formSheet.getDataRange().getValues();
-  const headers = formData[0];
+  const formData = getFormSheetValues_(formSheet);
+  const headers = normalizeFormHeaderRow_(formData[0] || []);
   const rows = formData.slice(1);
   const companions = [];
   rows.forEach((row, i) => {
@@ -960,9 +1013,10 @@ function getDurationInProgramText(isoDateOrNull) {
  */
 function getCompanionForProfile(companionId) {
   const formSheet = getResponsesSheet();
-  const formData = formSheet.getDataRange().getValues();
-  const headers = formData[0] || [];
-  const formHeaders = headers.map(h => String(h || '').trim()).filter(h => h.length > 0);
+  const formData = getFormSheetValues_(formSheet);
+  const headersRow = formData[0] || [];
+  const headers = normalizeFormHeaderRow_(headersRow);
+  const formHeaders = headers;
   const rowNum = parseInt(companionId, 10);
   if (rowNum < 2 || rowNum > formData.length) return null;
   const row = formData[rowNum - 1];
