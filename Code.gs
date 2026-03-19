@@ -75,6 +75,7 @@ function authorizeEmailPermission() {
  */
 function getPreferredResponseSheetNames_() {
   return [
+    'Form_Responses',
     'Form Responses 1',
     'City Voices Companionship v2 (Responses)',
     'Form Responses',
@@ -156,6 +157,9 @@ function getResponsesSheet() {
     if (prefIdx >= 0) nameBoost = 200 - prefIdx;
     else if (ln.indexOf('response') >= 0 || ln.indexOf('form') >= 0 || ln.indexOf('companionship') >= 0) {
       nameBoost = 80;
+    } else if (ln.replace(/_/g, ' ').indexOf('form response') >= 0) {
+      // e.g. tab renamed with different punctuation
+      nameBoost = 75;
     }
 
     // Data rows dominate so a full tab always wins over an empty similarly named tab.
@@ -863,7 +867,12 @@ function parseCompanion(row, headers, rowNum) {
       raw[key] = v;
     });
 
-    const waiveIdx = safeHeaders.findIndex(h => /\bwaiver\b/i.test(h));
+    // Google Form often uses long headers without the word "waiver" (e.g. Companionship Agreement confirmation).
+    const waiveIdx = safeHeaders.findIndex(h =>
+      /\bwaiver\b/i.test(h) ||
+      /companionship agreement/i.test(h) ||
+      /filled out and signed/i.test(h) ||
+      /signed both/i.test(h));
     const waiverCell = waiveIdx >= 0 ? rowValues[waiveIdx] : rowValues[1];
     const waiverVal = String(waiverCell || '').trim();
     const waiverSigned = waiverVal.length > 0 && waiverVal.toLowerCase() !== 'no';
@@ -888,10 +897,11 @@ function parseCompanion(row, headers, rowNum) {
       waiverSigned,
       raw,
       preferredContact: getVal('preferred method of contact') || getVal('preferred contact') || "",
-      firstName: getVal('First Name'),
-      lastName: getVal('Last Name'),
-      email: getVal('Email'),
-      phone: getVal('Phone Number'),
+      // Long Google Form question text (e.g. "What is your first name?") matches via substring.
+      firstName: getVal('First Name') || getVal('your first name') || getVal('first name?'),
+      lastName: getVal('Last Name') || getVal('your last name') || getVal('last name?'),
+      email: getVal('Email') || getVal('Share Your Email') || getVal('e-mail'),
+      phone: getVal('Phone Number') || getVal('Share Your Phone') || getVal('phone number') || getVal('mobile'),
       borough: getVal('Borough'),
       neighborhood: getVal('neighborhood'),
       willingToTravel: getVal('willing to travel'),
