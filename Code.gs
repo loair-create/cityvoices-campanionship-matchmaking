@@ -669,6 +669,16 @@ function updateCompanionNote(rowNumber, note) {
 
 // --- REMINDER EMAIL (6 months after First Meeting Set Date, for status Active or First Meeting Set) ---
 const REMINDER_MONTHS = 6;
+/** Default: City Voices – Companion Connections Check-In (Google Form). Override with Script property COMPANION_CHECKIN_FORM_URL if the link changes. */
+const COMPANION_CHECKIN_FORM_URL_DEFAULT = 'https://forms.gle/dnPAo62XAYZRHDzy5';
+
+function getCompanionCheckinFormUrl_() {
+  try {
+    const u = PropertiesService.getScriptProperties().getProperty('COMPANION_CHECKIN_FORM_URL');
+    if (u && String(u).trim()) return String(u).trim();
+  } catch (e) {}
+  return COMPANION_CHECKIN_FORM_URL_DEFAULT;
+}
 
 function getReminderRecipient() {
   try {
@@ -781,7 +791,18 @@ function buildReminderEmailBody(matchId) {
     const phone = c ? (c.phone || '—') : '—';
     block += (name + ':\n  Preferred contact: ' + preferred + '\n  Email: ' + email + '\n  Phone: ' + phone + '\n\n');
   });
-  const body = "This is a reminder that it's been 6 months since " + matchNames + " had their first meeting set. Remember to check in with them to see how their Companionship is going. Their preferred contact method is below.\n\n" + block;
+  const surveyUrl = getCompanionCheckinFormUrl_();
+  const surveyBlock =
+    '\n---\n' +
+    'Companion check-in survey\n' +
+    'When you reach out to ' + matchNames + ', please send them this City Voices companion check-in form (each companion can complete it on their own). It takes about 5 minutes and helps us support companions like them:\n' +
+    surveyUrl + '\n';
+  const body =
+    "This is a reminder that it's been 6 months since " +
+    matchNames +
+    " had their first meeting set. Remember to check in with them to see how their Companionship is going. Their preferred contact method is below.\n\n" +
+    block +
+    surveyBlock;
   const subject = "Companionship check-in: " + matchNames + " (6-month reminder)";
   return { body, subject, c1Name, c2Name };
 }
@@ -833,7 +854,16 @@ function runScheduledReminders() {
 function sendTestReminderEmail(toEmail) {
   const email = String(toEmail || '').trim();
   if (!email) throw new Error('No email address provided. Enter an email in the "Send test to" field on the Tester email page, then click Test Send.');
-  const body = "This is a test reminder email for the Companionship Matching app. When a match has status \"Active\" or \"First Meeting Set\" and 6 months have passed since their first meeting date, a reminder like this is sent to the configured recipient.\n\nExample body for a real reminder:\n\nThis is a reminder that it's been 6 months since [Match Names] had their first meeting set. Remember to check in with them to see how their Companionship is going. Their preferred contact method is below.";
+  const exampleUrl = getCompanionCheckinFormUrl_();
+  const body =
+    'This is a test reminder email for the Companionship Matching app. When a match has status "Active" or "First Meeting Set" and 6 months have passed since their first meeting date, a reminder like this is sent to the configured recipient.\n\n' +
+    'Example body for a real reminder:\n\n' +
+    "This is a reminder that it's been 6 months since [Match Names] had their first meeting set. Remember to check in with them to see how their Companionship is going. Their preferred contact method is below.\n\n" +
+    '[contact details for each person]\n\n' +
+    '---\n' +
+    'Companion check-in survey\n' +
+    'When you reach out to [Match Names], please send them this City Voices companion check-in form (each companion can complete it on their own). It takes about 5 minutes and helps us support companions like them:\n' +
+    exampleUrl;
   const subject = "Companionship app – test reminder";
   try {
     MailApp.sendEmail(email, subject, body);
