@@ -71,14 +71,26 @@ function authorizeEmailPermission() {
 
 /**
  * Get the responses sheet (Companionship form data).
- * Uses the sheet name for City Voices Companionship v2, with fallback.
+ * Tries several common names; if none match and there is only one sheet, uses that.
  */
 function getResponsesSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName('City Voices Companionship v2 (Responses)');
-  if (!sheet) sheet = ss.getSheetByName('Form Responses 1');
-  if (!sheet) throw new Error('No responses sheet found. Expected "City Voices Companionship v2 (Responses)" or "Form Responses 1".');
-  return sheet;
+  const namesToTry = [
+    'City Voices Companionship v2 (Responses)',
+    'Form Responses 1',
+    'Form Responses',
+    'Responses',
+    'Companionship Responses',
+    'Sheet1'
+  ];
+  for (let i = 0; i < namesToTry.length; i++) {
+    const sheet = ss.getSheetByName(namesToTry[i]);
+    if (sheet) return sheet;
+  }
+  const allSheets = ss.getSheets();
+  if (allSheets.length === 1) return allSheets[0];
+  const sheetNames = allSheets.map(function(s) { return s.getName(); }).join(', ');
+  throw new Error('No responses sheet found. Tried: ' + namesToTry.join(', ') + '. Your spreadsheet has: ' + sheetNames + '. Rename one of these to "Form Responses 1" or "City Voices Companionship v2 (Responses)" to use it.');
 }
 
 /**
@@ -212,16 +224,22 @@ function getData() {
   let reminderRecipient = 'danfrey76@gmail.com';
   let loadError = null;
   let formHeaders = [];
+  let formSheetName = '';
+  let formRowCount = 0;
+  let availableSheets = [];
 
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+    availableSheets = ss.getSheets().map(function(s) { return s.getName(); });
 
     try {
       const formSheet = getResponsesSheet();
+      formSheetName = formSheet.getName();
       const formData = formSheet.getDataRange().getValues();
       const headers = formData[0] || [];
       formHeaders = (headers || []).map(h => String(h == null ? '' : h).trim()).filter(h => h.length > 0);
       const rows = (formData.length > 1) ? formData.slice(1) : [];
+      formRowCount = rows.length;
       companions = rows
         .map((row, i) => parseCompanion(row, headers, i + 2))
         .filter(c => c != null);
@@ -277,7 +295,18 @@ function getData() {
     profileFieldSettings = getProfileFieldSettings(formHeaders);
   } catch (e) {}
 
-  return { companions, matches, criteria, reminderRecipient, loadError: loadError || null, formHeaders, profileFieldSettings };
+  return {
+    companions,
+    matches,
+    criteria,
+    reminderRecipient,
+    loadError: loadError || null,
+    formHeaders,
+    profileFieldSettings,
+    formSheetName: formSheetName || null,
+    formRowCount: formRowCount,
+    availableSheets: availableSheets.length ? availableSheets : null
+  };
 }
 
 /**
@@ -711,6 +740,7 @@ function deleteCompanion(rowNumber) {
 // Builds fixed keys for matching + raw[header]=value for every column so profile can be driven by Settings.
 function parseCompanion(row, headers, rowNum) {
   try {
+    if (!row || typeof row !== 'object' || (typeof row.length !== 'number')) return null;
     const safeHeaders = (headers || []).map(h => String(h == null ? '' : h));
     const getVal = (str) => {
       const idx = safeHeaders.findIndex(h => h.toLowerCase().includes(String(str || '').toLowerCase()));

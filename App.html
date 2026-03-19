@@ -315,6 +315,10 @@
               });
               state.formHeaders = (data && data.formHeaders) ? data.formHeaders : [];
               state.profileFieldSettings = (data && data.profileFieldSettings) ? data.profileFieldSettings : [];
+              state.formSheetName = (data && data.formSheetName) != null ? data.formSheetName : '';
+              state.formRowCount = (data && data.formRowCount) != null ? data.formRowCount : 0;
+              state.availableSheets = (data && data.availableSheets) ? data.availableSheets : [];
+              state.loadError = (data && data.loadError) || null;
               showContentAndTab();
               if (data && data.loadError && contentEl) {
                 banner = document.getElementById('load-error-banner');
@@ -516,10 +520,26 @@
         var grid = document.getElementById('directory-grid');
         if (!grid) return;
         if (list.length === 0) {
-          var emptyMsg = state.companions.length === 0
-            ? 'No companions loaded. Make sure your form responses sheet has the correct name (<strong>City Voices Companionship v2 (Responses)</strong> or <strong>Form Responses 1</strong>) and has at least one row of data. Then click <strong>Refresh</strong>.'
-            : 'No companions match your search or filters. Try clearing the search box or changing filters.';
-          grid.innerHTML = '<div style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;color:#374151;font-size:14px;line-height:1.5;">' + emptyMsg + '</div>';
+          var emptyMsg;
+          if (state.companions.length > 0) {
+            emptyMsg = 'No companions match your search or filters. Try clearing the search box or changing filters.';
+          } else if (state.loadError) {
+            emptyMsg = '<strong>Load problem:</strong> ' + escapeHtml(state.loadError);
+            if (state.availableSheets && state.availableSheets.length) {
+              emptyMsg += '<br><br>Sheets in this workbook: <strong>' + escapeHtml(state.availableSheets.join(', ')) + '</strong>. Rename one to <strong>Form Responses 1</strong> (or use that name for the tab with your form data).';
+            }
+            emptyMsg += '<br><br>Then click <strong>Refresh</strong>.';
+          } else if (state.formRowCount > 0 && state.formSheetName) {
+            emptyMsg = 'We found <strong>' + state.formRowCount + '</strong> data rows in the sheet <strong>&quot;' + escapeHtml(state.formSheetName) + '&quot;</strong> but could not parse any as companions. ' +
+              'Row 1 must be your <strong>column headers</strong> (e.g. Timestamp, First Name, Last Name, Email). Make sure this sheet is the one linked to your Google Form and that columns match what the app expects. Then click <strong>Refresh</strong>.';
+          } else if (state.formSheetName) {
+            emptyMsg = 'Sheet <strong>&quot;' + escapeHtml(state.formSheetName) + '&quot;</strong> has no data rows. Add at least one row of form responses (row 1 = headers, row 2+ = data). Then click <strong>Refresh</strong>.';
+          } else {
+            emptyMsg = 'No companions loaded. The app looks for a sheet named <strong>Form Responses 1</strong> or <strong>City Voices Companionship v2 (Responses)</strong>. ' +
+              (state.availableSheets && state.availableSheets.length ? 'Your spreadsheet has: <strong>' + escapeHtml(state.availableSheets.join(', ')) + '</strong>. ' : '') +
+              'Rename your form data sheet to one of those, or add a sheet with that name. Then click <strong>Refresh</strong>.';
+          }
+          grid.innerHTML = '<div style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;color:#374151;font-size:14px;line-height:1.6;">' + emptyMsg + '</div>';
           return;
         }
         list.forEach(function(c) {
