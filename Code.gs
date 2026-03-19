@@ -149,6 +149,7 @@ function getResponsesSheet() {
     const name = sheet.getName();
     const ln = name.toLowerCase();
     if (ln === 'matches' || ln === 'reminder schedule') continue;
+    if (isReservedPostSurveySheetName_(name)) continue;
 
     const dataRows = getSheetDataRowCount_(sheet);
     const sig = getFormHeaderSignalScore_(sheet);
@@ -190,6 +191,43 @@ function serializeDateForClient_(d) {
   }
   const x = new Date(d);
   return isNaN(x.getTime()) ? null : x.toISOString();
+}
+
+/** Post-program survey tab (A–T). Not used for directory / matching. */
+function getPostSurveyLastColumn_() {
+  return 20;
+}
+
+/** Tab names for post survey — excluded from main enrollment sheet auto-pick. */
+function isReservedPostSurveySheetName_(sheetName) {
+  const key = String(sheetName || '').toLowerCase().replace(/[\s_\-]/g, '');
+  return key === 'formresponses2' || key === 'formresponsesii';
+}
+
+/**
+ * Post-program (Form Responses 2) sheet. Optional. Script property POST_SURVEY_SHEET_NAME overrides.
+ */
+function getPostSurveySheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  try {
+    const o = String(PropertiesService.getScriptProperties().getProperty('POST_SURVEY_SHEET_NAME') || '').trim();
+    if (o) {
+      const sh = ss.getSheetByName(o);
+      if (sh) return sh;
+    }
+  } catch (e) {}
+  const tryNames = ['Form Responses 2', 'Form_Responses2', 'Form Responses2'];
+  for (let i = 0; i < tryNames.length; i++) {
+    const sh = ss.getSheetByName(tryNames[i]);
+    if (sh) return sh;
+  }
+  return null;
+}
+
+function getPostSurveySheetValues_(sheet) {
+  if (!sheet) return [];
+  const lastRow = Math.max(sheet.getLastRow(), 1);
+  return sheet.getRange(1, 1, lastRow, getPostSurveyLastColumn_()).getValues();
 }
 
 /** Fixed width for form data + Settings: column A through BB (54 columns). */
@@ -332,46 +370,297 @@ function scaleQuestionPolarity_(header) {
 }
 
 /**
+ * Core scale aggregation for any rectangular sheet data (row 0 = headers).
+ */
+function computeScaleAggregatesFromData_(data, numCols) {
+  if (!data || data.length < 2) {
+    return { questions: [], totalRows: 0 };
+  }
+  const headers = data[0] || [];
+  const rows = data.slice(1);
+  const questions = [];
+  const nCol = Math.min(numCols || headers.length, headers.length);
+  for (let j = 0; j < nCol; j++) {
+    const header = String(headers[j] == null ? '' : headers[j]).trim();
+    if (!isScaleQuestionHeader_(header)) continue;
+    const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    let sum = 0;
+    let n = 0;
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      const val = parseScaleResponse_(row && row[j]);
+      if (val != null) {
+        counts[val]++;
+        sum += val;
+        n++;
+      }
+    }
+    if (n === 0) continue;
+    questions.push({
+      header: header,
+      shortLabel: shortScaleQuestionLabel_(header),
+      polarity: scaleQuestionPolarity_(header),
+      counts: counts,
+      n: n,
+      mean: Math.round((sum / n) * 10) / 10
+    });
+  }
+  return { questions: questions, totalRows: rows.length };
+}
+
+function getPreSurveyAggregates_() {
+  const sheet = getResponsesSheet();
+  const data = getFormSheetValues_(sheet);
+  const r = computeScaleAggregatesFromData_(data, getFormResponseLastColumn_());
+  return {
+    questions: r.questions,
+    totalRows: r.totalRows,
+    sheetName: sheet.getName()
+  };
+}
+
+function getPostSurveyAggregates_() {
+  const sheet = getPostSurveySheet();
+  if (!sheet) {
+    return { questions: [], totalRows: 0, sheetName: null };
+  }
+  const data = getPostSurveySheetValues_(sheet);
+  const r = computeScaleAggregatesFromData_(data, getPostSurveyLastColumn_());
+  return {
+    questions: r.questions,
+    totalRows: r.totalRows,
+    sheetName: sheet.getName()
+  };
+}
+
+function normalizeAnalysisEmail_(cell) {
+  return String(cell == null ? '' : cell).trim().toLowerCase();
+}
+
+function findEmailColumnIndex_(headersRow, maxCol) {
+  const n = Math.min(maxCol, (headersRow || []).length);
+  for (let j = 0; j < n; j++) {
+    if (String(headersRow[j] || '').toLowerCase().indexOf('email') >= 0) return j;
+  }
+  return -1;
+}
+
+function canonicalScaleKeyFromHeader_(header) {
+  return String(shortScaleQuestionLabel_(header) || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractScaleMapFromRow_(row, headersRow, numCols) {
+  const map = {};
+  const headerByKey = {};
+  const n = Math.min(numCols, (headersRow || []).length, (row || []).length);
+  for (let j = 0; j < n; j++) {
+    const header = String(headersRow[j] == null ? '' : headersRow[j]).trim();
+    if (!isScaleQuestionHeader_(header)) continue;
+    const val = parseScaleResponse_(row[j]);
+    if (val == null) continue;
+    const key = canonicalScaleKeyFromHeader_(header);
+    if (!key) continue;
+    map[key] = val;
+    headerByKey[key] = header;
+  }
+  return { map: map, headerByKey: headerByKey };
+}
+
+function formatAnalysisTimestamp_(v) {
+  if (v == null || v === '') return '';
+  if (v instanceof Date) {
+    return isNaN(v.getTime()) ? '' : Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+  }
+  return String(v);
+}
+
+/**
+ * Positive delta = improvement (less concern or more connection, depending on item).
+ */
+function improvementDelta_(preScore, postScore, polarity) {
+  if (preScore == null || postScore == null) return null;
+  if (polarity === 'higher_more_positive') return postScore - preScore;
+  if (polarity === 'higher_more_concern') return preScore - postScore;
+  return preScore - postScore;
+}
+
+/**
+ * Full analysis: pre survey, post survey (Form Responses 2), paired improvement (match on email; each post row counts).
+ */
+function getFullAnalysis() {
+  const out = {
+    pre: { questions: [], totalRows: 0, sheetName: '', error: null },
+    post: { questions: [], totalRows: 0, sheetName: null, error: null },
+    paired: {
+      summary: [],
+      individuals: [],
+      stats: {
+        preRowsWithEmail: 0,
+        postRows: 0,
+        emailsWithBoth: 0,
+        postSubmissionsUsed: 0,
+        postRowsNoPreMatch: 0
+      }
+    },
+    error: null
+  };
+  try {
+    out.pre = getPreSurveyAggregates_();
+  } catch (e) {
+    out.pre.error = e.message || String(e);
+  }
+  try {
+    out.post = getPostSurveyAggregates_();
+  } catch (e) {
+    out.post.error = e.message || String(e);
+  }
+  try {
+    out.paired = buildPairedPrePostImprovement_();
+  } catch (e) {
+    out.paired.error = e.message || String(e);
+  }
+  return out;
+}
+
+function buildPairedPrePostImprovement_() {
+  const stats = {
+    preRowsWithEmail: 0,
+    postRows: 0,
+    emailsWithBoth: 0,
+    postSubmissionsUsed: 0,
+    postRowsNoPreMatch: 0
+  };
+  const preSheet = getResponsesSheet();
+  const preData = getFormSheetValues_(preSheet);
+  const preHeaders = preData[0] || [];
+  const preNum = getFormResponseLastColumn_();
+  const preEmailIdx = findEmailColumnIndex_(preHeaders, preNum);
+  const preByEmail = {};
+  if (preData.length > 1 && preEmailIdx >= 0) {
+    for (let r = 1; r < preData.length; r++) {
+      const email = normalizeAnalysisEmail_(preData[r][preEmailIdx]);
+      if (!email) continue;
+      stats.preRowsWithEmail++;
+      if (preByEmail[email]) continue;
+      const ex = extractScaleMapFromRow_(preData[r], preHeaders, preNum);
+      let fn = '';
+      let ln = '';
+      for (let j = 0; j < preNum; j++) {
+        const h = String(preHeaders[j] || '').toLowerCase();
+        if (h.indexOf('first name') >= 0 || h.indexOf('first name?') >= 0) fn = String(preData[r][j] || '').trim();
+        if (h.indexOf('last name') >= 0 || h.indexOf('last name?') >= 0) ln = String(preData[r][j] || '').trim();
+      }
+      preByEmail[email] = {
+        scales: ex.map,
+        headerByKey: ex.headerByKey,
+        name: (fn + ' ' + ln).trim() || email
+      };
+    }
+  }
+
+  const postSheet = getPostSurveySheet();
+  const postData = postSheet ? getPostSurveySheetValues_(postSheet) : [];
+  const postHeaders = postData[0] || [];
+  const postNum = getPostSurveyLastColumn_();
+  const postEmailIdx = findEmailColumnIndex_(postHeaders, postNum);
+  const postByEmail = {};
+
+  if (postData.length > 1 && postEmailIdx >= 0) {
+    for (let r = 1; r < postData.length; r++) {
+      stats.postRows++;
+      const email = normalizeAnalysisEmail_(postData[r][postEmailIdx]);
+      if (!email) continue;
+      const ex = extractScaleMapFromRow_(postData[r], postHeaders, postNum);
+      const ts = formatAnalysisTimestamp_(postData[r][0]);
+      if (!postByEmail[email]) postByEmail[email] = [];
+      postByEmail[email].push({
+        scales: ex.map,
+        headerByKey: ex.headerByKey,
+        timestamp: ts
+      });
+    }
+  }
+
+  const summaryAccum = {};
+  const individuals = [];
+
+  Object.keys(postByEmail).forEach(function(email) {
+    const posts = postByEmail[email];
+    const pre = preByEmail[email];
+    if (!pre) {
+      stats.postRowsNoPreMatch += posts.length;
+      return;
+    }
+    stats.emailsWithBoth++;
+    const submissions = [];
+    posts.forEach(function(p, idx) {
+      stats.postSubmissionsUsed++;
+      const deltas = {};
+      let dSum = 0;
+      let dN = 0;
+      Object.keys(pre.scales).forEach(function(key) {
+        if (p.scales[key] == null) return;
+        const header = pre.headerByKey[key] || p.headerByKey[key] || '';
+        const pol = scaleQuestionPolarity_(header);
+        const d = improvementDelta_(pre.scales[key], p.scales[key], pol);
+        if (d == null) return;
+        deltas[key] = d;
+        dSum += d;
+        dN++;
+        if (!summaryAccum[key]) {
+          summaryAccum[key] = { sum: 0, count: 0, shortLabel: shortScaleQuestionLabel_(header), polarity: pol, header: header };
+        }
+        summaryAccum[key].sum += d;
+        summaryAccum[key].count++;
+      });
+      submissions.push({
+        submissionIndex: idx + 1,
+        timestamp: p.timestamp,
+        meanDelta: dN ? Math.round((dSum / dN) * 100) / 100 : null,
+        deltas: deltas
+      });
+    });
+    individuals.push({
+      email: email,
+      name: pre.name,
+      postCount: posts.length,
+      submissions: submissions
+    });
+  });
+
+  individuals.sort(function(a, b) {
+    return String(a.name).localeCompare(String(b.name));
+  });
+
+  const summary = Object.keys(summaryAccum).map(function(key) {
+    const s = summaryAccum[key];
+    return {
+      key: key,
+      shortLabel: s.shortLabel || key,
+      polarity: s.polarity,
+      meanDelta: s.count ? Math.round((s.sum / s.count) * 100) / 100 : 0,
+      n: s.count,
+      header: s.header
+    };
+  });
+  summary.sort(function(a, b) {
+    return String(a.shortLabel).localeCompare(String(b.shortLabel));
+  });
+
+  return { summary: summary, individuals: individuals, stats: stats };
+}
+
+/**
  * Aggregated 1–5 scale responses across all form rows (for Analysis page).
  * @returns {{ questions: Array, totalRows: number, error: string|null }}
  */
 function getScaleAggregates() {
   try {
-    const sheet = getResponsesSheet();
-    const data = getFormSheetValues_(sheet);
-    if (!data || data.length < 2) {
-      return { questions: [], totalRows: 0, error: null };
-    }
-    const headers = data[0] || [];
-    const rows = data.slice(1);
-    const questions = [];
-    const numCols = getFormResponseLastColumn_();
-    for (let j = 0; j < numCols; j++) {
-      const header = String(headers[j] == null ? '' : headers[j]).trim();
-      if (!isScaleQuestionHeader_(header)) continue;
-      const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-      let sum = 0;
-      let n = 0;
-      for (let r = 0; r < rows.length; r++) {
-        const row = rows[r];
-        const val = parseScaleResponse_(row && row[j]);
-        if (val != null) {
-          counts[val]++;
-          sum += val;
-          n++;
-        }
-      }
-      if (n === 0) continue;
-      questions.push({
-        header: header,
-        shortLabel: shortScaleQuestionLabel_(header),
-        polarity: scaleQuestionPolarity_(header),
-        counts: counts,
-        n: n,
-        mean: Math.round((sum / n) * 10) / 10
-      });
-    }
-    return { questions: questions, totalRows: rows.length, error: null };
+    const x = getPreSurveyAggregates_();
+    return { questions: x.questions, totalRows: x.totalRows, error: null };
   } catch (e) {
     return { questions: [], totalRows: 0, error: e.message || String(e) };
   }
