@@ -23,6 +23,8 @@ function doGet(e) {
     const t = HtmlService.createTemplateFromFile('App');
     t.page = 'profile';
     t.firstName = profile.firstName || '';
+    t.dateEnrolled = profile.dateEnrolled || '';
+    t.durationInProgram = profile.durationInProgram || '';
     t.borough = profile.borough || '';
     t.neighborhood = profile.neighborhood || '';
     t.age = profile.age || '';
@@ -183,9 +185,32 @@ function saveCriteriaSettings(settingsJson) {
 }
 
 /**
- * SAVE A NEW MATCH
+ * Check if a match already exists between two companions (either order).
+ */
+function matchExistsBetween(companion1Id, companion2Id) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Matches');
+  if (!sheet) return false;
+  const data = sheet.getDataRange().getValues();
+  const id1 = String(companion1Id);
+  const id2 = String(companion2Id);
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    const c1 = String(r[1]);
+    const c2 = String(r[2]);
+    if ((c1 === id1 && c2 === id2) || (c1 === id2 && c2 === id1)) return true;
+  }
+  return false;
+}
+
+/**
+ * SAVE A NEW MATCH. Returns { success: true } or { success: false, reason: 'already_matched' }.
  */
 function createMatch(matchObj) {
+  const c1 = String(matchObj.companion1Id);
+  const c2 = String(matchObj.companion2Id);
+  if (matchExistsBetween(c1, c2)) return { success: false, reason: 'already_matched' };
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName('Matches');
   if (!sheet) {
@@ -205,7 +230,40 @@ function createMatch(matchObj) {
     '', // First Meeting Set Date
     ''  // Reminder Sent
   ]);
-  return true;
+  return { success: true };
+}
+
+/**
+ * Create multiple matches for one companion (companion1Id) with a list of others (companion2Ids).
+ * Skips pairs that are already matched. Returns { created: N, skipped: M }.
+ */
+function createMatches(companion1Id, companion2Ids, companionsJson) {
+  const companions = JSON.parse(companionsJson || '[]');
+  const c1 = companions.find(c => String(c.id) === String(companion1Id));
+  if (!c1) return { created: 0, skipped: 0 };
+  let created = 0, skipped = 0;
+  const id1 = String(companion1Id);
+  (companion2Ids || []).forEach(companion2Id => {
+    const id2 = String(companion2Id);
+    if (id1 === id2) { skipped++; return; }
+    if (matchExistsBetween(id1, id2)) { skipped++; return; }
+    const c2 = companions.find(c => String(c.id) === id2);
+    if (!c2) { skipped++; return; }
+    const matchObj = {
+      id: Math.random().toString(36).substring(2, 11),
+      companion1Id: id1,
+      companion2Id: id2,
+      c1Name: (c1.firstName || '') + ' ' + (c1.lastName || ''),
+      c2Name: (c2.firstName || '') + ' ' + (c2.lastName || ''),
+      status: 'Just Matched',
+      notes: '',
+      createdAt: new Date().toISOString()
+    };
+    const result = createMatch(matchObj);
+    if (result && result.success) created++;
+    else skipped++;
+  });
+  return { created, skipped };
 }
 
 function ensureMatchSheetColumns(sheet) {
@@ -230,8 +288,14 @@ function updateMatchData(matchId, field, value) {
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]) === matchId) {
       sheet.getRange(i + 1, colIndex + 1).setValue(value);
-      if (field === 'status' && String(value).trim() === 'First Meeting Set') {
-        sheet.getRange(i + 1, 9).setValue(new Date()); // First Meeting Set Date = column I
+      const statusVal = String(value).trim();
+      if (field === 'status') {
+        const firstMeetingCol = 9;
+        const existingDate = data[i][firstMeetingCol];
+        const isEmpty = existingDate === null || existingDate === undefined || existingDate === '';
+        if (statusVal === 'First Meeting Set' || (statusVal === 'Active' && isEmpty)) {
+          sheet.getRange(i + 1, 9).setValue(new Date()); // First Meeting Set Date = column I
+        }
       }
       return true;
     }
@@ -286,7 +350,7 @@ function saveReminderRecipient(email) {
 }
 
 /**
- * Returns schedule of reminders: matches with status First Meeting Set, with reminder due date and sent status.
+ * Returns schedule of reminders: matches with status Active, with reminder due date (3 months after First Meeting Set Date) and sent status.
  */
 function getReminderSchedule() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -324,7 +388,7 @@ function getReminderSchedule() {
     const status = r[3];
     const firstMeetingDate = r[idxDate] ? (r[idxDate] instanceof Date ? r[idxDate] : new Date(r[idxDate])) : null;
     const reminderSent = r[idxReminder] === true || String(r[idxReminder] || '').toLowerCase() === 'yes' || r[idxReminder] === 1;
-    if (status !== 'First Meeting Set' || !firstMeetingDate) return;
+    if (status !== 'Active' || !firstMeetingDate) return;
     const dueDate = addMonths(firstMeetingDate, REMINDER_MONTHS);
     const c1 = findCompanion(r[1]);
     const c2 = findCompanion(r[2]);
@@ -429,7 +493,7 @@ function runScheduledReminders() {
 function sendTestReminderEmail(toEmail) {
   const email = String(toEmail || '').trim();
   if (!email) throw new Error('No email address provided. Enter an email in the "Send test to" field on the Tester email page, then click Test Send.');
-  const body = "This is a test reminder email for the Companionship Matching app. When a match has \"First Meeting Set\" and 3 months have passed, a reminder like this is sent to the configured recipient.\n\nExample body for a real reminder:\n\nThis is a reminder that it's been 3 months since [Match Names] had their first meeting set. Remember to check in with them to see how their Companionship is going. Their preferred contact method is below.";
+  const body = "This is a test reminder email for the Companionship Matching app. When a match has status \"Active\" and 3 months have passed since their first meeting date, a reminder like this is sent to the configured recipient.\n\nExample body for a real reminder:\n\nThis is a reminder that it's been 3 months since [Match Names] had their first meeting set. Remember to check in with them to see how their Companionship is going. Their preferred contact method is below.";
   const subject = "Companionship app – test reminder";
   try {
     MailApp.sendEmail(email, subject, body);
@@ -456,7 +520,7 @@ function updateReminderSheet() {
   sheet.clearContents();
   sheet.appendRow(['Match ID', 'Match Names', 'First Meeting Set Date', 'Reminder Due Date', 'Reminder Sent', 'Next reminder to send']);
   if (schedule.length === 0) {
-    sheet.getRange(2, 1).setValue('No matches with "First Meeting Set" yet.');
+    sheet.getRange(2, 1).setValue('No matches with status "Active" yet.');
   } else {
     const nextDue = schedule.find(s => !s.reminderSent);
     schedule.forEach((item, i) => {
@@ -518,8 +582,19 @@ function parseCompanion(row, headers, rowNum) {
   const waiverVal = String(waiverCell || '').trim();
   const waiverSigned = waiverVal.length > 0 && waiverVal.toLowerCase() !== 'no';
 
+  // Column A = Timestamp (date form was submitted = enrollment date)
+  let dateEnrolled = null;
+  const rawTimestamp = row[0];
+  if (rawTimestamp) {
+    if (rawTimestamp instanceof Date) dateEnrolled = rawTimestamp;
+    else if (typeof rawTimestamp === 'string' && rawTimestamp.trim()) dateEnrolled = new Date(rawTimestamp);
+    else dateEnrolled = new Date(rawTimestamp);
+  }
+  if (dateEnrolled && isNaN(dateEnrolled.getTime())) dateEnrolled = null;
+
   return {
     id: String(rowNum),
+    dateEnrolled: dateEnrolled ? dateEnrolled.toISOString() : null,
     waiverSigned,
     preferredContact: getVal('preferred method of contact') || getVal('preferred contact') || "",
     firstName: getVal('First Name'),
@@ -571,6 +646,21 @@ function parseCompanion(row, headers, rowNum) {
 }
 
 /**
+ * Format duration from a date to "X days" or "X months" in program.
+ */
+function getDurationInProgramText(isoDateOrNull) {
+  if (!isoDateOrNull) return '—';
+  const d = typeof isoDateOrNull === 'string' ? new Date(isoDateOrNull) : isoDateOrNull;
+  if (isNaN(d.getTime())) return '—';
+  const now = new Date();
+  const days = Math.floor((now.getTime() - d.getTime()) / 86400000);
+  if (days < 0) return '—';
+  if (days < 60) return days === 1 ? '1 day' : days + ' days';
+  const months = Math.floor(days / 30);
+  return months === 1 ? '1 month' : months + ' months';
+}
+
+/**
  * Get companion data for public profile view. Strips last name and all contact info.
  */
 function getCompanionForProfile(companionId) {
@@ -582,8 +672,15 @@ function getCompanionForProfile(companionId) {
   const row = formData[rowNum - 1];
   const c = parseCompanion(row, headers, rowNum);
   if (!c) return null;
+  const dateEnrolled = c.dateEnrolled || null;
+  const dateEnrolledFormatted = dateEnrolled ? (function() {
+    const d = new Date(dateEnrolled);
+    return isNaN(d.getTime()) ? '' : (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear();
+  })() : '';
   return {
     firstName: c.firstName || '',
+    dateEnrolled: dateEnrolledFormatted,
+    durationInProgram: getDurationInProgramText(dateEnrolled),
     borough: c.borough || '',
     neighborhood: c.neighborhood || '',
     age: c.age || '',

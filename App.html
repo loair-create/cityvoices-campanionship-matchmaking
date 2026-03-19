@@ -37,6 +37,11 @@
       <p style="margin:8px 0 0 0;opacity:0.9;">Companionship Connections – shared profile (no contact info)</p>
     </div>
     <div class="profile-section">
+      <h2>Enrollment</h2>
+      <div class="profile-row"><dt>Date of enrollment</dt><dd><?= dateEnrolled || '—' ?></dd></div>
+      <div class="profile-row"><dt>Time in program</dt><dd><?= durationInProgram || '—' ?></dd></div>
+    </div>
+    <div class="profile-section">
       <h2>Location & identity</h2>
       <div class="profile-row"><dt>Borough</dt><dd><?= borough || '—' ?></dd></div>
       <div class="profile-row"><dt>Neighborhood</dt><dd><?= neighborhood || '—' ?></dd></div>
@@ -599,6 +604,24 @@
         return '<div class="detail-row"><dt>' + escapeHtml(label) + '</dt><dd>' + escapeHtml(value || '—') + '</dd></div>';
       }
 
+      function formatEnrollmentDate(isoStr) {
+        if (!isoStr) return '—';
+        var d = new Date(isoStr);
+        if (isNaN(d.getTime())) return '—';
+        return (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear();
+      }
+      function getDurationText(isoStr) {
+        if (!isoStr) return '—';
+        var d = new Date(isoStr);
+        if (isNaN(d.getTime())) return '—';
+        var now = new Date();
+        var days = Math.floor((now.getTime() - d.getTime()) / 86400000);
+        if (days < 0) return '—';
+        if (days < 60) return days === 1 ? '1 day' : days + ' days';
+        var months = Math.floor(days / 30);
+        return months === 1 ? '1 month' : months + ' months';
+      }
+
       function openCompanionModal(id) {
         var c = state.companions.find(function(x) { return String(x.id) === String(id); });
         if (!c) return;
@@ -606,6 +629,7 @@
         var avail = c.availability || {};
         var days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
         var availHtml = days.map(function(d) { return d + ': ' + (avail[d.toLowerCase()] || '—'); }).join(' | ');
+        var enrollment = '<div class="detail-section"><h3>Enrollment</h3>' + dr('Date of enrollment', formatEnrollmentDate(c.dateEnrolled)) + dr('Time in program', getDurationText(c.dateEnrolled)) + '</div>';
         var contact = dr('Preferred Contact Method', c.preferredContact) + dr('Email', c.email) + dr('Phone', c.phone) + dr('Willing To Travel', c.willingToTravel) + dr('Accessibility Needs', c.accessibilityNeeds);
         var identity = dr('Borough', c.borough) + dr('Neighborhood', c.neighborhood) + dr('Age', c.age) + dr('Pronouns', c.pronouns) + dr('Gender', c.gender) + dr('Race/Ethnicity', c.raceEthnicity) + dr('LGBTQ+', c.lgbtq) + dr('Relationship Status', c.relationshipStatus);
         var lived = dr('Experienced Domestic Violence', c.hasExperiencedDV) + dr('Been Incarcerated', c.hasBeenIncarcerated) + dr('Experienced Homelessness', c.hasExperiencedHomelessness) + dr('Receiving Mental Health Services', c.receivingMentalHealthServices) + dr('Receiving Substance Use Services', c.receivingSubstanceUseServices) + dr('Ever Received Mental Health Services', c.historyMentalHealthServices) + dr('Ever Received Substance Use Services', c.historySubstanceUseServices) + dr('Veteran', c.isVeteran);
@@ -621,7 +645,8 @@
             ? '<div class="detail-row"><dt>Status</dt><dd><span class="badge badge-gray">Not yet matched</span></dd></div>'
             : '<div class="detail-row"><dt>Matched with (' + matchInfo.count + ')</dt><dd>' + escapeHtml(matchInfo.names.join(', ')) + '</dd></div><div class="detail-row"><dt>Note</dt><dd>One person can have multiple matches. Use Find Match to add another.</dd></div>') +
           '</div>';
-        var body = '<div class="detail-section"><h3>Contact & Logistics</h3>' + contact + '</div>' +
+        var body = enrollment +
+          '<div class="detail-section"><h3>Contact & Logistics</h3>' + contact + '</div>' +
           '<div class="detail-section"><h3>Identity</h3>' + identity + '</div>' +
           matchSection +
           '<div class="detail-section"><h3>Lived Experience</h3>' + lived + '</div>' +
@@ -661,9 +686,12 @@
         m.innerHTML = '<div class="modal" style="max-width:640px;">' +
           '<div class="modal-header"><h2>Find match for ' + escapeHtml(c1.firstName) + ' ' + escapeHtml(c1.lastName) + '</h2><button type="button" class="btn btn-secondary" onclick="document.getElementById(\'find-match-modal\').remove()">Back</button></div>' +
           '<div class="modal-body">' +
-            '<p style="margin:0 0 12px 0;color:#6b7280;font-size:14px;">Any companion can be matched with any other; one person can have multiple matches. Sorted by match score; use search to find by name. Pairs already matched show "Already matched."</p>' +
+            '<p style="margin:0 0 12px 0;color:#6b7280;font-size:14px;">Select one or more people to match with ' + escapeHtml(c1.firstName) + '. Already-matched pairs cannot be selected again. Then click Create matches.</p>' +
             '<input type="text" class="search-input" id="find-match-search" placeholder="Search by name..." style="margin-bottom:12px;width:100%;">' +
             '<div id="find-match-list"></div>' +
+            '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #e5e7eb;">' +
+              '<button type="button" class="btn btn-primary" id="find-match-create-btn">Create matches</button> <span id="find-match-selected-count" style="font-size:13px;color:#6b7280;"></span>' +
+            '</div>' +
           '</div></div>';
         m.addEventListener('click', function(e) { if (e.target === m) m.remove(); });
         function renderFindMatchList(filter) {
@@ -681,12 +709,11 @@
             var reasons = (result.reasons || []).slice(0, 3);
             var reasonsHtml = reasons.length ? '<div class="match-reasons">' + reasons.map(function(r) { return '<span>' + escapeHtml(r) + '</span>'; }).join('') + '</div>' : '';
             var alreadyPaired = isPairMatched(c1.id, c2.id);
-            var actionBtn = alreadyPaired
-              ? '<span class="badge badge-gray">Already matched</span>'
-              : '<button type="button" class="btn btn-primary" onclick="window.createMatch(\'' + c1.id + '\', \'' + c2.id + '\')">Select</button>';
+            var checkbox = alreadyPaired
+              ? '<input type="checkbox" disabled title="Already matched">'
+              : '<input type="checkbox" class="find-match-cb" data-id="' + escapeHtml(c2.id) + '">';
             return '<div class="match-row">' +
-              '<div class="match-info"><span><strong>' + escapeHtml(c2.firstName) + ' ' + escapeHtml(c2.lastName) + '</strong></span> <span class="badge ' + (pct >= 70 ? 'badge-green' : '') + '">' + pct + '% match</span>' + reasonsHtml + '</div>' +
-              actionBtn +
+              '<div class="match-info">' + checkbox + ' <span><strong>' + escapeHtml(c2.firstName) + ' ' + escapeHtml(c2.lastName) + '</strong></span> <span class="badge ' + (pct >= 70 ? 'badge-green' : '') + '">' + pct + '% match</span>' + (alreadyPaired ? ' <span class="badge badge-gray">Already matched</span>' : '') + reasonsHtml + '</div>' +
             '</div>';
           }).join('');
           var listEl = document.getElementById('find-match-list');
@@ -694,11 +721,43 @@
           if (!list.length && !filter && others.length === 0) {
             if (listEl) listEl.innerHTML = '<p style="color:#6b7280;">No other companions to match.</p>';
           }
+          updateFindMatchCount();
+          listEl && listEl.querySelectorAll('.find-match-cb').forEach(function(cb) {
+            cb.addEventListener('change', updateFindMatchCount);
+          });
+        }
+        function updateFindMatchCount() {
+          var checked = document.querySelectorAll('.find-match-cb:checked');
+          var countEl = document.getElementById('find-match-selected-count');
+          if (countEl) countEl.textContent = checked.length ? checked.length + ' selected' : '';
         }
         document.body.appendChild(m);
         renderFindMatchList('');
         var searchEl = document.getElementById('find-match-search');
         if (searchEl) searchEl.addEventListener('input', function() { renderFindMatchList(this.value); });
+        document.getElementById('find-match-create-btn').addEventListener('click', function() {
+          var checked = document.querySelectorAll('.find-match-cb:checked');
+          var ids = Array.prototype.map.call(checked, function(cb) { return cb.getAttribute('data-id'); });
+          if (!ids.length) { alert('Select at least one person to match.'); return; }
+          var btn = document.getElementById('find-match-create-btn');
+          btn.disabled = true;
+          btn.textContent = 'Creating…';
+          google.script.run.withSuccessHandler(function(res) {
+            var mod = document.getElementById('find-match-modal');
+            if (mod) mod.remove();
+            loadData();
+            showTab('matches');
+            if (res && (res.created > 0 || res.skipped > 0)) {
+              var msg = res.created ? res.created + ' match(es) created.' : '';
+              if (res.skipped) msg += (msg ? ' ' : '') + res.skipped + ' skipped (already matched).';
+              if (msg) alert(msg);
+            }
+          }).withFailureHandler(function(err) {
+            btn.disabled = false;
+            btn.textContent = 'Create matches';
+            alert('Failed: ' + (err && err.message ? err.message : String(err)));
+          }).createMatches(c1.id, ids, JSON.stringify(state.companions));
+        });
       }
 
 
@@ -716,12 +775,16 @@
           notes: '',
           createdAt: new Date().toISOString()
         };
-        google.script.run.withSuccessHandler(function() {
-          state.matches.unshift(matchObj);
-          var mod = document.getElementById('find-match-modal');
-          if (mod) mod.remove();
-          showTab('matches');
-        }).createMatch(matchObj);
+        google.script.run.withSuccessHandler(function(res) {
+          if (res && res.success) {
+            state.matches.unshift(matchObj);
+            var mod = document.getElementById('find-match-modal');
+            if (mod) mod.remove();
+            showTab('matches');
+          } else if (res && res.reason === 'already_matched') {
+            alert('This pair is already matched.');
+          }
+        }).withFailureHandler(function(err) { alert('Failed: ' + (err && err.message ? err.message : String(err))); }).createMatch(matchObj);
       }
 
       function deleteCompanion(id) {
@@ -895,7 +958,7 @@
         var panel = document.getElementById('panel-reminder-email');
         var recipient = state.reminderRecipient || '';
         panel.innerHTML = '<h1 class="page-title">Reminder Email</h1>' +
-          '<p style="margin:0 0 24px 0;font-size:14px;color:#374151;max-width:560px;">3 months after a match has status &quot;First Meeting Set&quot;, a reminder is sent so Dan can check in on the companionship. Set where real reminders go, send a test, and run the check below.</p>' +
+          '<p style="margin:0 0 24px 0;font-size:14px;color:#374151;max-width:560px;">When a match has status <strong>Active</strong>, a reminder is sent 3 months after their first meeting date so Dan can check in on the companionship. Set where real reminders go, send a test, and run the check below.</p>' +
           '<div class="card" style="padding:24px;max-width:560px;margin-bottom:20px;border-left:4px solid #0d9488;">' +
             '<h3 style="margin:0 0 8px 0;font-size:14px;font-weight:700;color:#134e4a;text-transform:uppercase;letter-spacing:0.05em;">Real reminder — where to send</h3>' +
             '<p style="margin:0 0 16px 0;font-size:13px;color:#6b7280;">This address receives the actual 3‑month check-in reminders (one per due match).</p>' +
