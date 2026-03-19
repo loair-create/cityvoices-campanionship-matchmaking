@@ -531,13 +531,14 @@
             emptyMsg += '<br><br>Then click <strong>Refresh</strong>.';
           } else if (state.formRowCount > 0 && state.formSheetName) {
             emptyMsg = 'We found <strong>' + state.formRowCount + '</strong> data rows in the sheet <strong>&quot;' + escapeHtml(state.formSheetName) + '&quot;</strong> but could not parse any as companions. ' +
-              'Row 1 must be your <strong>column headers</strong> (e.g. Timestamp, First Name, Last Name, Email). Make sure this sheet is the one linked to your Google Form and that columns match what the app expects. Then click <strong>Refresh</strong>.';
+              'If your real responses are on another tab, the app may have picked an empty tab first—rename your data tab to <strong>Form Responses 1</strong> or set Apps Script <strong>Script property</strong> <code>FORM_RESPONSES_SHEET_NAME</code> to the exact tab name. ' +
+              'Row 1 must be <strong>column headers</strong> (Timestamp, First name, Email, etc.). Then click <strong>Refresh</strong>.';
           } else if (state.formSheetName) {
             emptyMsg = 'Sheet <strong>&quot;' + escapeHtml(state.formSheetName) + '&quot;</strong> has no data rows. Add at least one row of form responses (row 1 = headers, row 2+ = data). Then click <strong>Refresh</strong>.';
           } else {
-            emptyMsg = 'No companions loaded. The app looks for a sheet named <strong>Form Responses 1</strong> or <strong>City Voices Companionship v2 (Responses)</strong>. ' +
-              (state.availableSheets && state.availableSheets.length ? 'Your spreadsheet has: <strong>' + escapeHtml(state.availableSheets.join(', ')) + '</strong>. ' : '') +
-              'Rename your form data sheet to one of those, or add a sheet with that name. Then click <strong>Refresh</strong>.';
+            emptyMsg = 'No companions loaded. The app auto-picks the tab with the most response rows (or names like <strong>Form Responses 1</strong>). ' +
+              (state.availableSheets && state.availableSheets.length ? 'Your tabs: <strong>' + escapeHtml(state.availableSheets.join(', ')) + '</strong>. ' : '') +
+              'To force a tab, set Apps Script <strong>Script property</strong> <code>FORM_RESPONSES_SHEET_NAME</code> to that tab\'s exact name. Then click <strong>Refresh</strong>.';
           }
           grid.innerHTML = '<div style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;color:#374151;font-size:14px;line-height:1.6;">' + emptyMsg + '</div>';
           return;

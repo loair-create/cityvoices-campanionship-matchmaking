@@ -70,27 +70,122 @@ function authorizeEmailPermission() {
 }
 
 /**
- * Get the responses sheet (Companionship form data).
- * Tries several common names; if none match and there is only one sheet, uses that.
+ * Preferred tab names (used as a tie-breaker when multiple sheets look like form data).
+ * Script property FORM_RESPONSES_SHEET_NAME (exact tab name) overrides everything.
  */
-function getResponsesSheet() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const namesToTry = [
-    'City Voices Companionship v2 (Responses)',
+function getPreferredResponseSheetNames_() {
+  return [
     'Form Responses 1',
+    'City Voices Companionship v2 (Responses)',
     'Form Responses',
     'Responses',
     'Companionship Responses',
     'Sheet1'
   ];
-  for (let i = 0; i < namesToTry.length; i++) {
-    const sheet = ss.getSheetByName(namesToTry[i]);
-    if (sheet) return sheet;
+}
+
+/**
+ * How many data rows (excluding row 1 headers) the sheet has.
+ */
+function getSheetDataRowCount_(sheet) {
+  try {
+    const v = sheet.getDataRange().getValues();
+    if (!v || v.length < 2) return 0;
+    return v.length - 1;
+  } catch (e) {
+    return 0;
   }
-  const allSheets = ss.getSheets();
-  if (allSheets.length === 1) return allSheets[0];
-  const sheetNames = allSheets.map(function(s) { return s.getName(); }).join(', ');
-  throw new Error('No responses sheet found. Tried: ' + namesToTry.join(', ') + '. Your spreadsheet has: ' + sheetNames + '. Rename one of these to "Form Responses 1" or "City Voices Companionship v2 (Responses)" to use it.');
+}
+
+/**
+ * Score header row 0..~12 — looks like a Google Form / signup export (timestamp, name, email).
+ */
+function getFormHeaderSignalScore_(sheet) {
+  try {
+    const v = sheet.getDataRange().getValues();
+    if (!v || !v.length) return 0;
+    const headers = (v[0] || []).map(function(h) {
+      return String(h == null ? '' : h).toLowerCase();
+    });
+    const j = headers.join(' | ');
+    let s = 0;
+    if (/\btimestamp\b/.test(j) || /\bsubmitted\b/.test(j) || /\bdate\s+submitted\b/.test(j)) s += 4;
+    if (/\bfirst\s*name\b/.test(j) || /\bgiven\s*name\b/.test(j)) s += 3;
+    if (/\bemail\b/.test(j) || /\be-mail\b/.test(j)) s += 3;
+    if (/\blast\s*name\b/.test(j) || /\bsurname\b/.test(j) || /\bfamily\s*name\b/.test(j)) s += 2;
+    if (/\bphone\b/.test(j) || /\bmobile\b/.test(j)) s += 1;
+    return s;
+  } catch (e) {
+    return 0;
+  }
+}
+
+/**
+ * Get the responses sheet (Companionship form data).
+ * Picks the best candidate by (1) most data rows, (2) form-like headers, (3) preferred names.
+ * This fixes the case where an empty "City Voices..." tab exists but real data is on "Form Responses 1".
+ * Set script property FORM_RESPONSES_SHEET_NAME to an exact tab name to lock the sheet.
+ */
+function getResponsesSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const props = PropertiesService.getScriptProperties();
+  const override = String(props.getProperty('FORM_RESPONSES_SHEET_NAME') || '').trim();
+  if (override) {
+    const sh = ss.getSheetByName(override);
+    if (!sh) {
+      throw new Error('Form sheet "' + override + '" not found. In Apps Script: Project Settings > Script properties, fix or remove FORM_RESPONSES_SHEET_NAME.');
+    }
+    return sh;
+  }
+
+  const preferred = getPreferredResponseSheetNames_();
+  const sheets = ss.getSheets();
+  let best = null;
+  let bestRank = -1;
+
+  for (let si = 0; si < sheets.length; si++) {
+    const sheet = sheets[si];
+    const name = sheet.getName();
+    const ln = name.toLowerCase();
+    if (ln === 'matches' || ln === 'reminder schedule') continue;
+
+    const dataRows = getSheetDataRowCount_(sheet);
+    const sig = getFormHeaderSignalScore_(sheet);
+    const prefIdx = preferred.indexOf(name);
+    let nameBoost = 0;
+    if (prefIdx >= 0) nameBoost = 200 - prefIdx;
+    else if (ln.indexOf('response') >= 0 || ln.indexOf('form') >= 0 || ln.indexOf('companionship') >= 0) {
+      nameBoost = 80;
+    }
+
+    // Data rows dominate so a full tab always wins over an empty similarly named tab.
+    const rank = dataRows * 100000 + sig * 500 + nameBoost;
+    if (rank > bestRank) {
+      bestRank = rank;
+      best = sheet;
+    }
+  }
+
+  if (best && (getSheetDataRowCount_(best) > 0 || getFormHeaderSignalScore_(best) >= 4)) {
+    return best;
+  }
+
+  if (sheets.length === 1) return sheets[0];
+
+  const sheetNames = sheets.map(function(s) {
+    return s.getName();
+  }).join(', ');
+  throw new Error('No responses sheet found. Your tabs: ' + sheetNames + '. Use a tab with form headers (Timestamp, First name, Email, etc.) and response rows, or set Script property FORM_RESPONSES_SHEET_NAME to the exact tab name.');
+}
+
+/** Dates from Sheets must be ISO strings for google.script.run to serialize reliably. */
+function serializeDateForClient_(d) {
+  if (d == null || d === '') return null;
+  if (d instanceof Date) {
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  const x = new Date(d);
+  return isNaN(x.getTime()) ? null : x.toISOString();
 }
 
 /**
@@ -267,9 +362,9 @@ function getData() {
         companion1Id: String(r[1]),
         companion2Id: String(r[2]),
         status: r[3],
-        notes: r[4],
-        createdAt: r[5],
-        firstMeetingSetDate: r[idxDate] ? (r[idxDate] instanceof Date ? r[idxDate] : new Date(r[idxDate])) : null,
+        notes: r[4] != null ? String(r[4]) : '',
+        createdAt: serializeDateForClient_(r[5]),
+        firstMeetingSetDate: serializeDateForClient_(r[idxDate]),
         reminderSent: r[idxReminder] === true || String(r[idxReminder] || '').toLowerCase() === 'yes' || r[idxReminder] === 1
       }));
     } catch (e) {
@@ -743,31 +838,40 @@ function parseCompanion(row, headers, rowNum) {
   try {
     if (!row || typeof row !== 'object' || (typeof row.length !== 'number')) return null;
     const safeHeaders = (headers || []).map(h => String(h == null ? '' : h));
+    const headerCount = safeHeaders.length;
+    const rowValues = [];
+    for (let i = 0; i < headerCount; i++) {
+      rowValues[i] = i < row.length ? row[i] : '';
+    }
+
     const getVal = (str) => {
       const idx = safeHeaders.findIndex(h => h.toLowerCase().includes(String(str || '').toLowerCase()));
-      return idx > -1 ? String((row && row[idx]) != null ? row[idx] : '').trim() : "";
+      return idx > -1 ? String((rowValues[idx]) != null ? rowValues[idx] : '').trim() : "";
     };
     const getAvail = (day) => {
       const idx = safeHeaders.findIndex(h => h.toLowerCase().includes('[' + (day || '') + ']'));
-      return idx > -1 ? String((row && row[idx]) != null ? row[idx] : 'Unavailable') : "Unavailable";
+      return idx > -1 ? String((rowValues[idx]) != null ? rowValues[idx] : 'Unavailable') : "Unavailable";
     };
 
     const raw = {};
     safeHeaders.forEach((h, idx) => {
       const key = h.trim();
       if (!key) return;
-      let v = (row && row[idx]) != null ? row[idx] : '';
+      let v = rowValues[idx] != null ? rowValues[idx] : '';
       if (v instanceof Date) v = (v.toISOString && v.toISOString()) || String(v);
       else v = String(v == null ? '' : v).trim();
       raw[key] = v;
     });
 
-    const waiverCell = (row && row[1]) != null ? row[1] : '';
+    const waiveIdx = safeHeaders.findIndex(h => /\bwaiver\b/i.test(h));
+    const waiverCell = waiveIdx >= 0 ? rowValues[waiveIdx] : rowValues[1];
     const waiverVal = String(waiverCell || '').trim();
     const waiverSigned = waiverVal.length > 0 && waiverVal.toLowerCase() !== 'no';
 
     let dateEnrolled = null;
-    const rawTimestamp = (row && row[0]) != null ? row[0] : null;
+    const tsIdx = safeHeaders.findIndex(h =>
+      /\btimestamp\b/i.test(h) || /\bdate\s*submitted\b/i.test(h) || /^submitted$/i.test(String(h || '').trim()));
+    const rawTimestamp = tsIdx >= 0 ? rowValues[tsIdx] : rowValues[0];
     if (rawTimestamp) {
       if (rawTimestamp instanceof Date) dateEnrolled = rawTimestamp;
       else if (typeof rawTimestamp === 'string' && rawTimestamp.trim()) dateEnrolled = new Date(rawTimestamp);
