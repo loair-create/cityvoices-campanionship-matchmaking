@@ -297,10 +297,8 @@ function isSyntheticFormHeader_(header) {
   return /^Column [A-Z]+$/.test(String(header || '').trim());
 }
 
-/** Google Form Likert intro text — omit from Settings / profile field lists (handled in Analysis). */
-function isLikertScaleInstructionHeader_(header) {
-  return /please respond on a 1[-–—]?\s*5 scale/i.test(String(header || ''));
-}
+/** Last column included in Settings / profile field picker (A through AW). AX–BB stay on the sheet only. */
+const PROFILE_FIELD_SETTINGS_MAX_COLUMN_1BASED_ = 49;
 
 /** Column AP (42) — internal-only status; edited in app, not in Settings profile field list. */
 const INTERNAL_STATUS_COLUMN_1BASED_ = 42;
@@ -752,15 +750,23 @@ function getProfileFieldSettings(formHeaders) {
   const rows = (formHeaders || []).map(function(header, idx) {
     const s = saved[header];
     const columnLetter = columnIndexToLetters_(idx + 1);
+    const columnNumber = idx + 1;
     const defaultShowOnProfile = !isSyntheticFormHeader_(header);
     return s
-      ? { header: header, columnLetter: columnLetter, label: s.label || header, showOnProfile: s.showOnProfile !== false }
-      : { header: header, columnLetter: columnLetter, label: header, showOnProfile: defaultShowOnProfile };
+      ? { header: header, columnLetter: columnLetter, columnNumber: columnNumber, label: s.label || header, showOnProfile: s.showOnProfile !== false }
+      : { header: header, columnLetter: columnLetter, columnNumber: columnNumber, label: header, showOnProfile: defaultShowOnProfile };
   });
   return rows.filter(function(item) {
-    if (isLikertScaleInstructionHeader_(item.header)) return false;
+    if (item.columnNumber > PROFILE_FIELD_SETTINGS_MAX_COLUMN_1BASED_) return false;
     if (String(item.columnLetter || '').toUpperCase() === 'AP') return false;
     return true;
+  }).map(function(item) {
+    return {
+      header: item.header,
+      columnLetter: item.columnLetter,
+      label: item.label,
+      showOnProfile: item.showOnProfile
+    };
   });
 }
 
