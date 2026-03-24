@@ -297,6 +297,11 @@ function isSyntheticFormHeader_(header) {
   return /^Column [A-Z]+$/.test(String(header || '').trim());
 }
 
+/** Google Form Likert intro text — omit from Settings / profile field lists (handled in Analysis). */
+function isLikertScaleInstructionHeader_(header) {
+  return /please respond on a 1[-–—]?\s*5 scale/i.test(String(header || ''));
+}
+
 function pad2Gs_(n) {
   const s = String(Math.floor(Number(n)));
   return s.length >= 2 ? s : ('0' + s);
@@ -723,13 +728,16 @@ function getProfileFieldSettings(formHeaders) {
       });
     }
   } catch (e) {}
-  return (formHeaders || []).map(function(header, idx) {
+  const rows = (formHeaders || []).map(function(header, idx) {
     const s = saved[header];
     const columnLetter = columnIndexToLetters_(idx + 1);
     const defaultShowOnProfile = !isSyntheticFormHeader_(header);
     return s
       ? { header: header, columnLetter: columnLetter, label: s.label || header, showOnProfile: s.showOnProfile !== false }
       : { header: header, columnLetter: columnLetter, label: header, showOnProfile: defaultShowOnProfile };
+  });
+  return rows.filter(function(item) {
+    return !isLikertScaleInstructionHeader_(item.header);
   });
 }
 
