@@ -1036,6 +1036,7 @@
         if (!m) return;
         var c1 = state.companions.find(function(c) { return String(c.id) === String(m.companion1Id); });
         var c2 = state.companions.find(function(c) { return String(c.id) === String(m.companion2Id); });
+        if (!c1 || !c2) return;
         openCompareTwoCompanionsModal(c1, c2);
       }
 
