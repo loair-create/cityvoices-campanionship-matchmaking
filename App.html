@@ -834,7 +834,7 @@
               e.stopPropagation();
               var id2 = btn.getAttribute('data-compare-with');
               var cB = state.companions.find(function(x) { return String(x.id) === String(id2); });
-              if (cB) openCompareTwoCompanionsModal(c1, cB);
+              if (cB) openCompareTwoCompanionsModal(c1, cB, { fromFindMatch: true });
             });
           });
         }
@@ -962,7 +962,9 @@
         }).deleteMatch(id);
       }
 
-      function openCompareTwoCompanionsModal(c1, c2) {
+      function openCompareTwoCompanionsModal(c1, c2, opts) {
+        opts = opts || {};
+        var fromFindMatch = !!opts.fromFindMatch;
         if (!c1 || !c2) return;
         var existing = document.getElementById('match-detail-modal');
         if (existing) existing.remove();
@@ -1009,15 +1011,17 @@
             '</div></div>';
         });
 
+        var dismissLabel = fromFindMatch ? 'Back' : 'Close';
         var modal = document.createElement('div');
         modal.className = 'modal-overlay';
         modal.id = 'match-detail-modal';
         modal.innerHTML = '<div class="modal modal-wide">' +
           '<div class="modal-header">' +
             '<h2>' + escapeHtml(name1) + ' & ' + escapeHtml(name2) + ' — ' + pct + '% match</h2>' +
-            '<button type="button" class="btn btn-secondary" onclick="document.getElementById(\'match-detail-modal\').remove()">Close</button>' +
+            '<button type="button" class="btn btn-secondary match-detail-dismiss">' + dismissLabel + '</button>' +
           '</div>' +
           '<div class="modal-body">' +
+            (fromFindMatch ? '<p style="margin:0 0 16px 0;font-size:13px;color:#6b7280;">You are comparing candidates for a new match. Use <strong>Back</strong> to return to your selection list.</p>' : '') +
             '<div class="compare-section">' +
               '<h3>Application Comparison (Matches In Green)</h3>' +
               '<table class="compare-table">' +
@@ -1027,7 +1031,9 @@
             '<div class="compare-section">' +
               '<h3>Manual Essay Comparison</h3>' + essayHtml + '</div>' +
           '</div></div>';
-        modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+        function dismissCompareModal() { modal.remove(); }
+        modal.querySelector('.match-detail-dismiss').addEventListener('click', dismissCompareModal);
+        modal.addEventListener('click', function(e) { if (e.target === modal) dismissCompareModal(); });
         document.body.appendChild(modal);
       }
 
