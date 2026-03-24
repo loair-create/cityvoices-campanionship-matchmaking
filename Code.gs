@@ -302,6 +302,26 @@ function isLikertScaleInstructionHeader_(header) {
   return /please respond on a 1[-–—]?\s*5 scale/i.test(String(header || ''));
 }
 
+/** Column AP (42) — internal-only status; edited in app, not in Settings profile field list. */
+const INTERNAL_STATUS_COLUMN_1BASED_ = 42;
+const INTERNAL_STATUS_ALLOWED_ = ['Active', 'Unresponsive', 'Quit'];
+
+/**
+ * Read cell AP; normalize to Active | Unresponsive | Quit (default Active).
+ */
+function parseInternalStatusFromRow_(rowValues) {
+  const idx = INTERNAL_STATUS_COLUMN_1BASED_ - 1;
+  const raw = (rowValues && rowValues.length > idx)
+    ? String(rowValues[idx] != null ? rowValues[idx] : '').trim()
+    : '';
+  if (!raw) return 'Active';
+  const low = raw.toLowerCase();
+  if (low === 'active') return 'Active';
+  if (low === 'unresponsive') return 'Unresponsive';
+  if (low === 'quit') return 'Quit';
+  return 'Active';
+}
+
 function pad2Gs_(n) {
   const s = String(Math.floor(Number(n)));
   return s.length >= 2 ? s : ('0' + s);
@@ -354,6 +374,7 @@ function shouldExcludeFieldFromPublicProfile_(header, label) {
   if (/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b.*\bavailability\b/i.test(t)) return true;
   if (/\bavailability\b.*\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(t)) return true;
   if (/^my\s+availability\s+/i.test(l)) return true;
+  if (/^internal\s*status$/i.test(h) || /^internal\s*status$/i.test(l)) return true;
   return false;
 }
 
@@ -737,7 +758,9 @@ function getProfileFieldSettings(formHeaders) {
       : { header: header, columnLetter: columnLetter, label: header, showOnProfile: defaultShowOnProfile };
   });
   return rows.filter(function(item) {
-    return !isLikertScaleInstructionHeader_(item.header);
+    if (isLikertScaleInstructionHeader_(item.header)) return false;
+    if (String(item.columnLetter || '').toUpperCase() === 'AP') return false;
+    return true;
   });
 }
 
@@ -906,6 +929,23 @@ function updateCompanionNote(rowNumber, note) {
     sheet.getRange(1, noteCol + 1).setValue("INTERNAL NOTES");
   }
   sheet.getRange(rowNumber, noteCol + 1).setValue(note);
+  return true;
+}
+
+/**
+ * Internal status (column AP): Active | Unresponsive | Quit.
+ */
+function updateCompanionInternalStatus(rowNumber, status) {
+  const s = String(status || '').trim();
+  if (INTERNAL_STATUS_ALLOWED_.indexOf(s) === -1) return false;
+  const sheet = getResponsesSheet();
+  const row = parseInt(rowNumber, 10);
+  if (row < 2) return false;
+  const h = sheet.getRange(1, INTERNAL_STATUS_COLUMN_1BASED_).getValue();
+  if (h == null || String(h).trim() === '') {
+    sheet.getRange(1, INTERNAL_STATUS_COLUMN_1BASED_).setValue('INTERNAL STATUS');
+  }
+  sheet.getRange(row, INTERNAL_STATUS_COLUMN_1BASED_).setValue(s);
   return true;
 }
 
@@ -1269,6 +1309,7 @@ function parseCompanion(row, headers, rowNum) {
       isVeteran: getVal('veteran'),
       accessibilityNeeds: getVal('accessibility needs'),
       internalNotes: getVal('INTERNAL NOTES'),
+      internalStatus: parseInternalStatusFromRow_(rowValues),
       essays: {
         hobbiesAndCreativity: hobbiesAndCreativity,
         expectations: getVal('important things that you want'),

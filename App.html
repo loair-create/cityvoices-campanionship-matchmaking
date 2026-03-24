@@ -145,6 +145,7 @@
     .badge-amber { background: #fef3c7; color: #92400e; }
     .badge-green { background: #d1fae5; color: #065f46; }
     .badge-gray { background: #e5e7eb; color: #4b5563; }
+    .badge-red { background: #fee2e2; color: #991b1b; }
     .match-row { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid #e5e7eb; flex-wrap: wrap; gap: 12px; }
     .match-row:last-child { border-bottom: none; }
     .match-info { display: flex; align-items: center; gap: 12px; }
@@ -591,7 +592,9 @@
           card.className = 'card';
           var waiverNote = !c.waiverSigned;
           var neverMatched = !matchedIds[String(c.id)];
+          var intSt = companionInternalStatusLabel(c);
           var badges = [];
+          badges.push('<span class="badge ' + internalStatusBadgeClass(intSt) + '" style="margin-top:4px;">' + escapeHtml(intSt) + '</span>');
           if (waiverNote) badges.push('<span class="badge badge-amber" style="margin-top:4px;">Waiver not signed</span>');
           if (neverMatched) badges.push('<span class="badge badge-gray" style="margin-top:4px;">Not yet matched</span>');
           card.innerHTML = '<div class="card-header" data-id="' + c.id + '">' +
@@ -614,6 +617,18 @@
         var div = document.createElement('div');
         div.textContent = s;
         return div.innerHTML;
+      }
+
+      function companionInternalStatusLabel(c) {
+        var st = (c && c.internalStatus) ? String(c.internalStatus) : 'Active';
+        if (st !== 'Active' && st !== 'Unresponsive' && st !== 'Quit') st = 'Active';
+        return st;
+      }
+
+      function internalStatusBadgeClass(st) {
+        if (st === 'Unresponsive') return 'badge-amber';
+        if (st === 'Quit') return 'badge-red';
+        return 'badge-green';
       }
 
       function downloadCompanionPDF(companionId) {
@@ -736,6 +751,14 @@
         var days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
         var availHtml = days.map(function(d) { return d + ': ' + (avail[d.toLowerCase()] || '—'); }).join(' | ');
         var enrollment = '<div class="detail-section"><h3>Enrollment</h3>' + dr('Date of enrollment', formatEnrollmentDate(c.dateEnrolled)) + dr('Time in program', getDurationText(c.dateEnrolled)) + '</div>';
+        var intSt = companionInternalStatusLabel(c);
+        var internalSection = '<div class="detail-section"><h3>Internal</h3>' +
+          '<div class="detail-row"><dt>Internal status</dt><dd><p style="margin:0 0 8px 0;font-size:12px;color:#6b7280;">Stored in sheet column <strong>AP</strong> (not on public profile).</p>' +
+          '<select id="companion-internal-status" class="companion-internal-status-select" style="padding:8px 10px;border-radius:6px;border:1px solid #d1d5db;font-size:14px;min-width:200px;">' +
+          ['Active', 'Unresponsive', 'Quit'].map(function(opt) {
+            return '<option value="' + escapeHtml(opt) + '"' + (opt === intSt ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
+          }).join('') +
+          '</select></dd></div></div>';
         var profileHtml = '';
         (state.profileFieldSettings || []).forEach(function(s) {
           if (!s.showOnProfile) return;
@@ -750,6 +773,7 @@
             : '<div class="detail-row"><dt>Matched with (' + matchInfo.count + ')</dt><dd>' + escapeHtml(matchInfo.names.join(', ')) + '</dd></div><div class="detail-row"><dt>Note</dt><dd>One person can have multiple matches. Use Find Match to add another.</dd></div>') +
           '</div>';
         var body = enrollment +
+          internalSection +
           profileSection +
           matchSection +
           '<div class="detail-section"><h3>Availability</h3><div class="detail-row"><dt>Days</dt><dd>' + escapeHtml(availHtml) + '</dd></div></div>' +
@@ -772,6 +796,30 @@
           '<div class="modal-body">' + body + '</div></div>';
         modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
         document.body.appendChild(modal);
+        var statusSel = modal.querySelector('#companion-internal-status');
+        if (statusSel) {
+          statusSel.addEventListener('change', function() {
+            var v = this.value;
+            var prev = companionInternalStatusLabel(c);
+            google.script.run
+              .withSuccessHandler(function(ok) {
+                if (!ok) {
+                  statusSel.value = prev;
+                  alert('Could not save internal status.');
+                  return;
+                }
+                c.internalStatus = v;
+                var inState = state.companions.find(function(x) { return String(x.id) === String(c.id); });
+                if (inState) inState.internalStatus = v;
+                if (state.activeTab === 'directory') renderDirectory();
+              })
+              .withFailureHandler(function(err) {
+                statusSel.value = prev;
+                alert('Failed: ' + (err && err.message ? err.message : String(err)));
+              })
+              .updateCompanionInternalStatus(c.id, v);
+          });
+        }
       }
 
       function showFindMatch(selectedId) {
@@ -1155,7 +1203,7 @@
           '</tr>';
         }).join('');
         panel.innerHTML = '<h1 class="page-title">Settings</h1>' +
-          '<p style="margin:0 0 20px 0;font-size:14px;color:#374151;max-width:720px;">Columns <strong>A through BB</strong> appear below except questions that include <strong>Please respond on a 1-5 scale</strong> (those stay in the sheet for Analysis only). Use <strong>Show on profile</strong> for the companion pop-up and shareable profile link. Use <strong>Display label</strong> to shorten long question text. Empty header cells appear as &quot;Column X&quot; and default to hidden on profiles until you turn them on. <strong>Click Save</strong> after you change anything.</p>' +
+          '<p style="margin:0 0 20px 0;font-size:14px;color:#374151;max-width:720px;">Columns <strong>A through BB</strong> appear below except questions that include <strong>Please respond on a 1-5 scale</strong> (those stay in the sheet for Analysis only). <strong>Column AP</strong> is <strong>Internal status</strong> (Active / Unresponsive / Quit) and is edited from each person’s Directory detail view, not here. Use <strong>Show on profile</strong> for the companion pop-up and shareable profile link. Use <strong>Display label</strong> to shorten long question text. Empty header cells appear as &quot;Column X&quot; and default to hidden on profiles until you turn them on. <strong>Click Save</strong> after you change anything.</p>' +
           '<div class="card" style="padding:24px;max-width:960px;">' +
             '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #e5e7eb;">' +
               '<h3 style="margin:0;font-size:14px;font-weight:700;color:#134e4a;">Profile pop-up fields (A–BB)</h3>' +
