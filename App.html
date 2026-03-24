@@ -546,6 +546,13 @@
             });
           }
         }
+        list = list.slice().sort(function(a, b) {
+          var fa = String(a.firstName || '').trim().toLowerCase();
+          var fb = String(b.firstName || '').trim().toLowerCase();
+          var c = fa.localeCompare(fb, undefined, { sensitivity: 'base' });
+          if (c !== 0) return c;
+          return String(a.lastName || '').localeCompare(String(b.lastName || ''), undefined, { sensitivity: 'base' });
+        });
         var grid = document.getElementById('directory-grid');
         if (!grid) return;
         if (list.length === 0) {
