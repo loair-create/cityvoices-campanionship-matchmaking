@@ -303,7 +303,7 @@ function pad2Gs_(n) {
 }
 
 /**
- * Display dates as MMDDYYYY (e.g. 03132026). Used for Timestamp / column A and enrollment lines.
+ * Display dates as MM/DD/YYYY (slashes). Used for Timestamp / column A in companion raw (Settings, profile fields).
  * Returns null if value is not a parseable date.
  */
 function formatTimestampMMDDYYYY_(v) {
@@ -312,7 +312,7 @@ function formatTimestampMMDDYYYY_(v) {
   if (v instanceof Date) d = v;
   else d = new Date(v);
   if (isNaN(d.getTime())) return null;
-  return pad2Gs_(d.getMonth() + 1) + pad2Gs_(d.getDate()) + d.getFullYear();
+  return formatDateMMDDYYYYSlashes_(d);
 }
 
 /** Shareable public profile: dates as MM/DD/YYYY (slashes). */
@@ -1131,14 +1131,14 @@ function updateReminderSheet() {
       sheet.getRange(i + 2, 1, i + 2, 6).setValues([[
         item.matchId,
         item.matchNames,
-        item.firstMeetingSetDate,
-        item.reminderDueDate,
+        formatDateMMDDYYYYSlashes_(item.firstMeetingSetDate),
+        formatDateMMDDYYYYSlashes_(item.reminderDueDate),
         item.reminderSent ? 'Yes' : 'No',
         nextDue && !item.reminderSent && item.matchId === nextDue.matchId ? '← Next' : ''
       ]]);
     });
     if (nextDue) {
-      sheet.getRange(1, 7).setValue('Next reminder due: ' + (nextDue.reminderDueDate.toLocaleDateString()));
+      sheet.getRange(1, 7).setValue('Next reminder due: ' + formatDateMMDDYYYYSlashes_(nextDue.reminderDueDate));
     }
   }
   return true;
@@ -1202,7 +1202,7 @@ function parseCompanion(row, headers, rowNum) {
       raw[key] = v;
     });
 
-    // Column A = Timestamp: show as MMDDYYYY everywhere raw is used (profile, Settings preview).
+    // Column A = Timestamp: show as MM/DD/YYYY everywhere raw is used (profile, Settings preview).
     const colAKey = safeHeaders[0].trim();
     if (colAKey) {
       const tsDisplay = formatTimestampMMDDYYYY_(rowValues[0]);

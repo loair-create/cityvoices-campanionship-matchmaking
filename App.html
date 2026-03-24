@@ -149,6 +149,7 @@
     .match-row:last-child { border-bottom: none; }
     .match-info { display: flex; align-items: center; gap: 12px; }
     .match-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .find-match-row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
     .match-actions select { padding: 6px 10px; border-radius: 6px; border: 1px solid #d1d5db; font-size: 13px; }
     .match-actions input { padding: 6px 10px; border-radius: 6px; border: 1px solid #d1d5db; font-size: 13px; min-width: 180px; }
     .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -642,6 +643,7 @@
             doc.text((c.firstName || '') + ' ' + (c.lastName || '') + ' — Companion Application', margin, y);
             y += lineH + 8;
             doc.setFontSize(10);
+            addLine('Date of enrollment', formatEnrollmentDate(c.dateEnrolled));
             addLine('Preferred Contact Method', c.preferredContact);
             addLine('Email', c.email);
             addLine('Phone', c.phone);
@@ -712,7 +714,7 @@
         var d = new Date(isoStr);
         if (isNaN(d.getTime())) return '—';
         function pad2(n) { var s = String(n); return s.length >= 2 ? s : ('0' + s); }
-        return pad2(d.getMonth() + 1) + pad2(d.getDate()) + d.getFullYear();
+        return pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()) + '/' + d.getFullYear();
       }
       function getDurationText(isoStr) {
         if (!isoStr) return '—';
@@ -813,6 +815,9 @@
               : '<input type="checkbox" class="find-match-cb" data-id="' + escapeHtml(c2.id) + '">';
             return '<div class="match-row">' +
               '<div class="match-info">' + checkbox + ' <span><strong>' + escapeHtml(c2.firstName) + ' ' + escapeHtml(c2.lastName) + '</strong></span> <span class="badge ' + (pct >= 70 ? 'badge-green' : '') + '">' + pct + '% match</span>' + (alreadyPaired ? ' <span class="badge badge-gray">Already matched</span>' : '') + reasonsHtml + '</div>' +
+              '<div class="find-match-row-actions">' +
+                '<button type="button" class="btn btn-secondary find-match-compare-btn" data-compare-with="' + escapeHtml(c2.id) + '">Compare</button>' +
+              '</div>' +
             '</div>';
           }).join('');
           var listEl = document.getElementById('find-match-list');
@@ -823,6 +828,14 @@
           updateFindMatchCount();
           listEl && listEl.querySelectorAll('.find-match-cb').forEach(function(cb) {
             cb.addEventListener('change', updateFindMatchCount);
+          });
+          listEl && listEl.querySelectorAll('.find-match-compare-btn').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+              e.stopPropagation();
+              var id2 = btn.getAttribute('data-compare-with');
+              var cB = state.companions.find(function(x) { return String(x.id) === String(id2); });
+              if (cB) openCompareTwoCompanionsModal(c1, cB);
+            });
           });
         }
         function updateFindMatchCount() {
@@ -949,12 +962,10 @@
         }).deleteMatch(id);
       }
 
-      function openMatchDetailModal(matchId) {
-        var m = state.matches.find(function(x) { return x.id === matchId; });
-        if (!m) return;
-        var c1 = state.companions.find(function(c) { return String(c.id) === String(m.companion1Id); });
-        var c2 = state.companions.find(function(c) { return String(c.id) === String(m.companion2Id); });
+      function openCompareTwoCompanionsModal(c1, c2) {
         if (!c1 || !c2) return;
+        var existing = document.getElementById('match-detail-modal');
+        if (existing) existing.remove();
         var pct = calculateMatchPercent(c1, c2);
         var overlaps = getOverlappingDays(c1, c2);
         var name1 = (c1.firstName || '') + ' ' + (c1.lastName || '');
@@ -1018,6 +1029,14 @@
           '</div></div>';
         modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
         document.body.appendChild(modal);
+      }
+
+      function openMatchDetailModal(matchId) {
+        var m = state.matches.find(function(x) { return x.id === matchId; });
+        if (!m) return;
+        var c1 = state.companions.find(function(c) { return String(c.id) === String(m.companion1Id); });
+        var c2 = state.companions.find(function(c) { return String(c.id) === String(m.companion2Id); });
+        openCompareTwoCompanionsModal(c1, c2);
       }
 
       function renderCriteria() {
