@@ -1,0 +1,63 @@
+/**
+ * This script runs automatically when a user submits your Google Form.
+ * It takes specific "anonymous" columns, moves them to a separate spreadsheet, 
+ * and deletes them from the original spreadsheet.
+ */
+
+function onFormSubmit(e) {
+  // --- CONFIGURATION ---
+  
+  // 1. Put the ID of your SECOND (Anonymous) spreadsheet here.
+  // You can find the ID in the URL of the spreadsheet: 
+  // https://docs.google.com/spreadsheets/d/THIS_LONG_STRING_IS_THE_ID/edit
+  const DESTINATION_SPREADSHEET_ID = 'YOUR_SECOND_SPREADSHEET_ID_HERE';
+  
+  // 2. Put the exact name of the tab in your second spreadsheet
+  const DESTINATION_SHEET_NAME = 'Pre-Survey Results';
+  
+  // 3. Define which columns contain the "Anonymous" questions.
+  // Columns AP to BA correspond to numbers 42 through 53.
+  const anonymousColumns = [42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53]; 
+  
+  // --- END OF CONFIGURATION ---
+
+  // Get the spreadsheet and row that was just updated
+  const sourceSheet = e.range.getSheet();
+  
+  // Only run this script if the submission happened on the "Sign Up Form" tab
+  if (sourceSheet.getName() !== 'Sign Up Form') {
+    return;
+  }
+  
+  const row = e.range.getRow();
+  
+  // Connect to the second spreadsheet
+  const destinationSS = SpreadsheetApp.openById(DESTINATION_SPREADSHEET_ID);
+  const destinationSheet = destinationSS.getSheetByName(DESTINATION_SHEET_NAME);
+  
+  // Get all the data from the newly submitted row
+  const rowData = sourceSheet.getRange(row, 1, 1, sourceSheet.getLastColumn()).getValues()[0];
+  
+  // Prepare an array to hold just the anonymous answers
+  let anonymousAnswers = [];
+  
+  // Grab the Timestamp from Column A (Index 0) of the Master sheet 
+  // and put it in the first spot so it lands in Column A of the Anonymous sheet
+  const timestamp = rowData[0];
+  anonymousAnswers.push(timestamp);
+  
+  // Loop through the columns you specified and pull that data
+  anonymousColumns.forEach(colNumber => {
+    // Arrays are 0-indexed, but column numbers are 1-indexed, so we subtract 1
+    anonymousAnswers.push(rowData[colNumber - 1]); 
+  });
+  
+  // Add the anonymous answers as a new row in the second spreadsheet
+  destinationSheet.appendRow(anonymousAnswers);
+  
+  // Clean up: Delete the anonymous data from the Master spreadsheet
+  // so it isn't sitting next to their identifying information.
+  anonymousColumns.forEach(colNumber => {
+    sourceSheet.getRange(row, colNumber).clearContent();
+  });
+}
