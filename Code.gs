@@ -672,30 +672,33 @@ function getData() {
     }
 
     try {
-      let matchSheet = ss.getSheetByName('Matches');
-      if (!matchSheet) {
-        matchSheet = ss.insertSheet('Matches');
-        matchSheet.appendRow(['Match ID', 'Companion 1 ID', 'Companion 2 ID', 'Status', 'Notes', 'Created At', 'C1 Name', 'C2 Name', 'First Meeting Set Date', 'Reminder Sent']);
+      const companionIdSet = new Set(companions.map(c => String(c.id)));
+      const matchSheet = ss.getSheetByName('Matches');
+      if (matchSheet) {
+        const matchData = matchSheet.getDataRange().getValues();
+        const matchRows = (matchData.length > 1) ? matchData.slice(1) : [];
+        const matchHeaders = (matchData[0] || []).map(h => String(h || '').toLowerCase());
+        const col = (name) => {
+          const i = matchHeaders.findIndex(h => h.includes(name));
+          return i >= 0 ? i : -1;
+        };
+        const idxDate = col('first meeting') >= 0 ? col('first meeting') : 8;
+        const idxReminder = col('reminder sent') >= 0 ? col('reminder sent') : 9;
+        matches = matchRows
+          .filter(r => isValidMatchesSheetDataRow_(r))
+          .map(r => ({
+            id: String(r[0]),
+            companion1Id: String(r[1]),
+            companion2Id: String(r[2]),
+            status: r[3],
+            notes: r[4] != null ? String(r[4]) : '',
+            createdAt: serializeDateForClient_(r[5]),
+            firstMeetingSetDate: serializeDateForClient_(r[idxDate]),
+            reminderSent: r[idxReminder] === true || String(r[idxReminder] || '').toLowerCase() === 'yes' || r[idxReminder] === 1
+          }))
+          .filter(m =>
+            companionIdSet.has(String(m.companion1Id)) && companionIdSet.has(String(m.companion2Id)));
       }
-      const matchData = matchSheet.getDataRange().getValues();
-      const matchRows = (matchData.length > 1) ? matchData.slice(1) : [];
-      const matchHeaders = (matchData[0] || []).map(h => String(h || '').toLowerCase());
-      const col = (name) => {
-        const i = matchHeaders.findIndex(h => h.includes(name));
-        return i >= 0 ? i : -1;
-      };
-      const idxDate = col('first meeting') >= 0 ? col('first meeting') : 8;
-      const idxReminder = col('reminder sent') >= 0 ? col('reminder sent') : 9;
-      matches = matchRows.map(r => ({
-        id: String(r[0]),
-        companion1Id: String(r[1]),
-        companion2Id: String(r[2]),
-        status: r[3],
-        notes: r[4] != null ? String(r[4]) : '',
-        createdAt: serializeDateForClient_(r[5]),
-        firstMeetingSetDate: serializeDateForClient_(r[idxDate]),
-        reminderSent: r[idxReminder] === true || String(r[idxReminder] || '').toLowerCase() === 'yes' || r[idxReminder] === 1
-      }));
     } catch (e) {
       loadError = (loadError ? loadError + ' ' : '') + ('Matches: ' + (e.message || String(e)));
     }
@@ -797,6 +800,25 @@ function saveCriteriaSettings(settingsJson) {
 /**
  * Check if a match already exists between two companions (either order).
  */
+/**
+ * True if row looks like real match data (not a duplicated header, blank line, or stray text).
+ * Companion IDs must be numeric spreadsheet row numbers (data rows start at 2).
+ */
+function isValidMatchesSheetDataRow_(r) {
+  if (!r || typeof r.length !== 'number') return false;
+  const id = String(r[0] != null ? r[0] : '').trim();
+  const id1 = String(r[1] != null ? r[1] : '').trim();
+  const id2 = String(r[2] != null ? r[2] : '').trim();
+  if (!id || !id1 || !id2) return false;
+  if (/^match(\s|_)?id$/i.test(id)) return false;
+  if (/^companion\s*1/i.test(id1) || /^companion\s*2/i.test(id2)) return false;
+  if (!/^\d+$/.test(id1) || !/^\d+$/.test(id2)) return false;
+  const n1 = parseInt(id1, 10);
+  const n2 = parseInt(id2, 10);
+  if (n1 < 2 || n2 < 2 || n1 === n2) return false;
+  return true;
+}
+
 function matchExistsBetween(companion1Id, companion2Id) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Matches');
@@ -806,6 +828,7 @@ function matchExistsBetween(companion1Id, companion2Id) {
   const id2 = String(companion2Id);
   for (let i = 1; i < data.length; i++) {
     const r = data[i];
+    if (!isValidMatchesSheetDataRow_(r)) continue;
     const c1 = String(r[1]);
     const c2 = String(r[2]);
     if ((c1 === id1 && c2 === id2) || (c1 === id2 && c2 === id1)) return true;
@@ -1022,6 +1045,7 @@ function getReminderSchedule() {
   today.setHours(0, 0, 0, 0);
   const schedule = [];
   matchRows.forEach((r, i) => {
+    if (!isValidMatchesSheetDataRow_(r)) return;
     const status = r[3];
     const firstMeetingDate = r[idxDate] ? (r[idxDate] instanceof Date ? r[idxDate] : new Date(r[idxDate])) : null;
     const reminderSent = r[idxReminder] === true || String(r[idxReminder] || '').toLowerCase() === 'yes' || r[idxReminder] === 1;
@@ -1030,6 +1054,7 @@ function getReminderSchedule() {
     const dueDate = addMonths(firstMeetingDate, REMINDER_MONTHS);
     const c1 = findCompanion(r[1]);
     const c2 = findCompanion(r[2]);
+    if (!c1 || !c2) return;
     const c1Name = c1 ? (c1.firstName || '') + ' ' + (c1.lastName || '') : (r[6] || '?');
     const c2Name = c2 ? (c2.firstName || '') + ' ' + (c2.lastName || '') : (r[7] || '?');
     schedule.push({
@@ -1065,9 +1090,10 @@ function buildReminderEmailBody(matchId) {
   const matchRows = data.slice(1);
   const findCompanion = (id) => companions.find(c => String(c.id) === String(id));
   const row = matchRows.find(r => String(r[0]) === String(matchId));
-  if (!row) return { body: '', subject: '', c1Name: '', c2Name: '' };
+  if (!row || !isValidMatchesSheetDataRow_(row)) return { body: '', subject: '', c1Name: '', c2Name: '' };
   const c1 = findCompanion(row[1]);
   const c2 = findCompanion(row[2]);
+  if (!c1 || !c2) return { body: '', subject: '', c1Name: '', c2Name: '' };
   const c1Name = c1 ? (c1.firstName || '') + ' ' + (c1.lastName || '') : (row[6] || '?');
   const c2Name = c2 ? (c2.firstName || '') + ' ' + (c2.lastName || '') : (row[7] || '?');
   const matchNames = c1Name + ' & ' + c2Name;

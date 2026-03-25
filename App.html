@@ -926,33 +926,6 @@
         });
       }
 
-
-      function createMatch(id1, id2) {
-        var c1 = state.companions.find(function(x) { return String(x.id) === String(id1); });
-        var c2 = state.companions.find(function(x) { return String(x.id) === String(id2); });
-        if (!c1 || !c2) return;
-        var matchObj = {
-          id: Math.random().toString(36).substring(2, 11),
-          companion1Id: String(c1.id),
-          companion2Id: String(c2.id),
-          c1Name: (c1.firstName || '') + ' ' + (c1.lastName || ''),
-          c2Name: (c2.firstName || '') + ' ' + (c2.lastName || ''),
-          status: 'Just Matched',
-          notes: '',
-          createdAt: new Date().toISOString()
-        };
-        google.script.run.withSuccessHandler(function(res) {
-          if (res && res.success) {
-            state.matches.unshift(matchObj);
-            var mod = document.getElementById('find-match-modal');
-            if (mod) mod.remove();
-            showTab('matches');
-          } else if (res && res.reason === 'already_matched') {
-            alert('This pair is already matched.');
-          }
-        }).withFailureHandler(function(err) { alert('Failed: ' + (err && err.message ? err.message : String(err))); }).createMatch(matchObj);
-      }
-
       function deleteCompanion(id) {
         if (!confirm('Delete this application? They will be removed from the spreadsheet and any matches.')) return;
         google.script.run.withSuccessHandler(function() { loadData(); }).deleteCompanion(id);
@@ -1396,7 +1369,6 @@
       window.appRefresh = appRefresh;
       window.refreshAnalysis = refreshAnalysis;
       window.showFindMatch = showFindMatch;
-      window.createMatch = createMatch;
       window.deleteCompanion = deleteCompanion;
       window.removeMatch = removeMatch;
       window.openMatchDetailModal = openMatchDetailModal;
