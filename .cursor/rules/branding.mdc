@@ -1,0 +1,49 @@
+---
+description: UI branding for Companionship Matching (App.html) — colors, type, components
+globs: App.html
+alwaysApply: false
+---
+
+# Branding — Companionship Matching dashboard
+
+When adding or changing UI in `App.html`, keep the same visual system as the rest of the app.
+
+## Color tokens (use these hex values)
+
+| Role | Hex | Usage |
+|------|-----|--------|
+| Brand dark (sidebar, profile header, section titles) | `#134e4a` | Nav chrome, strong headings on light sections |
+| Brand active / hover (tabs, primary hover) | `#0f766e` | `.tab-btn.active`, primary button hover |
+| Primary action / accents | `#0d9488` | `.btn-primary`, avatar tint text, loader accent |
+| Teal tint (avatars, availability) | `#ccfbf1` / `#f0fdfa` | Avatar bg, “available” cards |
+| Teal borders (availability) | `#99f6e4` | Available day cards |
+| Page / panel background | `#f3f4f6` (full app shell), `#f9fafb` (main content) | `body.app` vs `.main` |
+| Surface | `#ffffff` | Cards, modals |
+| Border / divider | `#e5e7eb` | Card borders, section rules |
+| Muted border (inputs) | `#d1d5db` | Selects, inputs |
+| Label / secondary text | `#6b7280` | Uppercase labels, helper copy |
+| Body text | `#111` / `#374151` | Primary copy, secondary headings |
+| Success / match copy | `#065f46`, `#047857`, `#059669` | Match reasons, valid weights, positive deltas |
+| Error / danger | `#b91c1c`, `#991b1b` | Errors, danger buttons, invalid weights |
+| Warning banner | `#fef3c7` bg, `#92400e` text, `#f59e0b` border | Inline banners (see existing pattern) |
+| Modal scrim | `rgba(0,0,0,0.5)` | Overlays |
+
+Reuse existing classes (`.badge-green`, `.badge-amber`, `.badge-red`, `.badge-gray`, `.btn-primary`, etc.) before inventing new colors.
+
+## Typography
+
+- Stack: `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`
+- Section labels: ~11–12px, uppercase, `font-weight` 600–700, `letter-spacing` ~0.03–0.05em, color `#6b7280`
+- Page titles: ~1.25rem, weight 700, `#111`
+
+## Layout and shape
+
+- Cards: `border-radius` 8px (12px for modals / profile container), light shadow `0 1px 3px rgba(0,0,0,0.08)`, border `1px solid #e5e7eb`
+- Buttons: `border-radius` 6px; primary fills use teal scale above, not generic blue
+- Sidebar: fixed width feel (~240px), white-on-teal with `rgba(255,255,255,0.1)` hovers
+
+## Product naming
+
+- In copy, align with existing strings: **Companionship Connections**, **Companion Profile**, **Companionship Matching Dashboard** unless the user asks to rename.
+
+Do not introduce a second palette (e.g. purple/blue corporate) for the same surfaces; extend this system instead.
