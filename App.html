@@ -315,7 +315,7 @@
             if (contentEl) contentEl.style.display = 'flex';
             showTab('directory');
           } catch (e) {
-            loadingEl.innerHTML = '<p style="color: #b91c1c;">Error: ' + (e.message || String(e)) + '</p><button type="button" class="btn btn-primary" onclick="window.appRefresh()">Retry</button>';
+            loadingEl.innerHTML = '<p style="color: #b91c1c;">Error: ' + escapeHtml(e.message || String(e)) + '</p><button type="button" class="btn btn-primary" onclick="window.appRefresh()">Retry</button>';
             loadingEl.style.display = 'block';
           }
         }

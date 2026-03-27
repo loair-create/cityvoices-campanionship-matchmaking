@@ -47,6 +47,7 @@ function onOpen() {
 }
 
 function openApp() {
+  requireDashboardAuth_();
   const html = HtmlService.createTemplateFromFile('App')
     .evaluate()
     .setWidth(1200)
@@ -62,6 +63,7 @@ function openApp() {
  * After that, the Tester email and 6‑month reminders will work from the site/spreadsheet.
  */
 function authorizeEmailPermission() {
+  requireDashboardAuth_();
   const to = Session.getActiveUser().getEmail();
   if (!to) throw new Error('Could not get your email. Run openApp from the spreadsheet menu instead and approve when prompted.');
   MailApp.sendEmail(to, 'Companionship app – authorization test', 'This is a one-time test. Email permission is now authorized. You can use the Tester email and reminders from the app.');
@@ -125,7 +127,7 @@ function getFormHeaderSignalScore_(sheet) {
  * This fixes the case where an empty "City Voices..." tab exists but real data is on "Form Responses 1".
  * Set script property FORM_RESPONSES_SHEET_NAME to an exact tab name to lock the sheet.
  */
-function getResponsesSheet() {
+function getResponsesSheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const props = PropertiesService.getScriptProperties();
   const override = String(props.getProperty('FORM_RESPONSES_SHEET_NAME') || '').trim();
@@ -189,6 +191,29 @@ function serializeDateForClient_(d) {
   }
   const x = new Date(d);
   return isNaN(x.getTime()) ? null : x.toISOString();
+}
+
+/**
+ * Require a signed-in Google user whose email appears in Script property ALLOWED_DASHBOARD_EMAILS
+ * (comma-separated, case-insensitive). Set under Project Settings > Script properties.
+ * Not used for public profile links (getCompanionForProfile) or doGet.
+ * Deploy the web app with "Who has access" = Anyone with Google account (or domain), not Anonymous.
+ */
+function requireDashboardAuth_() {
+  const email = Session.getActiveUser().getEmail();
+  const raw = PropertiesService.getScriptProperties().getProperty('ALLOWED_DASHBOARD_EMAILS') || '';
+  const allowed = raw.split(',').map(function (s) {
+    return s.trim().toLowerCase();
+  }).filter(Boolean);
+  if (allowed.length === 0) {
+    throw new Error('Security: set Script property ALLOWED_DASHBOARD_EMAILS to a comma-separated list of authorized emails (Apps Script > Project Settings > Script properties), then try again.');
+  }
+  if (!email) {
+    throw new Error('Sign in with Google and open this app while logged in. Web app access cannot be Anonymous when using the dashboard.');
+  }
+  if (allowed.indexOf(email.toLowerCase()) < 0) {
+    throw new Error('Not authorized for this dashboard. Ask an admin to add your Google account email to ALLOWED_DASHBOARD_EMAILS.');
+  }
 }
 
 /** Post-program survey tab (A–T). Not used for directory / matching. */
@@ -599,6 +624,7 @@ function buildAggregatePrePostComparison_(preQuestions, postQuestions) {
  * Full analysis: anonymous Pre-Survey Results + Post Survey Results + cohort comparison (no identity linking).
  */
 function getFullAnalysis() {
+  requireDashboardAuth_();
   const out = {
     pre: { questions: [], totalRows: 0, sheetName: null, error: null },
     post: { questions: [], totalRows: 0, sheetName: null, error: null },
@@ -627,6 +653,7 @@ function getFullAnalysis() {
  * Aggregated 1–5 scale responses (same source as Analysis pre tab).
  */
 function getScaleAggregates() {
+  requireDashboardAuth_();
   try {
     const x = getPreSurveyResultsAggregates_();
     return { questions: x.questions, totalRows: x.totalRows, error: null };
@@ -641,6 +668,7 @@ function getScaleAggregates() {
  * On error, returns { companions: [], matches: [], criteria: null, reminderRecipient, loadError: "message" }.
  */
 function getData() {
+  requireDashboardAuth_();
   let companions = [];
   let matches = [];
   let criteria = null;
@@ -656,7 +684,7 @@ function getData() {
     availableSheets = ss.getSheets().map(function(s) { return s.getName(); });
 
     try {
-      const formSheet = getResponsesSheet();
+      const formSheet = getResponsesSheet_();
       formSheetName = formSheet.getName();
       const formData = getFormSheetValues_(formSheet);
       const headersRow = formData[0] || [];
@@ -665,7 +693,7 @@ function getData() {
       const rows = (formData.length > 1) ? formData.slice(1) : [];
       formRowCount = rows.length;
       companions = rows
-        .map((row, i) => parseCompanion(row, headers, i + 2))
+        .map((row, i) => parseCompanion_(row, headers, i + 2))
         .filter(c => c != null);
     } catch (e) {
       loadError = (loadError ? loadError + ' ' : '') + ('Companions: ' + (e.message || String(e)));
@@ -719,7 +747,7 @@ function getData() {
 
   let profileFieldSettings = [];
   try {
-    profileFieldSettings = getProfileFieldSettings(formHeaders);
+    profileFieldSettings = getProfileFieldSettings_(formHeaders);
   } catch (e) {}
 
   return {
@@ -740,7 +768,7 @@ function getData() {
  * Get profile field settings (which form columns to show on profile, and display labels).
  * Merges saved settings with current form headers; new headers get showOnProfile: true and label = header.
  */
-function getProfileFieldSettings(formHeaders) {
+function getProfileFieldSettings_(formHeaders) {
   let saved = {};
   try {
     const raw = PropertiesService.getScriptProperties().getProperty('PROFILE_FIELD_SETTINGS');
@@ -777,6 +805,7 @@ function getProfileFieldSettings(formHeaders) {
  * Save profile field settings (which form columns to show on profile, and display labels).
  */
 function saveProfileFieldSettings(settingsJson) {
+  requireDashboardAuth_();
   try {
     PropertiesService.getScriptProperties().setProperty('PROFILE_FIELD_SETTINGS', settingsJson);
     return true;
@@ -789,6 +818,7 @@ function saveProfileFieldSettings(settingsJson) {
  * SAVE CRITERIA SETTINGS
  */
 function saveCriteriaSettings(settingsJson) {
+  requireDashboardAuth_();
   try {
     PropertiesService.getScriptProperties().setProperty('MATCHING_CRITERIA', settingsJson);
     return true;
@@ -820,6 +850,7 @@ function isValidMatchesSheetDataRow_(r) {
 }
 
 function matchExistsBetween(companion1Id, companion2Id) {
+  requireDashboardAuth_();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Matches');
   if (!sheet) return false;
@@ -840,6 +871,7 @@ function matchExistsBetween(companion1Id, companion2Id) {
  * SAVE A NEW MATCH. Returns { success: true } or { success: false, reason: 'already_matched' }.
  */
 function createMatch(matchObj) {
+  requireDashboardAuth_();
   const c1 = String(matchObj.companion1Id);
   const c2 = String(matchObj.companion2Id);
   if (matchExistsBetween(c1, c2)) return { success: false, reason: 'already_matched' };
@@ -871,6 +903,7 @@ function createMatch(matchObj) {
  * Skips pairs that are already matched. Returns { created: N, skipped: M }.
  */
 function createMatches(companion1Id, companion2Ids, companionsJson) {
+  requireDashboardAuth_();
   const companions = JSON.parse(companionsJson || '[]');
   const c1 = companions.find(c => String(c.id) === String(companion1Id));
   if (!c1) return { created: 0, skipped: 0 };
@@ -912,17 +945,20 @@ function ensureMatchSheetColumns(sheet) {
  * When status is set to "First Meeting Set", record the date in column I (First Meeting Set Date).
  */
 function updateMatchData(matchId, field, value) {
+  requireDashboardAuth_();
+  const f = String(field || '').trim().toLowerCase();
+  if (f !== 'status' && f !== 'notes') return false;
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Matches');
   if (!sheet) return false;
   ensureMatchSheetColumns(sheet);
   const data = sheet.getDataRange().getValues();
-  const colIndex = field === 'status' ? 3 : 4;
+  const colIndex = f === 'status' ? 3 : 4;
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]) === matchId) {
       sheet.getRange(i + 1, colIndex + 1).setValue(value);
       const statusVal = String(value).trim();
-      if (field === 'status') {
+      if (f === 'status') {
         const firstMeetingCol = 9;
         const existingDate = data[i][firstMeetingCol];
         const isEmpty = existingDate === null || existingDate === undefined || existingDate === '';
@@ -937,6 +973,7 @@ function updateMatchData(matchId, field, value) {
 }
 
 function deleteMatch(matchId) {
+  requireDashboardAuth_();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Matches');
   const data = sheet.getDataRange().getValues();
@@ -950,7 +987,8 @@ function deleteMatch(matchId) {
 }
 
 function updateCompanionNote(rowNumber, note) {
-  const sheet = getResponsesSheet();
+  requireDashboardAuth_();
+  const sheet = getResponsesSheet_();
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   let noteCol = headers.findIndex(h => h.toUpperCase().includes("INTERNAL NOTES"));
   if (noteCol === -1) {
@@ -965,9 +1003,10 @@ function updateCompanionNote(rowNumber, note) {
  * Internal status (column AP): Active | Unresponsive | Quit.
  */
 function updateCompanionInternalStatus(rowNumber, status) {
+  requireDashboardAuth_();
   const s = String(status || '').trim();
   if (INTERNAL_STATUS_ALLOWED_.indexOf(s) === -1) return false;
-  const sheet = getResponsesSheet();
+  const sheet = getResponsesSheet_();
   const row = parseInt(rowNumber, 10);
   if (row < 2) return false;
   const h = sheet.getRange(1, INTERNAL_STATUS_COLUMN_1BASED_).getValue();
@@ -991,7 +1030,7 @@ function getCompanionCheckinFormUrl_() {
   return COMPANION_CHECKIN_FORM_URL_DEFAULT;
 }
 
-function getReminderRecipient() {
+function getReminderRecipient_() {
   try {
     const r = PropertiesService.getScriptProperties().getProperty('REMINDER_RECIPIENT_EMAIL');
     return (r && r.trim()) ? r.trim() : 'danfrey76@gmail.com';
@@ -1000,7 +1039,14 @@ function getReminderRecipient() {
   }
 }
 
+/** Public: authorized dashboard only. */
+function getReminderRecipient() {
+  requireDashboardAuth_();
+  return getReminderRecipient_();
+}
+
 function saveReminderRecipient(email) {
+  requireDashboardAuth_();
   try {
     PropertiesService.getScriptProperties().setProperty('REMINDER_RECIPIENT_EMAIL', String(email || '').trim());
     return true;
@@ -1012,18 +1058,18 @@ function saveReminderRecipient(email) {
 /**
  * Returns schedule of reminders: matches with status Active or First Meeting Set, with reminder due date (6 months after First Meeting Set Date) and sent status.
  */
-function getReminderSchedule() {
+function getReminderSchedule_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let matchSheet = ss.getSheetByName('Matches');
   if (!matchSheet) return [];
   ensureMatchSheetColumns(matchSheet);
-  const formSheet = getResponsesSheet();
+  const formSheet = getResponsesSheet_();
   const formData = getFormSheetValues_(formSheet);
   const headers = normalizeFormHeaderRow_(formData[0] || []);
   const rows = formData.slice(1);
   const companions = [];
   rows.forEach((row, i) => {
-    const c = parseCompanion(row, headers, i + 2);
+    const c = parseCompanion_(row, headers, i + 2);
     if (c) companions.push(c);
   });
   const data = matchSheet.getDataRange().getValues();
@@ -1070,6 +1116,12 @@ function getReminderSchedule() {
   return schedule;
 }
 
+/** Public: authorized dashboard only. */
+function getReminderSchedule() {
+  requireDashboardAuth_();
+  return getReminderSchedule_();
+}
+
 /**
  * Build reminder email body for a match. Includes preferred contact, email, phone for both people.
  */
@@ -1077,13 +1129,13 @@ function buildReminderEmailBody(matchId) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const matchSheet = ss.getSheetByName('Matches');
   if (!matchSheet) return { body: '', subject: '', c1Name: '', c2Name: '' };
-  const formSheet = getResponsesSheet();
+  const formSheet = getResponsesSheet_();
   const formData = getFormSheetValues_(formSheet);
   const headers = normalizeFormHeaderRow_(formData[0] || []);
   const rows = formData.slice(1);
   const companions = [];
   rows.forEach((row, i) => {
-    const c = parseCompanion(row, headers, i + 2);
+    const c = parseCompanion_(row, headers, i + 2);
     if (c) companions.push(c);
   });
   const data = matchSheet.getDataRange().getValues();
@@ -1125,7 +1177,8 @@ function buildReminderEmailBody(matchId) {
  * Send reminder email for one match to the configured recipient. Marks Reminder Sent in sheet.
  */
 function sendReminderEmailForMatch(matchId) {
-  const recipient = getReminderRecipient();
+  requireDashboardAuth_();
+  const recipient = getReminderRecipient_();
   if (!recipient) return false;
   const { body, subject } = buildReminderEmailBody(matchId);
   if (!body) return false;
@@ -1146,11 +1199,13 @@ function sendReminderEmailForMatch(matchId) {
 }
 
 /**
- * Run daily: find matches due for 3-month reminder and send email.
- * To automate: Extensions > Apps Script > Triggers > Add trigger > runScheduledReminders, Time-driven, Day timer.
+ * Run daily: find matches due for reminder and send email.
+ * To automate: Apps Script > Triggers > runScheduledReminders, Time-driven, Day timer.
+ * Installable time triggers run as the user who created them — add that Google account to ALLOWED_DASHBOARD_EMAILS.
  */
 function runScheduledReminders() {
-  const schedule = getReminderSchedule();
+  requireDashboardAuth_();
+  const schedule = getReminderSchedule_();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   schedule.forEach(item => {
@@ -1166,6 +1221,7 @@ function runScheduledReminders() {
  * Send a test reminder email to the given address (e.g. from Criteria page).
  */
 function sendTestReminderEmail(toEmail) {
+  requireDashboardAuth_();
   const email = String(toEmail || '').trim();
   if (!email) throw new Error('No email address provided. Enter an email in the "Send test to" field on the Tester email page, then click Test Send.');
   const exampleUrl = getCompanionCheckinFormUrl_();
@@ -1194,13 +1250,14 @@ function sendTestReminderEmail(toEmail) {
  * Create or update the "Reminder Schedule" sheet with next reminder due dates.
  */
 function updateReminderSheet() {
+  requireDashboardAuth_();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName('Reminder Schedule');
   if (!sheet) {
     sheet = ss.insertSheet('Reminder Schedule');
     sheet.appendRow(['Match ID', 'Match Names', 'First Meeting Set Date', 'Reminder Due Date', 'Reminder Sent', 'Next reminder to send']);
   }
-  const schedule = getReminderSchedule();
+  const schedule = getReminderSchedule_();
   sheet.clearContents();
   sheet.appendRow(['Match ID', 'Match Names', 'First Meeting Set Date', 'Reminder Due Date', 'Reminder Sent', 'Next reminder to send']);
   if (schedule.length === 0) {
@@ -1229,8 +1286,9 @@ function updateReminderSheet() {
  * Also remove any matches that include this companion.
  */
 function deleteCompanion(rowNumber) {
+  requireDashboardAuth_();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const formSheet = getResponsesSheet();
+  const formSheet = getResponsesSheet_();
   if (!formSheet) return false;
   const rowNum = parseInt(rowNumber, 10);
   if (rowNum < 2) return false;
@@ -1253,7 +1311,7 @@ function deleteCompanion(rowNumber) {
 // --- PARSER ---
 // Column B (index 1) = Waiver. If empty or not signed, person is ineligible to match.
 // Builds fixed keys for matching + raw[header]=value for every column so profile can be driven by Settings.
-function parseCompanion(row, headers, rowNum) {
+function parseCompanion_(row, headers, rowNum) {
   try {
     if (!row || typeof row !== 'object' || (typeof row.length !== 'number')) return null;
     const safeHeaders = (headers || []).map(h => String(h == null ? '' : h));
@@ -1382,7 +1440,7 @@ function getDurationInProgramText(isoDateOrNull) {
  * Get companion data for public profile view. Uses profile field settings to decide which columns to show and their labels.
  */
 function getCompanionForProfile(companionId) {
-  const formSheet = getResponsesSheet();
+  const formSheet = getResponsesSheet_();
   const formData = getFormSheetValues_(formSheet);
   const headersRow = formData[0] || [];
   const headers = normalizeFormHeaderRow_(headersRow);
@@ -1390,9 +1448,9 @@ function getCompanionForProfile(companionId) {
   const rowNum = parseInt(companionId, 10);
   if (rowNum < 2 || rowNum > formData.length) return null;
   const row = formData[rowNum - 1];
-  const c = parseCompanion(row, headers, rowNum);
+  const c = parseCompanion_(row, headers, rowNum);
   if (!c) return null;
-  const settings = getProfileFieldSettings(formHeaders);
+  const settings = getProfileFieldSettings_(formHeaders);
   const profileFields = [];
   settings.forEach(s => {
     if (!s.showOnProfile) return;
@@ -1414,6 +1472,7 @@ function getCompanionForProfile(companionId) {
  * Base URL of the deployed web app (for profile links). Returns empty string if not deployed as web app.
  */
 function getProfileBaseUrl() {
+  requireDashboardAuth_();
   try {
     return ScriptApp.getService().getUrl() || '';
   } catch (e) {
