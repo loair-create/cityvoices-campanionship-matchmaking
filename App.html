@@ -604,6 +604,7 @@
             '<div style="flex:1;min-width:0;">' +
               '<div style="font-weight:600;color:#111;">' + escapeHtml(c.firstName || '') + ' ' + escapeHtml(c.lastName || '') + '</div>' +
               '<div style="font-size:13px;color:#6b7280;">' + escapeHtml(c.borough || '') + '</div>' +
+              '<div style="font-size:12px;color:#6b7280;margin-top:2px;">Enrollment: ' + escapeHtml(formatEnrollmentDate(c.dateEnrolled)) + '</div>' +
               (badges.length ? '<div style="margin-top:4px;">' + badges.join(' ') + '</div>' : '') +
             '</div>' +
             '</div>';
@@ -1039,6 +1040,15 @@
         });
 
         var dismissLabel = fromFindMatch ? 'Back' : 'Close';
+        var matchRecordHtml = '';
+        if (opts.matchMeta) {
+          var mm = opts.matchMeta;
+          matchRecordHtml = '<div class="compare-section">' +
+            '<h3>Match record</h3>' +
+            dr('Creation Date', formatEnrollmentDate(mm.createdAt)) +
+            dr('First Meeting Set Date', formatEnrollmentDate(mm.firstMeetingSetDate)) +
+            '</div>';
+        }
         var modal = document.createElement('div');
         modal.className = 'modal-overlay';
         modal.id = 'match-detail-modal';
@@ -1048,6 +1058,7 @@
             '<button type="button" class="btn btn-secondary match-detail-dismiss">' + dismissLabel + '</button>' +
           '</div>' +
           '<div class="modal-body">' +
+            matchRecordHtml +
             '<div class="compare-section">' +
               '<h3>Application Comparison (Matches In Green)</h3>' +
               '<table class="compare-table">' +
@@ -1069,7 +1080,7 @@
         var c1 = state.companions.find(function(c) { return String(c.id) === String(m.companion1Id); });
         var c2 = state.companions.find(function(c) { return String(c.id) === String(m.companion2Id); });
         if (!c1 || !c2) return;
-        openCompareTwoCompanionsModal(c1, c2);
+        openCompareTwoCompanionsModal(c1, c2, { matchMeta: m });
       }
 
       function renderCriteria() {
