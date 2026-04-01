@@ -1238,7 +1238,8 @@ function sendReminderEmailForMatch(matchId) {
 }
 
 /**
- * Run daily: find matches due for reminder and send email.
+ * Run daily: for existing match records that are due for a check-in reminder, send email.
+ * Does not create new matches or pair people—only reminders for rows already on the Matches sheet.
  * To automate: Apps Script > Triggers > runScheduledReminders, Time-driven, Day timer.
  * Installable time triggers run as the user who created them — add that Google account to ALLOWED_DASHBOARD_EMAILS.
  */
