@@ -153,6 +153,16 @@
     .find-match-row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
     .find-match-modal .modal-header { align-items: center; gap: 12px; }
     .find-match-header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; justify-content: flex-end; }
+    .find-match-footer { margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .companion-internal-grid { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+    .companion-internal-grid > div { flex: 1; min-width: 200px; }
+    .companion-internal-notes-ta { width: 100%; min-height: 100px; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; font-family: inherit; box-sizing: border-box; resize: vertical; }
+    .companion-last-contact-row { margin-top: 16px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 20px; }
+    .companion-last-contact-wrap { padding: 10px 12px; border-radius: 8px; border: 2px solid #e5e7eb; transition: border-color 0.15s, background 0.15s; }
+    .companion-last-contact-wrap.companion-last-contact-stale { border-color: #fca5a5; background: #fef2f2; }
+    .companion-last-contact-wrap.companion-last-contact-fresh { border-color: #6ee7b7; background: #ecfdf5; }
+    .companion-last-contact-wrap input[type="date"] { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; background: #fff; }
+    .companion-unresponsive-label { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; user-select: none; padding-bottom: 4px; }
     .match-actions select { padding: 6px 10px; border-radius: 6px; border: 1px solid #d1d5db; font-size: 13px; }
     .match-actions input { padding: 6px 10px; border-radius: 6px; border: 1px solid #d1d5db; font-size: 13px; min-width: 180px; }
     .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -604,7 +614,7 @@
             '<div style="flex:1;min-width:0;">' +
               '<div style="font-weight:600;color:#111;">' + escapeHtml(c.firstName || '') + ' ' + escapeHtml(c.lastName || '') + '</div>' +
               '<div style="font-size:13px;color:#6b7280;">' + escapeHtml(c.borough || '') + '</div>' +
-              '<div style="font-size:12px;color:#6b7280;margin-top:2px;">Enrollment: ' + escapeHtml(formatEnrollmentDate(c.dateEnrolled)) + '</div>' +
+              '<div style="font-size:12px;font-weight:600;color:#374151;margin-top:4px;">Enrolled: ' + escapeHtml(formatEnrollmentDate(c.dateEnrolled)) + '</div>' +
               (badges.length ? '<div style="margin-top:4px;">' + badges.join(' ') + '</div>' : '') +
             '</div>' +
             '</div>';
@@ -746,6 +756,26 @@
         return months === 1 ? '1 month' : months + ' months';
       }
 
+      function isoToDateInputValue(isoStr) {
+        if (!isoStr) return '';
+        var d = new Date(isoStr);
+        if (isNaN(d.getTime())) return '';
+        function pad2(n) { var s = String(n); return s.length >= 2 ? s : ('0' + s); }
+        return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+      }
+      function isLastContactStale(isoStr) {
+        if (!isoStr) return true;
+        var d = new Date(isoStr);
+        if (isNaN(d.getTime())) return true;
+        var now = new Date();
+        return (now.getTime() - d.getTime()) > 14 * 86400000;
+      }
+      function refreshLastContactWrapClass(wrapEl, isoStr) {
+        if (!wrapEl) return;
+        wrapEl.classList.remove('companion-last-contact-stale', 'companion-last-contact-fresh');
+        wrapEl.classList.add(isLastContactStale(isoStr) ? 'companion-last-contact-stale' : 'companion-last-contact-fresh');
+      }
+
       function openCompanionModal(id) {
         var c = state.companions.find(function(x) { return String(x.id) === String(id); });
         if (!c) return;
@@ -755,13 +785,29 @@
         var availHtml = days.map(function(d) { return d + ': ' + (avail[d.toLowerCase()] || '—'); }).join(' | ');
         var enrollment = '<div class="detail-section"><h3>Enrollment</h3>' + dr('Date of enrollment', formatEnrollmentDate(c.dateEnrolled)) + dr('Time in program', getDurationText(c.dateEnrolled)) + '</div>';
         var intSt = companionInternalStatusLabel(c);
+        var notesVal = (c.internalNotes != null) ? String(c.internalNotes) : '';
+        var lastContactIso = c.lastContactDate || null;
+        var lastContactWrapClass = 'companion-last-contact-wrap ' + (isLastContactStale(lastContactIso) ? 'companion-last-contact-stale' : 'companion-last-contact-fresh');
         var internalSection = '<div class="detail-section"><h3>Internal</h3>' +
-          '<div class="detail-row"><dt>Internal status</dt><dd><p style="margin:0 0 8px 0;font-size:12px;color:#6b7280;">Stored in sheet column <strong>AP</strong> (not on public profile).</p>' +
-          '<select id="companion-internal-status" class="companion-internal-status-select" style="padding:8px 10px;border-radius:6px;border:1px solid #d1d5db;font-size:14px;min-width:200px;">' +
-          ['Active', 'Unresponsive', 'Quit'].map(function(opt) {
-            return '<option value="' + escapeHtml(opt) + '"' + (opt === intSt ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
-          }).join('') +
-          '</select></dd></div></div>';
+          '<p style="margin:0 0 12px 0;font-size:12px;color:#6b7280;">Status in column <strong>AP</strong>; last contact in <strong>AQ</strong>. Not shown on public profile.</p>' +
+          '<div class="companion-internal-grid">' +
+            '<div><div class="detail-row"><dt>Internal status</dt><dd>' +
+              '<select id="companion-internal-status" class="companion-internal-status-select" style="padding:8px 10px;border-radius:6px;border:1px solid #d1d5db;font-size:14px;min-width:200px;max-width:100%;">' +
+              ['Active', 'Unresponsive', 'Quit'].map(function(opt) {
+                return '<option value="' + escapeHtml(opt) + '"' + (opt === intSt ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
+              }).join('') +
+              '</select></dd></div></div>' +
+            '<div><div class="detail-row"><dt>Internal notes</dt><dd>' +
+              '<textarea id="companion-internal-notes" class="companion-internal-notes-ta" placeholder="Staff notes (saved to INTERNAL NOTES column)">' + escapeHtml(notesVal) + '</textarea>' +
+              '</dd></div></div>' +
+          '</div>' +
+          '<div class="companion-last-contact-row">' +
+            '<div id="companion-last-contact-wrap" class="' + lastContactWrapClass + '">' +
+              '<label for="companion-last-contact-date" style="font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.03em;display:block;margin-bottom:6px;">Last contact date</label>' +
+              '<input type="date" id="companion-last-contact-date" value="' + escapeHtml(isoToDateInputValue(lastContactIso)) + '">' +
+            '</div>' +
+            '<label class="companion-unresponsive-label"><input type="checkbox" id="companion-unresponsive-cb"' + (intSt === 'Unresponsive' ? ' checked' : '') + (intSt === 'Quit' ? ' disabled' : '') + '> Unresponsive</label>' +
+          '</div></div>';
         var profileHtml = '';
         (state.profileFieldSettings || []).forEach(function(s) {
           if (!s.showOnProfile) return;
@@ -780,7 +826,6 @@
           profileSection +
           matchSection +
           '<div class="detail-section"><h3>Availability</h3><div class="detail-row"><dt>Days</dt><dd>' + escapeHtml(availHtml) + '</dd></div></div>' +
-          (c.internalNotes ? '<div class="detail-section"><h3>Internal Notes</h3>' + dr('', c.internalNotes) + '</div>' : '') +
           '<div style="margin-top:20px;">' +
             (!c.waiverSigned ? '<div style="margin-bottom:12px;padding:10px;background:#fef3c7;border-radius:6px;font-size:13px;color:#92400e;">Note: Waiver not signed (column B in form responses).</div>' : '') +
             '<button type="button" class="btn btn-secondary" onclick="window.downloadCompanionPDF(\'' + c.id + '\')">Download PDF</button> ' +
@@ -800,6 +845,17 @@
         modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
         document.body.appendChild(modal);
         var statusSel = modal.querySelector('#companion-internal-status');
+        var unrespCb = modal.querySelector('#companion-unresponsive-cb');
+        var lastWrap = modal.querySelector('#companion-last-contact-wrap');
+        var lastDateInp = modal.querySelector('#companion-last-contact-date');
+        var notesTa = modal.querySelector('#companion-internal-notes');
+
+        function syncUnresponsiveCheckbox() {
+          if (!unrespCb || !statusSel) return;
+          unrespCb.checked = statusSel.value === 'Unresponsive';
+          unrespCb.disabled = statusSel.value === 'Quit';
+        }
+
         if (statusSel) {
           statusSel.addEventListener('change', function() {
             var v = this.value;
@@ -814,6 +870,7 @@
                 c.internalStatus = v;
                 var inState = state.companions.find(function(x) { return String(x.id) === String(c.id); });
                 if (inState) inState.internalStatus = v;
+                syncUnresponsiveCheckbox();
                 if (state.activeTab === 'directory') renderDirectory();
               })
               .withFailureHandler(function(err) {
@@ -823,6 +880,79 @@
               .updateCompanionInternalStatus(c.id, v);
           });
         }
+
+        if (unrespCb && statusSel) {
+          unrespCb.addEventListener('change', function() {
+            if (statusSel.value === 'Quit') return;
+            var wantUnresp = this.checked;
+            var newSt = wantUnresp ? 'Unresponsive' : 'Active';
+            var prev = companionInternalStatusLabel(c);
+            statusSel.value = newSt;
+            google.script.run
+              .withSuccessHandler(function(ok) {
+                if (!ok) {
+                  statusSel.value = prev;
+                  unrespCb.checked = prev === 'Unresponsive';
+                  alert('Could not save internal status.');
+                  return;
+                }
+                c.internalStatus = newSt;
+                var inState = state.companions.find(function(x) { return String(x.id) === String(c.id); });
+                if (inState) inState.internalStatus = newSt;
+                if (state.activeTab === 'directory') renderDirectory();
+              })
+              .withFailureHandler(function(err) {
+                statusSel.value = prev;
+                unrespCb.checked = prev === 'Unresponsive';
+                alert('Failed: ' + (err && err.message ? err.message : String(err)));
+              })
+              .updateCompanionInternalStatus(c.id, newSt);
+          });
+        }
+
+        if (lastDateInp && lastWrap) {
+          lastDateInp.addEventListener('change', function() {
+            var v = this.value;
+            refreshLastContactWrapClass(lastWrap, v ? (v + 'T12:00:00') : null);
+            google.script.run
+              .withSuccessHandler(function(ok) {
+                if (!ok) {
+                  alert('Could not save last contact date.');
+                  return;
+                }
+                c.lastContactDate = v ? new Date(v + 'T12:00:00').toISOString() : null;
+                var inState = state.companions.find(function(x) { return String(x.id) === String(c.id); });
+                if (inState) inState.lastContactDate = c.lastContactDate;
+                refreshLastContactWrapClass(lastWrap, c.lastContactDate);
+              })
+              .withFailureHandler(function(err) {
+                alert('Failed: ' + (err && err.message ? err.message : String(err)));
+              })
+              .updateCompanionLastContactDate(c.id, v);
+          });
+        }
+
+        if (notesTa) {
+          var notesPrev = notesVal;
+          notesTa.addEventListener('blur', function() {
+            var v = this.value;
+            if (v === notesPrev) return;
+            google.script.run
+              .withSuccessHandler(function() {
+                notesPrev = v;
+                c.internalNotes = v;
+                var inState = state.companions.find(function(x) { return String(x.id) === String(c.id); });
+                if (inState) inState.internalNotes = v;
+              })
+              .withFailureHandler(function(err) {
+                notesTa.value = notesPrev;
+                alert('Failed to save notes: ' + (err && err.message ? err.message : String(err)));
+              })
+              .updateCompanionNote(c.id, v);
+          });
+        }
+
+        syncUnresponsiveCheckbox();
       }
 
       function showFindMatch(selectedId) {
@@ -840,14 +970,18 @@
             '<h2 style="flex:1;min-width:0;">Find match for ' + escapeHtml(c1.firstName) + ' ' + escapeHtml(c1.lastName) + '</h2>' +
             '<div class="find-match-header-actions">' +
               '<button type="button" class="btn btn-secondary" onclick="document.getElementById(\'find-match-modal\').remove()">Back</button>' +
-              '<button type="button" class="btn btn-primary" id="find-match-create-btn">Create matches</button>' +
-              '<span id="find-match-selected-count" style="font-size:13px;color:#6b7280;white-space:nowrap;"></span>' +
+              '<button type="button" class="btn btn-primary find-match-create-btn">Create matches</button>' +
+              '<span class="find-match-selected-count" style="font-size:13px;color:#6b7280;white-space:nowrap;"></span>' +
             '</div>' +
           '</div>' +
           '<div class="modal-body">' +
-            '<p style="margin:0 0 12px 0;color:#6b7280;font-size:14px;">Select one or more people to match with ' + escapeHtml(c1.firstName) + '. Already-matched pairs cannot be selected again. Use <strong>Create matches</strong> in the header when ready.</p>' +
+            '<p style="margin:0 0 12px 0;color:#6b7280;font-size:14px;">Select one or more people to match with ' + escapeHtml(c1.firstName) + '. Already-matched pairs cannot be selected again. Use <strong>Create matches</strong> at the top or bottom when ready.</p>' +
             '<input type="text" class="search-input" id="find-match-search" placeholder="Search by name..." style="margin-bottom:12px;width:100%;">' +
             '<div id="find-match-list"></div>' +
+            '<div class="find-match-footer">' +
+              '<span class="find-match-selected-count" style="font-size:13px;color:#6b7280;white-space:nowrap;"></span>' +
+              '<button type="button" class="btn btn-primary find-match-create-btn">Create matches</button>' +
+            '</div>' +
           '</div></div>';
         m.addEventListener('click', function(e) { if (e.target === m) m.remove(); });
         function renderFindMatchList(filter) {
@@ -894,21 +1028,18 @@
           });
         }
         function updateFindMatchCount() {
-          var checked = document.querySelectorAll('.find-match-cb:checked');
-          var countEl = document.getElementById('find-match-selected-count');
-          if (countEl) countEl.textContent = checked.length ? checked.length + ' selected' : '';
+          var checked = m.querySelectorAll('.find-match-cb:checked');
+          var txt = checked.length ? checked.length + ' selected' : '';
+          m.querySelectorAll('.find-match-selected-count').forEach(function(el) { el.textContent = txt; });
         }
-        document.body.appendChild(m);
-        renderFindMatchList('');
-        var searchEl = document.getElementById('find-match-search');
-        if (searchEl) searchEl.addEventListener('input', function() { renderFindMatchList(this.value); });
-        document.getElementById('find-match-create-btn').addEventListener('click', function() {
-          var checked = document.querySelectorAll('.find-match-cb:checked');
+        function runFindMatchCreate() {
+          var checked = m.querySelectorAll('.find-match-cb:checked');
           var ids = Array.prototype.map.call(checked, function(cb) { return cb.getAttribute('data-id'); });
           if (!ids.length) { alert('Select at least one person to match.'); return; }
-          var btn = document.getElementById('find-match-create-btn');
-          btn.disabled = true;
-          btn.textContent = 'Creating…';
+          m.querySelectorAll('.find-match-create-btn').forEach(function(btn) {
+            btn.disabled = true;
+            btn.textContent = 'Creating…';
+          });
           google.script.run.withSuccessHandler(function(res) {
             var mod = document.getElementById('find-match-modal');
             if (mod) mod.remove();
@@ -920,10 +1051,19 @@
               if (msg) alert(msg);
             }
           }).withFailureHandler(function(err) {
-            btn.disabled = false;
-            btn.textContent = 'Create matches';
+            m.querySelectorAll('.find-match-create-btn').forEach(function(btn) {
+              btn.disabled = false;
+              btn.textContent = 'Create matches';
+            });
             alert('Failed: ' + (err && err.message ? err.message : String(err)));
           }).createMatches(c1.id, ids, JSON.stringify(state.companions));
+        }
+        document.body.appendChild(m);
+        renderFindMatchList('');
+        var searchEl = document.getElementById('find-match-search');
+        if (searchEl) searchEl.addEventListener('input', function() { renderFindMatchList(this.value); });
+        m.querySelectorAll('.find-match-create-btn').forEach(function(btn) {
+          btn.addEventListener('click', runFindMatchCreate);
         });
       }
 

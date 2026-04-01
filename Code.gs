@@ -327,6 +327,8 @@ const PROFILE_FIELD_SETTINGS_MAX_COLUMN_1BASED_ = 49;
 
 /** Column AP (42) — internal-only status; edited in app, not in Settings profile field list. */
 const INTERNAL_STATUS_COLUMN_1BASED_ = 42;
+/** Column AQ (43) — last staff contact date; edited in app, not in Settings profile field list. */
+const LAST_CONTACT_DATE_COLUMN_1BASED_ = 43;
 const INTERNAL_STATUS_ALLOWED_ = ['Active', 'Unresponsive', 'Quit'];
 
 /**
@@ -343,6 +345,15 @@ function parseInternalStatusFromRow_(rowValues) {
   if (low === 'unresponsive') return 'Unresponsive';
   if (low === 'quit') return 'Quit';
   return 'Active';
+}
+
+/** ISO string or null from column AQ (last contact date). */
+function parseLastContactDateFromRow_(rowValues) {
+  const idx = LAST_CONTACT_DATE_COLUMN_1BASED_ - 1;
+  if (!rowValues || rowValues.length <= idx) return null;
+  const cell = rowValues[idx];
+  if (cell == null || cell === '') return null;
+  return serializeDateForClient_(cell);
 }
 
 function pad2Gs_(n) {
@@ -398,6 +409,8 @@ function shouldExcludeFieldFromPublicProfile_(header, label) {
   if (/\bavailability\b.*\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(t)) return true;
   if (/^my\s+availability\s+/i.test(l)) return true;
   if (/^internal\s*status$/i.test(h) || /^internal\s*status$/i.test(l)) return true;
+  if (/^internal\s*notes$/i.test(h) || /^internal\s*notes$/i.test(l)) return true;
+  if (/last\s*contact\s*date/i.test(t)) return true;
   return false;
 }
 
@@ -790,6 +803,7 @@ function getProfileFieldSettings_(formHeaders) {
   return rows.filter(function(item) {
     if (item.columnNumber > PROFILE_FIELD_SETTINGS_MAX_COLUMN_1BASED_) return false;
     if (String(item.columnLetter || '').toUpperCase() === 'AP') return false;
+    if (item.columnNumber === LAST_CONTACT_DATE_COLUMN_1BASED_) return false;
     return true;
   }).map(function(item) {
     return {
@@ -1014,6 +1028,31 @@ function updateCompanionInternalStatus(rowNumber, status) {
     sheet.getRange(1, INTERNAL_STATUS_COLUMN_1BASED_).setValue('INTERNAL STATUS');
   }
   sheet.getRange(row, INTERNAL_STATUS_COLUMN_1BASED_).setValue(s);
+  return true;
+}
+
+/**
+ * Last contact date in column AQ (YYYY-MM-DD from client or empty to clear).
+ */
+function updateCompanionLastContactDate(rowNumber, dateInputValue) {
+  requireDashboardAuth_();
+  const sheet = getResponsesSheet_();
+  const row = parseInt(rowNumber, 10);
+  if (row < 2) return false;
+  const h = sheet.getRange(1, LAST_CONTACT_DATE_COLUMN_1BASED_).getValue();
+  if (h == null || String(h).trim() === '') {
+    sheet.getRange(1, LAST_CONTACT_DATE_COLUMN_1BASED_).setValue('LAST CONTACT DATE');
+  }
+  const v = String(dateInputValue || '').trim();
+  if (!v) {
+    sheet.getRange(row, LAST_CONTACT_DATE_COLUMN_1BASED_).setValue('');
+    return true;
+  }
+  const parts = v.split('-');
+  if (parts.length !== 3) return false;
+  const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  if (isNaN(d.getTime())) return false;
+  sheet.getRange(row, LAST_CONTACT_DATE_COLUMN_1BASED_).setValue(d);
   return true;
 }
 
@@ -1400,6 +1439,7 @@ function parseCompanion_(row, headers, rowNum) {
       accessibilityNeeds: getVal('accessibility needs'),
       internalNotes: getVal('INTERNAL NOTES'),
       internalStatus: parseInternalStatusFromRow_(rowValues),
+      lastContactDate: parseLastContactDateFromRow_(rowValues),
       essays: {
         hobbiesAndCreativity: hobbiesAndCreativity,
         expectations: getVal('important things that you want'),
