@@ -33,17 +33,7 @@ This repository holds the source for **version 3** of the app: server logic in `
    - **`PRE_SURVEY_RESULTS_SHEET_NAME`** / **`POST_SURVEY_RESULTS_SHEET_NAME`** (or legacy **`POST_SURVEY_SHEET_NAME`**) — override tab names for analysis charts.  
 8. **Email (reminders / test mail):** In the script editor, choose **`authorizeEmailPermission`** from the function dropdown, click **Run**, and complete the OAuth prompts once.  
 
-From the spreadsheet, use the menu **Companionship Connections → Open Dashboard** to open the modal, or open the deployed web app URL for the full-page dashboard.
-
-### Web app URL in the spreadsheet
-
-Google does not notify the script when you click **Deploy**, so the URL cannot be updated in the exact same moment as deployment. This project does the next best thing:
-
-- Each time someone **opens the spreadsheet**, the script tries to read the latest deployment URL and writes it to a tab named **`App URL`** (clickable link in **B1**, plain URL in **B3** for copy/paste, **Last synced** in **B2**).
-- Use the menu **Companionship Connections → Refresh web app URL in sheet** to update that tab immediately after a new deployment (or if **`App URL`** is missing).
-- **Open deployed web app in browser** opens the `/exec` link in a new tab (same URL as in the sheet).
-
-If you do not see the new menu items after updating the script, **reload the spreadsheet** tab (F5 / refresh). The first time, you may need to **authorize** the script when `onOpen` runs.
+From the spreadsheet, use the menu **Companionship Connections → Open Dashboard** to open the modal, or open the deployed web app URL in the browser for the full-page dashboard (copy the `/exec` link from **Deploy → Manage deployments** in the Apps Script editor).
 
 ## Security without an email allowlist
 

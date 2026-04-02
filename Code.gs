@@ -38,129 +38,12 @@ function doGet(e) {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-/** Sheet tab that stores the current web app URL (created/updated automatically). */
-const WEB_APP_URL_SHEET_NAME_ = 'App URL';
-
 function onOpen() {
-  try {
-    syncWebAppUrlToSpreadsheetSilent_();
-  } catch (e) {
-    // Do not block opening the spreadsheet if URL sync fails (e.g. not deployed yet).
-  }
   SpreadsheetApp.getUi()
     .createMenu('Companionship Connections')
     .addItem('Open Dashboard', 'openApp')
-    .addSeparator()
-    .addItem('Refresh web app URL in sheet', 'menuRefreshWebAppUrl')
-    .addItem('Open deployed web app in browser', 'menuOpenDeployedWebApp')
-    .addSeparator()
     .addItem('Run 6‑month reminder check now', 'runScheduledReminders')
     .addToUi();
-}
-
-/**
- * Reads ScriptApp.getService().getUrl() (latest / head web app deployment).
- * Returns { url, error } — error set when not deployed or API fails.
- */
-function getWebAppDeploymentUrl_() {
-  try {
-    const url = ScriptApp.getService().getUrl();
-    if (url && String(url).trim()) return { url: String(url).trim(), error: null };
-    return { url: '', error: 'Deployment returned an empty URL.' };
-  } catch (e) {
-    const msg = e && e.message ? e.message : String(e);
-    return {
-      url: '',
-      error: msg.indexOf('not deployed') >= 0 || msg.indexOf('not found') >= 0
-        ? 'No web app deployment yet. In Apps Script: Deploy → New deployment → Web app, then open this sheet again or use Refresh web app URL in sheet.'
-        : msg
-    };
-  }
-}
-
-/**
- * Escape a string for use inside double quotes in a Sheets =HYPERLINK("...","...") formula.
- */
-function escapeForSheetsFormulaString_(s) {
-  return String(s == null ? '' : s).replace(/"/g, '""');
-}
-
-/**
- * Writes the web app URL to tab "App URL" (hyperlink + last synced time). No UI.
- * Uses =HYPERLINK(...) for B1 — RichText links to script.google.com often open as "can't open this file".
- */
-function syncWebAppUrlToSpreadsheetSilent_() {
-  const { url, error } = getWebAppDeploymentUrl_();
-  if (!url) return;
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sh = ss.getSheetByName(WEB_APP_URL_SHEET_NAME_);
-  if (!sh) {
-    sh = ss.insertSheet(WEB_APP_URL_SHEET_NAME_, ss.getSheets().length);
-  }
-  sh.getRange(1, 1, 3, 1).setValues([
-    ['Open in browser (click link in B1)'],
-    ['Last synced from deployment'],
-    ['Full URL (copy from this cell)']
-  ]);
-  sh.getRange(1, 1, 3, 1).setFontWeight('bold');
-  const urlEsc = escapeForSheetsFormulaString_(url);
-  const labelEsc = escapeForSheetsFormulaString_('Open web app — dashboard & profile base URL');
-  sh.getRange(1, 2).clearContent();
-  sh.getRange(1, 2).setFormula('=HYPERLINK("' + urlEsc + '","' + labelEsc + '")');
-  sh.getRange(2, 2).setValue(new Date());
-  sh.getRange(2, 2).setNumberFormat('yyyy-mm-dd hh:mm:ss');
-  sh.getRange(3, 2).setValue(url);
-  sh.getRange(3, 2).setWrap(true);
-  sh.setColumnWidth(1, 260);
-  sh.setColumnWidth(2, 560);
-}
-
-/** Menu: refresh URL row and show result. */
-function menuRefreshWebAppUrl() {
-  const { url, error } = getWebAppDeploymentUrl_();
-  const ui = SpreadsheetApp.getUi();
-  if (!url) {
-    ui.alert('Web app URL', error || 'Could not read deployment URL.', ui.ButtonSet.OK);
-    return;
-  }
-  try {
-    syncWebAppUrlToSpreadsheetSilent_();
-    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(WEB_APP_URL_SHEET_NAME_);
-    if (sh) SpreadsheetApp.getActiveSpreadsheet().setActiveSheet(sh);
-    ui.alert('Web app URL', 'Updated the "' + WEB_APP_URL_SHEET_NAME_ + '" tab with your latest deployment link.', ui.ButtonSet.OK);
-  } catch (e) {
-    ui.alert('Web app URL', e && e.message ? e.message : String(e), ui.ButtonSet.OK);
-  }
-}
-
-/** Menu: open the deployed /exec URL in a new browser tab (user must click link — pop-up blockers block window.open from dialogs). */
-function menuOpenDeployedWebApp() {
-  const { url, error } = getWebAppDeploymentUrl_();
-  const ui = SpreadsheetApp.getUi();
-  if (!url) {
-    ui.alert('Web app URL', error || 'Could not read deployment URL.', ui.ButtonSet.OK);
-    return;
-  }
-  const urlJson = JSON.stringify(url);
-  const html = HtmlService.createHtmlOutput(
-    '<!DOCTYPE html><html><head><base target="_top">' +
-      '<style>' +
-      'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:16px;margin:0;font-size:14px;color:#111;line-height:1.45}' +
-      'a.btn{display:inline-block;margin:12px 0;padding:10px 18px;background:#0d9488;color:#fff!important;text-decoration:none;border-radius:6px;font-weight:600}' +
-      'a.btn:hover{background:#0f766e}' +
-      'code{display:block;margin-top:12px;padding:10px;background:#f3f4f6;font-size:11px;word-break:break-all;border-radius:6px;border:1px solid #e5e7eb}' +
-      '</style></head><body>' +
-      '<p><strong>Open the web app</strong></p>' +
-      '<p style="color:#6b7280;font-size:13px;margin:0 0 4px 0">Google Sheets blocks automatic new tabs from this dialog. Use the button below.</p>' +
-      '<a id="go" class="btn" target="_blank" rel="noopener noreferrer">Open web app</a>' +
-      '<p style="font-size:12px;color:#6b7280;margin:14px 0 4px 0">Or copy the URL:</p>' +
-      '<code id="cpy"></code>' +
-      '<script>(function(){var u=' + urlJson + ';var a=document.getElementById("go");a.href=u;document.getElementById("cpy").textContent=u;})();<\/script>' +
-      '</body></html>'
-  )
-    .setWidth(440)
-    .setHeight(280);
-  ui.showModalDialog(html, 'Open web app');
 }
 
 function openApp() {
