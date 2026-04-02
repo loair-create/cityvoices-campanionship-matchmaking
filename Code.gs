@@ -38,93 +38,111 @@ function doGet(e) {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-/** Tab that stores the current web app URL (created/updated by syncWebAppUrlToSheet). */
+/** Sheet tab that stores the current web app URL (created/updated automatically). */
 const WEB_APP_URL_SHEET_NAME_ = 'App URL';
 
 function onOpen() {
+  try {
+    syncWebAppUrlToSpreadsheetSilent_();
+  } catch (e) {
+    // Do not block opening the spreadsheet if URL sync fails (e.g. not deployed yet).
+  }
   SpreadsheetApp.getUi()
     .createMenu('Companionship Connections')
     .addItem('Open Dashboard', 'openApp')
-    .addItem('Run 6‑month reminder check now', 'runScheduledReminders')
     .addSeparator()
-    .addItem('Update web app URL in sheet', 'syncWebAppUrlToSheetFromMenu')
-    .addItem('Turn on: auto-update URL when spreadsheet opens', 'installWebAppUrlOnOpenTrigger')
+    .addItem('Refresh web app URL in sheet', 'menuRefreshWebAppUrl')
+    .addItem('Open deployed web app in browser', 'menuOpenDeployedWebApp')
+    .addSeparator()
+    .addItem('Run 6‑month reminder check now', 'runScheduledReminders')
     .addToUi();
 }
 
 /**
- * Writes ScriptApp.getService().getUrl() to the "App URL" sheet (row 2).
- * Run from the menu after each new Web app deployment, or install the on-open trigger once.
- * Note: getUrl() is not allowed inside the simple onOpen trigger; use the menu or installable trigger below.
+ * Reads ScriptApp.getService().getUrl() (latest / head web app deployment).
+ * Returns { url, error } — error set when not deployed or API fails.
  */
-function syncWebAppUrlToSheet() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let url = '';
-  let errText = '';
+function getWebAppDeploymentUrl_() {
   try {
-    url = (ScriptApp.getService().getUrl() || '').trim();
+    const url = ScriptApp.getService().getUrl();
+    if (url && String(url).trim()) return { url: String(url).trim(), error: null };
+    return { url: '', error: 'Deployment returned an empty URL.' };
   } catch (e) {
-    errText = e && e.message ? e.message : String(e);
+    const msg = e && e.message ? e.message : String(e);
+    return {
+      url: '',
+      error: msg.indexOf('not deployed') >= 0 || msg.indexOf('not found') >= 0
+        ? 'No web app deployment yet. In Apps Script: Deploy → New deployment → Web app, then open this sheet again or use Refresh web app URL in sheet.'
+        : msg
+    };
   }
-
-  let sheet = ss.getSheetByName(WEB_APP_URL_SHEET_NAME_);
-  if (!sheet) {
-    sheet = ss.insertSheet(WEB_APP_URL_SHEET_NAME_);
-  }
-
-  const title = 'Web app URL (from Deploy → Web app — use menu "Update web app URL" after a new deployment)';
-  const tip = 'Profile links: same URL with ?page=profile&id=<row> (row = sheet row for that person).';
-  let cell2 = url;
-  if (!url && errText) {
-    cell2 = 'Could not read URL: ' + errText + ' — Deploy as Web app first, then run this again.';
-  } else if (!url) {
-    cell2 = 'Deploy this project as a Web app (Deploy → New deployment), then run Companionship Connections → Update web app URL in sheet.';
-  }
-
-  sheet.getRange(1, 1).setValue(title);
-  sheet.getRange(2, 1).setValue(cell2);
-  sheet.getRange(3, 1).setValue(tip);
-  sheet.setColumnWidth(1, 520);
-  try {
-    sheet.getRange(1, 1, 3, 1).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
-  } catch (e) {}
-
-  return url || null;
-}
-
-/** Same as syncWebAppUrlToSheet but shows a confirmation (for the spreadsheet menu only). */
-function syncWebAppUrlToSheetFromMenu() {
-  const url = syncWebAppUrlToSheet();
-  try {
-    SpreadsheetApp.getUi().alert(
-      url
-        ? 'Saved to the "' + WEB_APP_URL_SHEET_NAME_ + '" tab.'
-        : 'Check the "' + WEB_APP_URL_SHEET_NAME_ + '" tab — deploy as Web app if the URL is missing.'
-    );
-  } catch (e) {}
 }
 
 /**
- * Run once from the menu (or editor). Creates an installable on-open trigger so syncWebAppUrlToSheet runs
- * every time someone opens this spreadsheet — picks up the current deployment URL without using the menu.
+ * Writes the web app URL to tab "App URL" (hyperlink + last synced time). No UI.
  */
-function installWebAppUrlOnOpenTrigger() {
+function syncWebAppUrlToSpreadsheetSilent_() {
+  const { url, error } = getWebAppDeploymentUrl_();
+  if (!url) return;
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'syncWebAppUrlToSheet' && t.getEventType() === ScriptApp.EventType.ON_OPEN) {
-      ScriptApp.deleteTrigger(t);
-    }
-  });
-  ScriptApp.newTrigger('syncWebAppUrlToSheet')
-    .forSpreadsheet(ss)
-    .onOpen()
-    .create();
-  syncWebAppUrlToSheet();
+  let sh = ss.getSheetByName(WEB_APP_URL_SHEET_NAME_);
+  if (!sh) {
+    sh = ss.insertSheet(WEB_APP_URL_SHEET_NAME_, ss.getSheets().length);
+  }
+  sh.getRange(1, 1, 3, 1).setValues([
+    ['Open in browser (click link in B1)'],
+    ['Last synced from deployment'],
+    ['Full URL (copy from this cell)']
+  ]);
+  sh.getRange(1, 1, 3, 1).setFontWeight('bold');
+  const rich = SpreadsheetApp.newRichTextValue()
+    .setText('Open web app — dashboard & profile base URL')
+    .setLinkUrl(url)
+    .build();
+  sh.getRange(1, 2).setRichTextValue(rich);
+  sh.getRange(2, 2).setValue(new Date());
+  sh.getRange(2, 2).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  sh.getRange(3, 2).setValue(url);
+  sh.getRange(3, 2).setWrap(true);
+  sh.setColumnWidth(1, 260);
+  sh.setColumnWidth(2, 560);
+}
+
+/** Menu: refresh URL row and show result. */
+function menuRefreshWebAppUrl() {
+  const { url, error } = getWebAppDeploymentUrl_();
+  const ui = SpreadsheetApp.getUi();
+  if (!url) {
+    ui.alert('Web app URL', error || 'Could not read deployment URL.', ui.ButtonSet.OK);
+    return;
+  }
   try {
-    SpreadsheetApp.getUi().alert(
-      'Installable trigger added. The "' + WEB_APP_URL_SHEET_NAME_ + '" tab will refresh when anyone opens this spreadsheet.'
-    );
-  } catch (e) {}
+    syncWebAppUrlToSpreadsheetSilent_();
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(WEB_APP_URL_SHEET_NAME_);
+    if (sh) SpreadsheetApp.getActiveSpreadsheet().setActiveSheet(sh);
+    ui.alert('Web app URL', 'Updated the "' + WEB_APP_URL_SHEET_NAME_ + '" tab with your latest deployment link.', ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Web app URL', e && e.message ? e.message : String(e), ui.ButtonSet.OK);
+  }
+}
+
+/** Menu: open the deployed /exec URL in a new browser tab. */
+function menuOpenDeployedWebApp() {
+  const { url, error } = getWebAppDeploymentUrl_();
+  const ui = SpreadsheetApp.getUi();
+  if (!url) {
+    ui.alert('Web app URL', error || 'Could not read deployment URL.', ui.ButtonSet.OK);
+    return;
+  }
+  const html = HtmlService.createHtmlOutput(
+    '<!DOCTYPE html><html><body style="font-family:sans-serif;padding:12px;font-size:14px;">' +
+      '<p>Opening web app…</p>' +
+      '<script>window.open(' + JSON.stringify(url) + ', "_blank");google.script.host.close();</script>' +
+      '</body></html>'
+  )
+    .setWidth(380)
+    .setHeight(100);
+  ui.showModalDialog(html, 'Web app');
 }
 
 function openApp() {
