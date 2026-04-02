@@ -47,6 +47,14 @@ From the spreadsheet, use the menu **Companionship Connections → Open Dashboar
 
 Reserved tab names used by the app include **`Matches`** and **`Reminder Schedule`**; avoid using those names for unrelated data.
 
+### Fixed columns on the responses sheet (e.g. Signup Form)
+
+| Column | Use |
+|--------|-----|
+| **AP** | Internal status (Active / Unresponsive / Quit), edited in the app |
+| **AQ** | Volunteer checkbox from the Google Form (`TRUE` / `Yes` = volunteer) |
+| **AR** | Last staff contact date (edited in the app). If you previously stored last contact in **AQ**, move those values to **AR** after updating to this version. |
+
 ## Development notes
 
 - The Apps Script project must contain exactly one HTML file named **`App`** matching `App.html`.  

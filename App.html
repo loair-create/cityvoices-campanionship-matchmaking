@@ -290,6 +290,7 @@
       var FILTER_FIELDS = [
         { key: '_matchedStatus', label: 'Match status', options: [{ value: '', label: 'All' }, { value: 'unmatched', label: 'Not yet matched' }, { value: 'matched', label: 'Has at least one match' }] },
         { key: 'waiverSigned', label: 'Waiver Signed (eligible to match)' },
+        { key: 'isVolunteer', label: 'Volunteer (column AQ)' },
         { key: 'preferredContact', label: 'Preferred Contact Method' },
         { key: 'borough', label: 'Borough' },
         { key: 'willingToTravel', label: 'Willing To Travel' },
@@ -609,6 +610,7 @@
           badges.push('<span class="badge ' + internalStatusBadgeClass(intSt) + '" style="margin-top:4px;">' + escapeHtml(intSt) + '</span>');
           if (waiverNote) badges.push('<span class="badge badge-amber" style="margin-top:4px;">Waiver not signed</span>');
           if (neverMatched) badges.push('<span class="badge badge-gray" style="margin-top:4px;">Not yet matched</span>');
+          if (c.isVolunteer === true) badges.push('<span class="badge badge-green" style="margin-top:4px;">Volunteer</span>');
           card.innerHTML = '<div class="card-header" data-id="' + c.id + '">' +
             '<div class="avatar">' + (c.firstName ? c.firstName.charAt(0) : '?') + '</div>' +
             '<div style="flex:1;min-width:0;">' +
@@ -672,6 +674,7 @@
             y += lineH + 8;
             doc.setFontSize(10);
             addLine('Date of enrollment', formatEnrollmentDate(c.dateEnrolled));
+            addLine('Volunteer', c.isVolunteer === true ? 'Yes' : 'No');
             addLine('Preferred Contact Method', c.preferredContact);
             addLine('Email', c.email);
             addLine('Phone', c.phone);
@@ -783,13 +786,13 @@
         var avail = c.availability || {};
         var days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
         var availHtml = days.map(function(d) { return d + ': ' + (avail[d.toLowerCase()] || '—'); }).join(' | ');
-        var enrollment = '<div class="detail-section"><h3>Enrollment</h3>' + dr('Date of enrollment', formatEnrollmentDate(c.dateEnrolled)) + dr('Time in program', getDurationText(c.dateEnrolled)) + '</div>';
+        var enrollment = '<div class="detail-section"><h3>Enrollment</h3>' + dr('Date of enrollment', formatEnrollmentDate(c.dateEnrolled)) + dr('Time in program', getDurationText(c.dateEnrolled)) + dr('Volunteer (column AQ)', c.isVolunteer === true ? 'Yes' : 'No') + '</div>';
         var intSt = companionInternalStatusLabel(c);
         var notesVal = (c.internalNotes != null) ? String(c.internalNotes) : '';
         var lastContactIso = c.lastContactDate || null;
         var lastContactWrapClass = 'companion-last-contact-wrap ' + (isLastContactStale(lastContactIso) ? 'companion-last-contact-stale' : 'companion-last-contact-fresh');
         var internalSection = '<div class="detail-section"><h3>Internal</h3>' +
-          '<p style="margin:0 0 12px 0;font-size:12px;color:#6b7280;">Status in column <strong>AP</strong>; last contact in <strong>AQ</strong>. Not shown on public profile.</p>' +
+          '<p style="margin:0 0 12px 0;font-size:12px;color:#6b7280;">Internal status column <strong>AP</strong>; volunteer checkbox from form column <strong>AQ</strong>; last contact column <strong>AR</strong>. Internal fields are not shown on the public profile.</p>' +
           '<div class="companion-internal-grid">' +
             '<div><div class="detail-row"><dt>Internal status</dt><dd>' +
               '<select id="companion-internal-status" class="companion-internal-status-select" style="padding:8px 10px;border-radius:6px;border:1px solid #d1d5db;font-size:14px;min-width:200px;max-width:100%;">' +
@@ -1147,8 +1150,16 @@
           var same = String(v1).toLowerCase().trim() === String(v2).toLowerCase().trim() && v1 !== '—' && v1 !== '';
           return '<tr class="' + (same ? 'compare-match-row' : '') + '"><td class="criteria-label">' + escapeHtml(label) + '</td><td>' + escapeHtml(v1) + '</td><td>' + escapeHtml(v2) + '</td></tr>';
         }
+        function cmpBool(key, label) {
+          function disp(x) { return x[key] === true ? 'Yes' : x[key] === false ? 'No' : '—'; }
+          var v1 = disp(c1);
+          var v2 = disp(c2);
+          var same = v1 === v2 && v1 !== '—';
+          return '<tr class="' + (same ? 'compare-match-row' : '') + '"><td class="criteria-label">' + escapeHtml(label) + '</td><td>' + escapeHtml(v1) + '</td><td>' + escapeHtml(v2) + '</td></tr>';
+        }
 
-        var tableRows = cmp('preferredContact', 'Preferred Contact Method') +
+        var tableRows = cmpBool('isVolunteer', 'Volunteer') +
+          cmp('preferredContact', 'Preferred Contact Method') +
           cmp('borough', 'Borough') +
           cmp('neighborhood', 'Neighborhood') +
           cmp('age', 'Age') +

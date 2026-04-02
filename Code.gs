@@ -370,8 +370,13 @@ const PROFILE_FIELD_SETTINGS_MAX_COLUMN_1BASED_ = 49;
 
 /** Column AP (42) — internal-only status; edited in app, not in Settings profile field list. */
 const INTERNAL_STATUS_COLUMN_1BASED_ = 42;
-/** Column AQ (43) — last staff contact date; edited in app, not in Settings profile field list. */
-const LAST_CONTACT_DATE_COLUMN_1BASED_ = 43;
+/**
+ * Column AQ (43) — Signup Form: volunteer checkbox (Yes/TRUE from Google Form). Read-only in app.
+ * Last staff contact date moved to column AR — migrate existing date values from AQ to AR when upgrading.
+ */
+const VOLUNTEER_COLUMN_1BASED_ = 43;
+/** Column AR (44) — last staff contact date; edited in app, not in Settings profile field list. */
+const LAST_CONTACT_DATE_COLUMN_1BASED_ = 44;
 const INTERNAL_STATUS_ALLOWED_ = ['Active', 'Unresponsive', 'Quit'];
 
 /**
@@ -390,7 +395,21 @@ function parseInternalStatusFromRow_(rowValues) {
   return 'Active';
 }
 
-/** ISO string or null from column AQ (last contact date). */
+/** TRUE if column AQ looks like a checked volunteer response (Form checkbox). */
+function parseVolunteerFromRow_(rowValues) {
+  const idx = VOLUNTEER_COLUMN_1BASED_ - 1;
+  if (!rowValues || rowValues.length <= idx) return false;
+  const cell = rowValues[idx];
+  if (cell === true) return true;
+  if (cell === false || cell === '' || cell == null) return false;
+  const s = String(cell).trim().toLowerCase();
+  if (!s) return false;
+  if (s === 'yes' || s === 'true' || s === '1' || s === 'y') return true;
+  if (s === 'no' || s === 'false' || s === '0' || s === 'n') return false;
+  return false;
+}
+
+/** ISO string or null from column AR (last contact date). */
 function parseLastContactDateFromRow_(rowValues) {
   const idx = LAST_CONTACT_DATE_COLUMN_1BASED_ - 1;
   if (!rowValues || rowValues.length <= idx) return null;
@@ -1075,7 +1094,7 @@ function updateCompanionInternalStatus(rowNumber, status) {
 }
 
 /**
- * Last contact date in column AQ (YYYY-MM-DD from client or empty to clear).
+ * Last contact date in column AR (YYYY-MM-DD from client or empty to clear).
  */
 function updateCompanionLastContactDate(rowNumber, dateInputValue) {
   requireDashboardAuth_();
@@ -1484,6 +1503,7 @@ function parseCompanion_(row, headers, rowNum) {
       internalNotes: getVal('INTERNAL NOTES'),
       internalStatus: parseInternalStatusFromRow_(rowValues),
       lastContactDate: parseLastContactDateFromRow_(rowValues),
+      isVolunteer: parseVolunteerFromRow_(rowValues),
       essays: {
         hobbiesAndCreativity: hobbiesAndCreativity,
         expectations: getVal('important things that you want'),
