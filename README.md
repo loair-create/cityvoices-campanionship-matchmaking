@@ -28,6 +28,7 @@ This repository holds the source for **version 3** of the app: server logic in `
 6. **Web app deployment (dashboard URL + profile links):** **Deploy → New deployment → Web app**. Profile URLs look like:  
    `https://script.google.com/.../exec?page=profile&id=<rowId>`  
    For **security**, prefer **Who has access: Only people in [your domain]** (Workspace) or a tight group—not “Anyone on the internet.” See **Security without an email allowlist** below.  
+   **Saving the live URL in the spreadsheet:** After deploying, use the spreadsheet menu **Companionship Connections → Update web app URL in sheet**. That creates/updates an **App URL** tab with the current `ScriptApp.getService().getUrl()`. Optional: **Turn on: auto-update URL when spreadsheet opens** (one-time) installs an on-open trigger so the tab refreshes whenever someone opens the file—useful after new deployments.  
 7. **Optional script properties** (Project Settings → Script properties):  
    - **`FORM_RESPONSES_SHEET_NAME`** — exact tab name if auto-detection picks the wrong sheet.  
    - **`PRE_SURVEY_RESULTS_SHEET_NAME`** / **`POST_SURVEY_RESULTS_SHEET_NAME`** (or legacy **`POST_SURVEY_SHEET_NAME`**) — override tab names for analysis charts.  
