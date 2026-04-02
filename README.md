@@ -52,7 +52,7 @@ Reserved tab names used by the app include **`Matches`** and **`Reminder Schedul
 | Column | Use |
 |--------|-----|
 | **AP** | Internal status (Active / Unresponsive / Quit), edited in the app |
-| **AQ** | Volunteer checkbox from the Google Form (`TRUE` / `Yes` = volunteer) |
+| **AQ** | Volunteer (`TRUE`/`FALSE`); from the Google Form or editable in the app (Enrollment section) |
 | **AR** | Last staff contact date (edited in the app). If you previously stored last contact in **AQ**, move those values to **AR** after updating to this version. |
 
 ## Development notes

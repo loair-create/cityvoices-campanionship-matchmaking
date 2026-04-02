@@ -1118,6 +1118,23 @@ function updateCompanionLastContactDate(rowNumber, dateInputValue) {
   return true;
 }
 
+/**
+ * Volunteer checkbox in column AQ (boolean TRUE/FALSE, same as Google Form checkboxes).
+ */
+function updateCompanionVolunteer(rowNumber, isVolunteer) {
+  requireDashboardAuth_();
+  const sheet = getResponsesSheet_();
+  const row = parseInt(rowNumber, 10);
+  if (row < 2) return false;
+  const h = sheet.getRange(1, VOLUNTEER_COLUMN_1BASED_).getValue();
+  if (h == null || String(h).trim() === '') {
+    sheet.getRange(1, VOLUNTEER_COLUMN_1BASED_).setValue('VOLUNTEER');
+  }
+  const on = isVolunteer === true || isVolunteer === 'true' || String(isVolunteer).toLowerCase() === 'yes';
+  sheet.getRange(row, VOLUNTEER_COLUMN_1BASED_).setValue(on);
+  return true;
+}
+
 // --- REMINDER EMAIL (6 months after First Meeting Set Date, for status Active or First Meeting Set) ---
 const REMINDER_MONTHS = 6;
 /** Default: City Voices – Companion Connections Check-In (Google Form). Override with Script property COMPANION_CHECKIN_FORM_URL if the link changes. */

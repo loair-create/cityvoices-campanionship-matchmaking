@@ -105,7 +105,9 @@
     }
     .card-header { padding: 16px; cursor: pointer; display: flex; align-items: center; gap: 12px; }
     .card-header:hover { background: #f9fafb; }
-    .avatar { width: 48px; height: 48px; border-radius: 50%; background: #ccfbf1; color: #0d9488; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; }
+    .avatar { position: relative; width: 48px; height: 48px; border-radius: 50%; background: #ccfbf1; color: #0d9488; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; flex-shrink: 0; }
+    .avatar-volunteer-badge { position: absolute; bottom: -3px; right: -3px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 999px; background: #0d9488; color: #fff; font-size: 9px; font-weight: 700; line-height: 18px; text-align: center; border: 2px solid #fff; box-sizing: border-box; pointer-events: none; }
+    .directory-volunteer-caption { font-size: 11px; font-weight: 700; color: #0d9488; letter-spacing: 0.02em; margin-top: 2px; }
     .card-body { padding: 0 16px 16px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
     .btn { padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; border: none; }
@@ -286,6 +288,9 @@
         selectedCompanion: null,
         directoryFilters: {}
       };
+
+      /** 0-based column index for AQ (volunteer), must match Code.gs VOLUNTEER_COLUMN_1BASED_ - 1 */
+      var VOLUNTEER_COLUMN_INDEX_ = 42;
 
       var FILTER_FIELDS = [
         { key: '_matchedStatus', label: 'Match status', options: [{ value: '', label: 'All' }, { value: 'unmatched', label: 'Not yet matched' }, { value: 'matched', label: 'Has at least one match' }] },
@@ -611,10 +616,13 @@
           if (waiverNote) badges.push('<span class="badge badge-amber" style="margin-top:4px;">Waiver not signed</span>');
           if (neverMatched) badges.push('<span class="badge badge-gray" style="margin-top:4px;">Not yet matched</span>');
           if (c.isVolunteer === true) badges.push('<span class="badge badge-green" style="margin-top:4px;">Volunteer</span>');
+          var volBadge = c.isVolunteer === true ? '<span class="avatar-volunteer-badge" title="Volunteer">V</span>' : '';
+          var volCaption = c.isVolunteer === true ? '<div class="directory-volunteer-caption">Volunteer</div>' : '';
           card.innerHTML = '<div class="card-header" data-id="' + c.id + '">' +
-            '<div class="avatar">' + (c.firstName ? c.firstName.charAt(0) : '?') + '</div>' +
+            '<div class="avatar">' + (c.firstName ? c.firstName.charAt(0) : '?') + volBadge + '</div>' +
             '<div style="flex:1;min-width:0;">' +
               '<div style="font-weight:600;color:#111;">' + escapeHtml(c.firstName || '') + ' ' + escapeHtml(c.lastName || '') + '</div>' +
+              volCaption +
               '<div style="font-size:13px;color:#6b7280;">' + escapeHtml(c.borough || '') + '</div>' +
               '<div style="font-size:12px;font-weight:600;color:#374151;margin-top:4px;">Enrolled: ' + escapeHtml(formatEnrollmentDate(c.dateEnrolled)) + '</div>' +
               (badges.length ? '<div style="margin-top:4px;">' + badges.join(' ') + '</div>' : '') +
@@ -786,13 +794,16 @@
         var avail = c.availability || {};
         var days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
         var availHtml = days.map(function(d) { return d + ': ' + (avail[d.toLowerCase()] || '—'); }).join(' | ');
-        var enrollment = '<div class="detail-section"><h3>Enrollment</h3>' + dr('Date of enrollment', formatEnrollmentDate(c.dateEnrolled)) + dr('Time in program', getDurationText(c.dateEnrolled)) + dr('Volunteer (column AQ)', c.isVolunteer === true ? 'Yes' : 'No') + '</div>';
+        var enrollment = '<div class="detail-section"><h3>Enrollment</h3>' + dr('Date of enrollment', formatEnrollmentDate(c.dateEnrolled)) + dr('Time in program', getDurationText(c.dateEnrolled)) +
+          '<div class="detail-row"><dt>Volunteer</dt><dd><label style="display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;color:#111;">' +
+          '<input type="checkbox" id="companion-volunteer-cb"' + (c.isVolunteer === true ? ' checked' : '') + ' style="width:18px;height:18px;accent-color:#0d9488;">' +
+          '<span>Yes — updates column <strong>AQ</strong> in the sheet</span></label></dd></div></div>';
         var intSt = companionInternalStatusLabel(c);
         var notesVal = (c.internalNotes != null) ? String(c.internalNotes) : '';
         var lastContactIso = c.lastContactDate || null;
         var lastContactWrapClass = 'companion-last-contact-wrap ' + (isLastContactStale(lastContactIso) ? 'companion-last-contact-stale' : 'companion-last-contact-fresh');
         var internalSection = '<div class="detail-section"><h3>Internal</h3>' +
-          '<p style="margin:0 0 12px 0;font-size:12px;color:#6b7280;">Internal status column <strong>AP</strong>; volunteer checkbox from form column <strong>AQ</strong>; last contact column <strong>AR</strong>. Internal fields are not shown on the public profile.</p>' +
+          '<p style="margin:0 0 12px 0;font-size:12px;color:#6b7280;">Internal status column <strong>AP</strong>; volunteer in <strong>AQ</strong> (editable under Enrollment too); last contact <strong>AR</strong>. Not shown on the public profile.</p>' +
           '<div class="companion-internal-grid">' +
             '<div><div class="detail-row"><dt>Internal status</dt><dd>' +
               '<select id="companion-internal-status" class="companion-internal-status-select" style="padding:8px 10px;border-radius:6px;border:1px solid #d1d5db;font-size:14px;min-width:200px;max-width:100%;">' +
@@ -852,6 +863,35 @@
         var lastWrap = modal.querySelector('#companion-last-contact-wrap');
         var lastDateInp = modal.querySelector('#companion-last-contact-date');
         var notesTa = modal.querySelector('#companion-internal-notes');
+        var volunteerCb = modal.querySelector('#companion-volunteer-cb');
+
+        if (volunteerCb) {
+          volunteerCb.addEventListener('change', function() {
+            var want = this.checked;
+            var prev = c.isVolunteer === true;
+            google.script.run
+              .withSuccessHandler(function(ok) {
+                if (!ok) {
+                  volunteerCb.checked = prev;
+                  alert('Could not save volunteer flag.');
+                  return;
+                }
+                c.isVolunteer = want;
+                var inState = state.companions.find(function(x) { return String(x.id) === String(c.id); });
+                if (inState) {
+                  inState.isVolunteer = want;
+                  var hdr = state.formHeaders && state.formHeaders[VOLUNTEER_COLUMN_INDEX_];
+                  if (hdr && inState.raw) inState.raw[hdr] = want ? 'TRUE' : 'FALSE';
+                }
+                if (state.activeTab === 'directory') renderDirectory();
+              })
+              .withFailureHandler(function(err) {
+                volunteerCb.checked = prev;
+                alert('Failed: ' + (err && err.message ? err.message : String(err)));
+              })
+              .updateCompanionVolunteer(c.id, want);
+          });
+        }
 
         function syncUnresponsiveCheckbox() {
           if (!unrespCb || !statusSel) return;
