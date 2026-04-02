@@ -133,7 +133,7 @@ function menuRefreshWebAppUrl() {
   }
 }
 
-/** Menu: open the deployed /exec URL in a new browser tab. */
+/** Menu: open the deployed /exec URL in a new browser tab (user must click link — pop-up blockers block window.open from dialogs). */
 function menuOpenDeployedWebApp() {
   const { url, error } = getWebAppDeploymentUrl_();
   const ui = SpreadsheetApp.getUi();
@@ -141,15 +141,26 @@ function menuOpenDeployedWebApp() {
     ui.alert('Web app URL', error || 'Could not read deployment URL.', ui.ButtonSet.OK);
     return;
   }
+  const urlJson = JSON.stringify(url);
   const html = HtmlService.createHtmlOutput(
-    '<!DOCTYPE html><html><body style="font-family:sans-serif;padding:12px;font-size:14px;">' +
-      '<p>Opening web app…</p>' +
-      '<script>window.open(' + JSON.stringify(url) + ', "_blank");google.script.host.close();</script>' +
+    '<!DOCTYPE html><html><head><base target="_top">' +
+      '<style>' +
+      'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:16px;margin:0;font-size:14px;color:#111;line-height:1.45}' +
+      'a.btn{display:inline-block;margin:12px 0;padding:10px 18px;background:#0d9488;color:#fff!important;text-decoration:none;border-radius:6px;font-weight:600}' +
+      'a.btn:hover{background:#0f766e}' +
+      'code{display:block;margin-top:12px;padding:10px;background:#f3f4f6;font-size:11px;word-break:break-all;border-radius:6px;border:1px solid #e5e7eb}' +
+      '</style></head><body>' +
+      '<p><strong>Open the web app</strong></p>' +
+      '<p style="color:#6b7280;font-size:13px;margin:0 0 4px 0">Google Sheets blocks automatic new tabs from this dialog. Use the button below.</p>' +
+      '<a id="go" class="btn" target="_blank" rel="noopener noreferrer">Open web app</a>' +
+      '<p style="font-size:12px;color:#6b7280;margin:14px 0 4px 0">Or copy the URL:</p>' +
+      '<code id="cpy"></code>' +
+      '<script>(function(){var u=' + urlJson + ';var a=document.getElementById("go");a.href=u;document.getElementById("cpy").textContent=u;})();<\/script>' +
       '</body></html>'
   )
-    .setWidth(380)
-    .setHeight(100);
-  ui.showModalDialog(html, 'Web app');
+    .setWidth(440)
+    .setHeight(280);
+  ui.showModalDialog(html, 'Open web app');
 }
 
 function openApp() {
