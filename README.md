@@ -25,16 +25,28 @@ This repository holds the source for **version 3** of the app: server logic in `
 3. **Backend:** Replace or merge the default `.gs` file with the contents of `Code.gs` from this repo.  
 4. **HTML:** Add an HTML file named **`App`** (exact name). Paste the **full** contents of `App.html` into it. The profile view is selected when the deployed URL includes `?page=profile&id=ROW_ID`; you do **not** need a second HTML file.  
 5. Save the project (**Ctrl/Cmd + S**).  
-6. **Authorize dashboard users:** The code always allows **`danfrey76@gmail.com`** in addition to the script property list. For everyone else, in Apps Script open **Project Settings** (gear) → **Script properties** and add:  
-   - **`ALLOWED_DASHBOARD_EMAILS`** — comma-separated Google emails allowed to use the dashboard (modal from the sheet, `google.script.run`, etc.).  
-7. **Web app deployment (dashboard URL + profile links):** **Deploy → New deployment → Web app**. Use **Execute as: User accessing the web app** and **Who has access: Anyone with Google account** (or your Workspace)—not Anonymous. If the app runs only as the developer, Google often does not expose visitors’ emails and the dashboard will not load for them. Profile URLs look like:  
+6. **Web app deployment (dashboard URL + profile links):** **Deploy → New deployment → Web app**. Profile URLs look like:  
    `https://script.google.com/.../exec?page=profile&id=<rowId>`  
-8. **Optional script properties** (Project Settings → Script properties):  
+   For **security**, prefer **Who has access: Only people in [your domain]** (Workspace) or a tight group—not “Anyone on the internet.” See **Security without an email allowlist** below.  
+7. **Optional script properties** (Project Settings → Script properties):  
    - **`FORM_RESPONSES_SHEET_NAME`** — exact tab name if auto-detection picks the wrong sheet.  
    - **`PRE_SURVEY_RESULTS_SHEET_NAME`** / **`POST_SURVEY_RESULTS_SHEET_NAME`** (or legacy **`POST_SURVEY_SHEET_NAME`**) — override tab names for analysis charts.  
-9. **Email (reminders / test mail):** In the script editor, choose **`authorizeEmailPermission`** from the function dropdown, click **Run**, and complete the OAuth prompts once.  
+8. **Email (reminders / test mail):** In the script editor, choose **`authorizeEmailPermission`** from the function dropdown, click **Run**, and complete the OAuth prompts once.  
 
 From the spreadsheet, use the menu **Companionship Connections → Open Dashboard** to open the modal, or open the deployed web app URL for the full-page dashboard.
+
+## Security without an email allowlist
+
+The app no longer checks `ALLOWED_DASHBOARD_EMAILS` (that pattern broke easily with Google’s web app identity behavior). Use layers Google already provides:
+
+1. **Who has access (deployment)** — In **Deploy → Manage deployments → Edit**, set the web app so only people in your **Google Workspace organization** (or specific users) can open it. Avoid **Anyone** / public internet unless you accept that anyone with the URL can hit the script (especially risky if **Execute as: Me**).  
+2. **Execute as: User accessing the web app** — Recommended for staff dashboards: the script runs as the signed-in user, so **Google Sheets sharing** applies. Only users who can open the spreadsheet see or change data.  
+3. **Spreadsheet sharing** — Share the bound spreadsheet only with people who should see participant data (Viewer vs Editor as appropriate).  
+4. **Keep URLs private** — Treat the `/exec` link like an internal tool; don’t post it on public pages.  
+5. **Public profiles** — Links with `?page=profile&id=…` show the limited profile only; still avoid sharing row IDs widely if that’s sensitive.  
+6. **Workspace admin** — Admins can restrict Apps Script / external sharing policies for your domain.
+
+Opening the dashboard from the spreadsheet menu (**Extensions → Apps Script** or **Open Dashboard**) still requires a user who can open that file.
 
 ## Features (high level)
 
