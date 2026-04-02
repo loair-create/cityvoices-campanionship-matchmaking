@@ -194,25 +194,68 @@ function serializeDateForClient_(d) {
 }
 
 /**
- * Require a signed-in Google user whose email appears in Script property ALLOWED_DASHBOARD_EMAILS
- * (comma-separated, case-insensitive). Set under Project Settings > Script properties.
- * Not used for public profile links (getCompanionForProfile) or doGet.
- * Deploy the web app with "Who has access" = Anyone with Google account (or domain), not Anonymous.
+ * Emails always allowed on the dashboard (in addition to ALLOWED_DASHBOARD_EMAILS script property).
+ * Keeps a known admin able to sign in even if the script property list is missing or out of date.
  */
-function requireDashboardAuth_() {
-  const email = Session.getActiveUser().getEmail();
+function getBuiltInDashboardAllowedEmails_() {
+  return ['danfrey76@gmail.com'];
+}
+
+/**
+ * Merged allowlist: built-in emails plus Script property ALLOWED_DASHBOARD_EMAILS (comma-separated, case-insensitive).
+ */
+function getDashboardAllowedEmailsList_() {
+  const builtIn = getBuiltInDashboardAllowedEmails_().map(function (e) {
+    return String(e || '').trim().toLowerCase();
+  }).filter(Boolean);
   const raw = PropertiesService.getScriptProperties().getProperty('ALLOWED_DASHBOARD_EMAILS') || '';
-  const allowed = raw.split(',').map(function (s) {
+  const fromProp = raw.split(',').map(function (s) {
     return s.trim().toLowerCase();
   }).filter(Boolean);
+  const seen = {};
+  const out = [];
+  builtIn.forEach(function (e) {
+    if (!seen[e]) {
+      seen[e] = true;
+      out.push(e);
+    }
+  });
+  fromProp.forEach(function (e) {
+    if (!seen[e]) {
+      seen[e] = true;
+      out.push(e);
+    }
+  });
+  return out;
+}
+
+/**
+ * Require a signed-in Google user whose email is in the merged allowlist (built-in + ALLOWED_DASHBOARD_EMAILS).
+ * Not used for public profile links (getCompanionForProfile) or doGet.
+ * Deploy the web app with Execute as: User accessing the web app, and Who has access = Anyone with Google account
+ * (or your domain)—not Anonymous—so Session.getActiveUser().getEmail() is the visitor.
+ * Do not use Execute as: Me for a multi-user dashboard; otherwise getActiveUser() is often empty for visitors.
+ */
+function requireDashboardAuth_() {
+  const rawEmail = Session.getActiveUser().getEmail();
+  const email = rawEmail ? String(rawEmail).trim().toLowerCase() : '';
+  const allowed = getDashboardAllowedEmailsList_();
   if (allowed.length === 0) {
     throw new Error('Security: set Script property ALLOWED_DASHBOARD_EMAILS to a comma-separated list of authorized emails (Apps Script > Project Settings > Script properties), then try again.');
   }
   if (!email) {
-    throw new Error('Sign in with Google and open this app while logged in. Web app access cannot be Anonymous when using the dashboard.');
+    throw new Error(
+      'Your Google account email could not be read. Open the web app while signed into Google. ' +
+        'If this persists, redeploy the web app: Execute as = User accessing the web app (not only you), ' +
+        'Who has access = Anyone with Google account (or your org). Anonymous access cannot identify users.'
+    );
   }
-  if (allowed.indexOf(email.toLowerCase()) < 0) {
-    throw new Error('Not authorized for this dashboard. Ask an admin to add your Google account email to ALLOWED_DASHBOARD_EMAILS.');
+  if (allowed.indexOf(email) < 0) {
+    throw new Error(
+      'Not authorized for this dashboard. Your signed-in email is not on the allow list. ' +
+        'Ask an admin to add it to Script property ALLOWED_DASHBOARD_EMAILS (comma-separated). ' +
+        'You are signed in as: ' + email
+    );
   }
 }
 
