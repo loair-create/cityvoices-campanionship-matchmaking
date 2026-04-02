@@ -79,7 +79,15 @@ function getWebAppDeploymentUrl_() {
 }
 
 /**
+ * Escape a string for use inside double quotes in a Sheets =HYPERLINK("...","...") formula.
+ */
+function escapeForSheetsFormulaString_(s) {
+  return String(s == null ? '' : s).replace(/"/g, '""');
+}
+
+/**
  * Writes the web app URL to tab "App URL" (hyperlink + last synced time). No UI.
+ * Uses =HYPERLINK(...) for B1 — RichText links to script.google.com often open as "can't open this file".
  */
 function syncWebAppUrlToSpreadsheetSilent_() {
   const { url, error } = getWebAppDeploymentUrl_();
@@ -95,11 +103,10 @@ function syncWebAppUrlToSpreadsheetSilent_() {
     ['Full URL (copy from this cell)']
   ]);
   sh.getRange(1, 1, 3, 1).setFontWeight('bold');
-  const rich = SpreadsheetApp.newRichTextValue()
-    .setText('Open web app — dashboard & profile base URL')
-    .setLinkUrl(url)
-    .build();
-  sh.getRange(1, 2).setRichTextValue(rich);
+  const urlEsc = escapeForSheetsFormulaString_(url);
+  const labelEsc = escapeForSheetsFormulaString_('Open web app — dashboard & profile base URL');
+  sh.getRange(1, 2).clearContent();
+  sh.getRange(1, 2).setFormula('=HYPERLINK("' + urlEsc + '","' + labelEsc + '")');
   sh.getRange(2, 2).setValue(new Date());
   sh.getRange(2, 2).setNumberFormat('yyyy-mm-dd hh:mm:ss');
   sh.getRange(3, 2).setValue(url);
