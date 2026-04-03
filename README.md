@@ -31,22 +31,13 @@ This repository holds the source for **version 3** of the app: server logic in `
 7. **Optional script properties** (Project Settings → Script properties):  
    - **`FORM_RESPONSES_SHEET_NAME`** — exact tab name if auto-detection picks the wrong sheet.  
    - **`PRE_SURVEY_RESULTS_SHEET_NAME`** / **`POST_SURVEY_RESULTS_SHEET_NAME`** (or legacy **`POST_SURVEY_SHEET_NAME`**) — override tab names for analysis charts.  
-8. **Email (reminders / test mail):** In the script editor, choose **`authorizeEmailPermission`** from the function dropdown, click **Run**, and complete the OAuth prompts once.  
+8. **Email (reminders / test mail):** Open the spreadsheet and use **Companionship Connections → Authorize email (test send)**. Enter an address when prompted, approve OAuth **Send email on your behalf** (the app does **not** request access to “see your Google Account email address”).  
 
 From the spreadsheet, use the menu **Companionship Connections → Open Dashboard** to open the modal, or open the deployed web app URL in the browser for the full-page dashboard (copy the `/exec` link from **Deploy → Manage deployments** in the Apps Script editor).
 
-## Security without an email allowlist
+## Security
 
-The app no longer checks `ALLOWED_DASHBOARD_EMAILS` (that pattern broke easily with Google’s web app identity behavior). Use layers Google already provides:
-
-1. **Who has access (deployment)** — In **Deploy → Manage deployments → Edit**, set the web app so only people in your **Google Workspace organization** (or specific users) can open it. Avoid **Anyone** / public internet unless you accept that anyone with the URL can hit the script (especially risky if **Execute as: Me**).  
-2. **Execute as: User accessing the web app** — Recommended for staff dashboards: the script runs as the signed-in user, so **Google Sheets sharing** applies. Only users who can open the spreadsheet see or change data.  
-3. **Spreadsheet sharing** — Share the bound spreadsheet only with people who should see participant data (Viewer vs Editor as appropriate).  
-4. **Keep URLs private** — Treat the `/exec` link like an internal tool; don’t post it on public pages.  
-5. **Public profiles** — Links with `?page=profile&id=…` show the limited profile only; still avoid sharing row IDs widely if that’s sensitive.  
-6. **Workspace admin** — Admins can restrict Apps Script / external sharing policies for your domain.
-
-Opening the dashboard from the spreadsheet menu (**Extensions → Apps Script** or **Open Dashboard**) still requires a user who can open that file.
+There is no email allowlist in the code—treat the spreadsheet and web app URL like any internal tool: share the sheet only with people who should see the data, and restrict **Deploy → Who has access** if you publish the web app.
 
 ## Features (high level)
 

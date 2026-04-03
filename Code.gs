@@ -42,6 +42,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Companionship Connections')
     .addItem('Open Dashboard', 'openApp')
+    .addItem('Authorize email (test send)', 'menuAuthorizeEmailPermission')
     .addItem('Run 6‑month reminder check now', 'runScheduledReminders')
     .addToUi();
 }
@@ -58,15 +59,48 @@ function openApp() {
 }
 
 /**
- * Run this once from the Apps Script editor to authorize email sending.
- * Select "authorizeEmailPermission" in the function dropdown, click Run, then approve when prompted.
- * After that, the Tester email and 6‑month reminders will work from the site/spreadsheet.
+ * Authorize MailApp by sending yourself a test email. Uses a prompt for the address (no “view your email” OAuth scope).
+ * Prefer the spreadsheet menu: Companionship Connections → Authorize email (test send).
+ * Still callable as authorizeEmailPermission from the editor for backwards compatibility (must open the sheet first so the UI exists).
  */
 function authorizeEmailPermission() {
+  menuAuthorizeEmailPermission();
+}
+
+/** Menu + implementation: prompt for recipient, then MailApp.sendEmail (one-time authorization). */
+function menuAuthorizeEmailPermission() {
   requireDashboardAuth_();
-  const to = Session.getActiveUser().getEmail();
-  if (!to) throw new Error('Could not get your email. Run openApp from the spreadsheet menu instead and approve when prompted.');
-  MailApp.sendEmail(to, 'Companionship app – authorization test', 'This is a one-time test. Email permission is now authorized. You can use the Tester email and reminders from the app.');
+  let ui;
+  try {
+    ui = SpreadsheetApp.getUi();
+  } catch (e) {
+    throw new Error(
+      'Open the bound Google Sheet, then use the menu: Companionship Connections → Authorize email (test send). ' +
+        '(Running from script.google.com without the spreadsheet open cannot show the email prompt.)'
+    );
+  }
+  const r = ui.prompt(
+    'Authorize email sending',
+    'Enter the email address that should receive a one-time test message (usually yours). This enables MailApp for reminders and tester emails.',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  const to = String(r.getResponseText() || '').trim();
+  if (!to) {
+    ui.alert('No email address entered.');
+    return;
+  }
+  try {
+    MailApp.sendEmail(
+      to,
+      'Companionship app – authorization test',
+      'This is a one-time test. Email permission is now authorized. You can use the Tester email and reminders from the app.'
+    );
+    ui.alert('Test email sent to ' + to + '.');
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    ui.alert('Could not send: ' + msg);
+  }
 }
 
 /**
@@ -194,13 +228,7 @@ function serializeDateForClient_(d) {
 }
 
 /**
- * Dashboard gate (formerly an email allowlist). That approach often failed with web app deployments
- * where Session.getActiveUser().getEmail() is empty, so it was removed.
- *
- * Security instead: restrict who can open the web app (Deploy → Who has access), use Execute as: User accessing
- * the web app so only people with spreadsheet access get data, and share the spreadsheet only with staff.
- * See README “Security without an email allowlist”.
- *
+ * Dashboard hook (optional). Email allowlists were removed; security is spreadsheet sharing + web app deployment settings.
  * Not used for public profile links (getCompanionForProfile) or doGet profile branch.
  */
 function requireDashboardAuth_() {
