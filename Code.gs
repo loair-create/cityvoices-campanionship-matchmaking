@@ -3,6 +3,9 @@
  * Backend Logic
  */
 
+/** Name of the sheet tab with companion sign-ups (row 1 = headers, then one row per person). */
+var FORM_SHEET_NAME = 'Sign Up Form';
+
 function doGet(e) {
   return HtmlService.createTemplateFromFile('App')
     .evaluate()
@@ -32,8 +35,8 @@ function getData() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
   // 1. Get Companions
-  const formSheet = ss.getSheetByName('Form Responses 1');
-  if (!formSheet) throw new Error('Sheet "Form Responses 1" not found.');
+  const formSheet = ss.getSheetByName(FORM_SHEET_NAME);
+  if (!formSheet) throw new Error('Sheet "' + FORM_SHEET_NAME + '" not found.');
   
   const lastFormRow = formSheet.getLastRow();
   const lastFormCol = formSheet.getLastColumn();
@@ -247,7 +250,8 @@ function deleteMatch(matchId) {
 
 function updateCompanionNote(rowNumber, note) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('Form Responses 1');
+  const sheet = ss.getSheetByName(FORM_SHEET_NAME);
+  if (!sheet) return false;
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   let noteCol = headers.findIndex(h => h.toUpperCase().includes("INTERNAL NOTES"));
   
