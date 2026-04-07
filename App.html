@@ -5,8 +5,8 @@
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- React & ReactDOM -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <!-- Babel -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   
@@ -538,12 +538,19 @@
       const [pendingMatchTargetIds, setPendingMatchTargetIds] = useState([]);
 
       useEffect(() => {
-        google.script.run.withSuccessHandler(data => {
-          setCompanions(data.companions);
-          setMatches(data.matches);
-          if (data.criteria) setConfig(data.criteria);
-          setLoading(false);
-        }).getData();
+        google.script.run
+          .withSuccessHandler(data => {
+            setCompanions(data.companions || []);
+            setMatches(data.matches || []);
+            if (data.criteria) setConfig(data.criteria);
+            setLoading(false);
+          })
+          .withFailureHandler(err => {
+            console.error(err);
+            alert('Could not load data: ' + (err && err.message ? err.message : String(err)));
+            setLoading(false);
+          })
+          .getData();
       }, []);
 
       // Just updates local state for immediate UI feedback
