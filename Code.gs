@@ -5,8 +5,15 @@
 
 /** Name of the sheet tab with companion sign-ups (row 1 = headers, then one row per person). */
 var FORM_SHEET_NAME = 'Sign Up Form';
+/** Optional tabs for Insights — column frequency summaries. */
+var PRE_SURVEY_SHEET_NAME = 'Pre-Survey Results';
+var POST_SURVEY_SHEET_NAME = 'Post Survey Results';
 
 function doGet(e) {
+  var p = e && e.parameter ? e.parameter : {};
+  if (String(p.view || '') === 'public' && p.row != null && String(p.row).length > 0) {
+    return servePublicProfile_(p.row);
+  }
   return HtmlService.createTemplateFromFile('App')
     .evaluate()
     .setTitle('Companionship Matching Dashboard')
@@ -28,6 +35,125 @@ function openApp() {
   SpreadsheetApp.getUi().showModalDialog(html, 'Companionship Matching Dashboard');
 }
 
+/** True if this form column header should be hidden on public profile / PDF (contact & internal). */
+function isContactOrSensitiveHeader_(header) {
+  var s = String(header || '').toLowerCase();
+  if (s.indexOf('email') >= 0) return true;
+  if (s.indexOf('e-mail') >= 0) return true;
+  if (s.indexOf('phone') >= 0) return true;
+  if (s.indexOf('telephone') >= 0) return true;
+  if (s.indexOf('mobile') >= 0) return true;
+  if (s.indexOf('cell phone') >= 0) return true;
+  if (s.indexOf('last name') >= 0) return true;
+  if (s.indexOf('surname') >= 0) return true;
+  if (s.indexOf('internal note') >= 0) return true;
+  if (s.indexOf('internal status') >= 0) return true;
+  return false;
+}
+
+function filterPublicQuestions_(allQuestions) {
+  if (!allQuestions || !allQuestions.length) return [];
+  return allQuestions.filter(function (item) {
+    if (isContactOrSensitiveHeader_(item.question)) return false;
+    var h = String(item.question || '')
+      .trim()
+      .toLowerCase();
+    if (h === 'first name') return false;
+    return true;
+  });
+}
+
+function buildPublicTemplateData_(companion) {
+  var first = String(companion.firstName || 'Participant').trim() || 'Participant';
+  var filtered = filterPublicQuestions_(companion.allQuestions || []);
+  var rows = filtered.map(function (q) {
+    var a = q.answer != null ? String(q.answer).trim() : '';
+    return { question: q.question, answer: a ? q.answer : '—' };
+  });
+  return { firstName: first, rows: rows };
+}
+
+function getCompanionByRow_(rowNum) {
+  var r = parseInt(String(rowNum), 10);
+  if (isNaN(r) || r < 2) throw new Error('Invalid profile row.');
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(FORM_SHEET_NAME);
+  if (!sheet) throw new Error('Form sheet not found.');
+  if (r > sheet.getLastRow()) throw new Error('Row not found.');
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) throw new Error('No data.');
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var row = sheet.getRange(r, 1, r, lastCol).getValues()[0];
+  var colIdx = buildCompanionColumnIndices(headers);
+  var p = parseCompanionRow(row, colIdx, r);
+  p.allQuestions = buildAllFormQandA_(headers, row);
+  return p;
+}
+
+function servePublicProfile_(rowParam) {
+  try {
+    var c = getCompanionByRow_(rowParam);
+    var data = buildPublicTemplateData_(c);
+    var t = HtmlService.createTemplateFromFile('PublicProfile');
+    t.firstName = data.firstName;
+    t.rows = data.rows;
+    return t
+      .evaluate()
+      .setTitle(data.firstName + ' — Profile')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  } catch (err) {
+    return HtmlService.createHtmlOutput(
+      '<!DOCTYPE html><html><body style="font-family:sans-serif;padding:2rem;"><p>Profile could not be loaded.</p></body></html>'
+    ).setTitle('Profile');
+  }
+}
+
+function getWebAppBaseUrl_() {
+  try {
+    var url = ScriptApp.getService().getUrl();
+    return url ? String(url).replace(/#$/, '') : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+/**
+ * @return {{ ok: boolean, url: string, message: string }}
+ */
+function getPublicShareLink(rowId) {
+  var base = getWebAppBaseUrl_();
+  if (!base) {
+    return {
+      ok: false,
+      url: '',
+      message:
+        'Could not detect the web app URL automatically. In Apps Script: Deploy → Manage deployments → copy the Web app URL, then add this to the end: ?view=public&row=' +
+        encodeURIComponent(String(rowId))
+    };
+  }
+  var sep = base.indexOf('?') >= 0 ? '&' : '?';
+  return { ok: true, url: base + sep + 'view=public&row=' + encodeURIComponent(String(rowId)), message: '' };
+}
+
+/**
+ * PDF of public-safe profile (first name + form responses, no contact columns).
+ * @return {{ base64: string, fileName: string }}
+ */
+function getProfilePdfBase64(rowId) {
+  var c = getCompanionByRow_(rowId);
+  var data = buildPublicTemplateData_(c);
+  var t = HtmlService.createTemplateFromFile('PublicProfile');
+  t.firstName = data.firstName;
+  t.rows = data.rows;
+  var pdfBlob = t.evaluate().getAs(MimeType.PDF);
+  var safe = String(data.firstName).replace(/[^\w\-]+/g, '') || 'profile';
+  return {
+    base64: Utilities.base64Encode(pdfBlob.getBytes()),
+    fileName: 'Companion-' + safe + '-profile.pdf'
+  };
+}
+
 /**
  * FETCH DATA
  */
@@ -47,7 +173,9 @@ function getData() {
     const rows = formData.slice(1);
     const colIdx = buildCompanionColumnIndices(headers);
     companions = rows.map(function (row, i) {
-      return parseCompanionRow(row, colIdx, i + 2);
+      var p = parseCompanionRow(row, colIdx, i + 2);
+      p.allQuestions = buildAllFormQandA_(headers, row);
+      return p;
     });
   }
   
@@ -350,6 +478,25 @@ function cellAt(row, colIndex) {
   return v != null ? String(v) : '';
 }
 
+/** Every column on the sign-up row as { question, answer } (uses sheet headers). */
+function buildAllFormQandA_(headers, row) {
+  var out = [];
+  var max = Math.max(headers.length, row.length);
+  for (var i = 0; i < max; i++) {
+    var h = i < headers.length ? headers[i] : '';
+    h = String(h != null ? h : '').trim() || 'Column ' + (i + 1);
+    var v = i < row.length ? row[i] : '';
+    var val = '';
+    if (v instanceof Date) {
+      val = Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+    } else {
+      val = v != null ? String(v) : '';
+    }
+    out.push({ question: h, answer: val });
+  }
+  return out;
+}
+
 function parseCompanionRow(row, c, rowNum) {
   function avail(key) {
     var s = cellAt(row, c[key]);
@@ -405,6 +552,8 @@ function parseCompanionRow(row, c, rowNum) {
 // --- SURVEY / INSIGHTS ---
 
 var REMINDER_DAYS_AFTER_MATCH = 180;
+/** When REMINDER_TO_EMAIL is not set in script properties, reminders go here (staff). Clear the field in Insights & save to send To the matched participants instead. */
+var REMINDER_DEFAULT_TO_EMAIL = 'danfrey76@gmail.com';
 
 function bucketVolunteer_(raw) {
   var s = String(raw || '').trim();
@@ -427,6 +576,54 @@ function countsToSortedList_(map) {
     .sort(function (a, b) {
       return b.count - a.count;
     });
+}
+
+/**
+ * Frequency breakdown per column for a survey-style sheet (row 1 = headers).
+ * @return {{ exists: boolean, sheetName: string, totalRows: number, columns: Array<{header: string, breakdown: Array}> }}
+ */
+function analyzeExternalSurveySheet_(sheetName) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(sheetName);
+  if (!sh) {
+    return { exists: false, sheetName: sheetName, totalRows: 0, columns: [] };
+  }
+  var lr = sh.getLastRow();
+  var lc = sh.getLastColumn();
+  if (lr < 2 || lc < 1) {
+    return { exists: true, sheetName: sheetName, totalRows: 0, columns: [] };
+  }
+  var data = sh.getRange(1, 1, lr, lc).getValues();
+  var headers = data[0];
+  var rows = data.slice(1);
+  var tz = Session.getScriptTimeZone();
+  var columns = [];
+  for (var c = 0; c < lc; c++) {
+    var header = String(headers[c] != null ? headers[c] : '').trim() || 'Column ' + (c + 1);
+    var counts = {};
+    for (var r = 0; r < rows.length; r++) {
+      var cell = rows[r][c];
+      var key;
+      if (cell instanceof Date) {
+        key = Utilities.formatDate(cell, tz, 'yyyy-MM-dd');
+      } else {
+        key = cell != null ? String(cell).trim() : '';
+      }
+      if (key === '') key = '—';
+      if (key.length > 200) key = key.substring(0, 197) + '…';
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    columns.push({
+      header: header,
+      breakdown: countsToSortedList_(counts).slice(0, 18)
+    });
+  }
+  return {
+    exists: true,
+    sheetName: sheetName,
+    totalRows: rows.length,
+    columns: columns
+  };
 }
 
 function buildSurveyAnalysis_(companions, matches) {
@@ -523,10 +720,16 @@ function getInsightsPageData() {
   }
   return {
     analysis: analysis,
+    preSurvey: analyzeExternalSurveySheet_(PRE_SURVEY_SHEET_NAME),
+    postSurvey: analyzeExternalSurveySheet_(POST_SURVEY_SHEET_NAME),
     reminder: {
       ccEmail: props.getProperty('REMINDER_CC_EMAIL') || '',
       subject: props.getProperty('REMINDER_EMAIL_SUBJECT') || '',
-      body: props.getProperty('REMINDER_EMAIL_BODY') || ''
+      body: props.getProperty('REMINDER_EMAIL_BODY') || '',
+      toEmail: (function () {
+        var v = props.getProperty('REMINDER_TO_EMAIL');
+        return v === null ? null : v;
+      })()
     },
     dailyReminderTriggerActive: triggerOn
   };
@@ -537,6 +740,11 @@ function saveReminderEmailSettings(settings) {
   if (settings.ccEmail != null) props.setProperty('REMINDER_CC_EMAIL', String(settings.ccEmail).trim());
   if (settings.subject != null) props.setProperty('REMINDER_EMAIL_SUBJECT', String(settings.subject).trim());
   if (settings.body != null) props.setProperty('REMINDER_EMAIL_BODY', String(settings.body));
+  if (settings.toEmail != null) {
+    var t = String(settings.toEmail).trim();
+    if (t === '') props.setProperty('REMINDER_TO_EMAIL', '');
+    else props.setProperty('REMINDER_TO_EMAIL', t);
+  }
   return true;
 }
 
@@ -603,7 +811,8 @@ function previewSixMonthReminders() {
 }
 
 /**
- * Send 6-month check-in emails for eligible matches (one email per match, both participant emails in To).
+ * Send 6-month check-in emails for eligible matches (one email per match).
+ * To-line: REMINDER_TO_EMAIL if set (non-empty); if explicitly empty string, both participants; if property never set, REMINDER_DEFAULT_TO_EMAIL.
  * @return {{ sent: number, skipped: number, errors: string[] }}
  */
 function runSixMonthReminderJob() {
@@ -621,6 +830,7 @@ function runSixMonthReminderJob() {
   var subjectDefault = subjectCustom || defaultReminderSubject_();
   var bodyOverride = String(props.getProperty('REMINDER_EMAIL_BODY') || '').trim();
   var cc = String(props.getProperty('REMINDER_CC_EMAIL') || '').trim();
+  var rawToProp = props.getProperty('REMINDER_TO_EMAIL');
 
   var stats = { sent: 0, skipped: 0, errors: [] };
 
@@ -657,9 +867,23 @@ function runSixMonthReminderJob() {
       .split('{{first2}}').join(c2.firstName)
       .split('{{last2}}').join(c2.lastName);
 
+    var toLine;
+    if (rawToProp === null) {
+      toLine = REMINDER_DEFAULT_TO_EMAIL;
+    } else {
+      toLine = String(rawToProp).trim();
+    }
+    if (toLine === '') {
+      toLine = emails.join(',');
+    } else {
+      body +=
+        '\n\n---\nParticipant emails (for reference): ' +
+        (emails.length ? emails.join(', ') : '(none on file)');
+    }
+
     try {
       var options = {
-        to: emails.join(','),
+        to: toLine,
         subject: subjectDefault,
         body: body
       };
