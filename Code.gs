@@ -35,11 +35,18 @@ function getData() {
   const formSheet = ss.getSheetByName('Form Responses 1');
   if (!formSheet) throw new Error('Sheet "Form Responses 1" not found.');
   
-  const formData = formSheet.getDataRange().getValues();
-  const headers = formData[0];
-  const rows = formData.slice(1);
-  
-  const companions = rows.map((row, i) => parseCompanion(row, headers, i + 2));
+  const lastFormRow = formSheet.getLastRow();
+  const lastFormCol = formSheet.getLastColumn();
+  let companions = [];
+  if (lastFormRow >= 2 && lastFormCol >= 1) {
+    const formData = formSheet.getRange(1, 1, lastFormRow, lastFormCol).getValues();
+    const headers = formData[0];
+    const rows = formData.slice(1);
+    const colIdx = buildCompanionColumnIndices(headers);
+    companions = rows.map(function (row, i) {
+      return parseCompanionRow(row, colIdx, i + 2);
+    });
+  }
   
   // 2. Get Matches
   let matchSheet = ss.getSheetByName('Matches');
@@ -49,20 +56,27 @@ function getData() {
     matchSheet.appendRow(['Match ID', 'Companion 1 ID', 'Companion 2 ID', 'Status', 'Notes', 'Created At', 'C1 Name', 'C2 Name']);
   }
   
-  const matchData = matchSheet.getDataRange().getValues();
-  const matchRows = matchData.slice(1);
-
-  /** Skip blank or partial rows so stray spreadsheet lines do not show as matches. */
-  const matches = matchRows
-    .map(r => ({
-      id: String(r[0] != null ? r[0] : '').trim(),
-      companion1Id: String(r[1] != null ? r[1] : '').trim(),
-      companion2Id: String(r[2] != null ? r[2] : '').trim(),
-      status: r[3],
-      notes: r[4],
-      createdAt: r[5]
-    }))
-    .filter(m => m.id && m.companion1Id && m.companion2Id);
+  const lastMatchRow = matchSheet.getLastRow();
+  let matches = [];
+  if (lastMatchRow >= 2) {
+    const matchCols = Math.max(matchSheet.getLastColumn(), 6);
+    const matchData = matchSheet.getRange(1, 1, lastMatchRow, matchCols).getValues();
+    const matchRows = matchData.slice(1);
+    matches = matchRows
+      .map(function (r) {
+        return {
+          id: String(r[0] != null ? r[0] : '').trim(),
+          companion1Id: String(r[1] != null ? r[1] : '').trim(),
+          companion2Id: String(r[2] != null ? r[2] : '').trim(),
+          status: r[3],
+          notes: r[4],
+          createdAt: r[5]
+        };
+      })
+      .filter(function (m) {
+        return m.id && m.companion1Id && m.companion2Id;
+      });
+  }
 
   // 3. Get Criteria Settings
   const scriptProperties = PropertiesService.getScriptProperties();
@@ -246,62 +260,109 @@ function updateCompanionNote(rowNumber, note) {
   return true;
 }
 
-// --- PARSER ---
-function parseCompanion(row, headers, rowNum) {
-  const getVal = (str) => {
-    const idx = headers.findIndex(h => h.toLowerCase().includes(str.toLowerCase()));
-    return idx > -1 ? String(row[idx]) : "";
+// --- PARSER (column indices built once per sheet; avoids O(rows × cols × fields) findIndex scans) ---
+function buildCompanionColumnIndices(headers) {
+  const lower = [];
+  for (var i = 0; i < headers.length; i++) {
+    lower[i] = String(headers[i]).toLowerCase();
+  }
+  function col(needle) {
+    var n = needle.toLowerCase();
+    for (var j = 0; j < lower.length; j++) {
+      if (lower[j].indexOf(n) !== -1) return j;
+    }
+    return -1;
+  }
+  return {
+    firstName: col('First Name'),
+    lastName: col('Last Name'),
+    email: col('Email'),
+    phone: col('Phone Number'),
+    borough: col('Borough'),
+    neighborhood: col('neighborhood'),
+    willingToTravel: col('willing to travel'),
+    age: col('age'),
+    pronouns: col('pronouns'),
+    raceEthnicity: col('race/s'),
+    gender: col('describe your gender'),
+    lgbtq: col('LGBTQ'),
+    relationshipStatus: col('committed relationship'),
+    hasExperiencedDV: col('domestic violence'),
+    hasBeenIncarcerated: col('incarcerated'),
+    hasExperiencedHomelessness: col('homelessness'),
+    receivingMentalHealthServices: col('currently receiving mental health'),
+    receivingSubstanceUseServices: col('currently receiving substance use'),
+    historyMentalHealthServices: col('ever received mental health'),
+    historySubstanceUseServices: col('ever received substance use'),
+    isVeteran: col('veteran'),
+    accessibilityNeeds: col('accessibility needs'),
+    internalNotes: col('INTERNAL NOTES'),
+    essayHobbies: col('hobbies'),
+    essayExpectations: col('important things that you want'),
+    essayShared: col('experiences do you feel that you and your friend should have'),
+    essayMotivation: col('Why are you interested'),
+    essayCreativity: col('express your creativity'),
+    availMonday: col('[monday]'),
+    availTuesday: col('[tuesday]'),
+    availWednesday: col('[wednesday]'),
+    availThursday: col('[thursday]'),
+    availFriday: col('[friday]'),
+    availSaturday: col('[saturday]'),
+    availSunday: col('[sunday]')
   };
-  const getAvail = (day) => {
-    const idx = headers.findIndex(h => h.toLowerCase().includes(`[${day}]`));
-    return idx > -1 ? String(row[idx]) : "Unavailable";
-  };
+}
 
+function cellAt(row, colIndex) {
+  if (colIndex == null || colIndex < 0 || colIndex >= row.length) return '';
+  var v = row[colIndex];
+  return v != null ? String(v) : '';
+}
+
+function parseCompanionRow(row, c, rowNum) {
+  function avail(key) {
+    var s = cellAt(row, c[key]);
+    return s ? s : 'Unavailable';
+  }
   return {
     id: String(rowNum),
-    firstName: getVal('First Name'),
-    lastName: getVal('Last Name'),
-    email: getVal('Email'),
-    phone: getVal('Phone Number'),
-    borough: getVal('Borough'),
-    neighborhood: getVal('neighborhood'),
-    willingToTravel: getVal('willing to travel'),
-    age: getVal('age'),
-    pronouns: getVal('pronouns'),
-    raceEthnicity: getVal('race/s'),
-    gender: getVal('describe your gender'),
-    lgbtq: getVal('LGBTQ'),
-    relationshipStatus: getVal('committed relationship'),
-    
-    // Lived Experiences
-    hasExperiencedDV: getVal('domestic violence'),
-    hasBeenIncarcerated: getVal('incarcerated'),
-    hasExperiencedHomelessness: getVal('homelessness'),
-    receivingMentalHealthServices: getVal('currently receiving mental health'),
-    receivingSubstanceUseServices: getVal('currently receiving substance use'),
-    historyMentalHealthServices: getVal('ever received mental health'),
-    historySubstanceUseServices: getVal('ever received substance use'),
-    isVeteran: getVal('veteran'),
-    accessibilityNeeds: getVal('accessibility needs'),
-    internalNotes: getVal('INTERNAL NOTES'),
-    
-    // Essays
+    firstName: cellAt(row, c.firstName),
+    lastName: cellAt(row, c.lastName),
+    email: cellAt(row, c.email),
+    phone: cellAt(row, c.phone),
+    borough: cellAt(row, c.borough),
+    neighborhood: cellAt(row, c.neighborhood),
+    willingToTravel: cellAt(row, c.willingToTravel),
+    age: cellAt(row, c.age),
+    pronouns: cellAt(row, c.pronouns),
+    raceEthnicity: cellAt(row, c.raceEthnicity),
+    gender: cellAt(row, c.gender),
+    lgbtq: cellAt(row, c.lgbtq),
+    relationshipStatus: cellAt(row, c.relationshipStatus),
+    hasExperiencedDV: cellAt(row, c.hasExperiencedDV),
+    hasBeenIncarcerated: cellAt(row, c.hasBeenIncarcerated),
+    hasExperiencedHomelessness: cellAt(row, c.hasExperiencedHomelessness),
+    receivingMentalHealthServices: cellAt(row, c.receivingMentalHealthServices),
+    receivingSubstanceUseServices: cellAt(row, c.receivingSubstanceUseServices),
+    historyMentalHealthServices: cellAt(row, c.historyMentalHealthServices),
+    historySubstanceUseServices: cellAt(row, c.historySubstanceUseServices),
+    isVeteran: cellAt(row, c.isVeteran),
+    accessibilityNeeds: cellAt(row, c.accessibilityNeeds),
+    internalNotes: cellAt(row, c.internalNotes),
     essays: {
-      hobbies: getVal('hobbies'),
-      expectations: getVal('important things that you want'),
-      sharedExperiences: getVal('experiences do you feel that you and your friend should have'),
-      motivation: getVal('Why are you interested'),
-      creativity: getVal('express your creativity')
+      hobbies: cellAt(row, c.essayHobbies),
+      expectations: cellAt(row, c.essayExpectations),
+      sharedExperiences: cellAt(row, c.essayShared),
+      motivation: cellAt(row, c.essayMotivation),
+      creativity: cellAt(row, c.essayCreativity)
     },
-
     availability: {
-      monday: getAvail('monday'),
-      tuesday: getAvail('tuesday'),
-      wednesday: getAvail('wednesday'),
-      thursday: getAvail('thursday'),
-      friday: getAvail('friday'),
-      saturday: getAvail('saturday'),
-      sunday: getAvail('sunday')
+      monday: avail('availMonday'),
+      tuesday: avail('availTuesday'),
+      wednesday: avail('availWednesday'),
+      thursday: avail('availThursday'),
+      friday: avail('availFriday'),
+      saturday: avail('availSaturday'),
+      sunday: avail('availSunday')
     }
   };
 }
