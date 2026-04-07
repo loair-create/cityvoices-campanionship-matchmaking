@@ -67,14 +67,6 @@
     };
 
     // --- CONFIG ---
-    const ESSAY_QUESTIONS = {
-      hobbies: "What are your hobbies?",
-      expectations: "What are the most important things that you want from a Companion?",
-      sharedExperiences: "What life experiences do you feel that you and your Companion should have in common?",
-      motivation: "Why are you interested in Companion Connections and what qualities would you bring to the Companionship?",
-      creativity: "How do you express your creativity?"
-    };
-
     // Adjusted weights to sum to 100 exactly
     const DEFAULT_CRITERIA_CONFIG = [
       { key: 'borough', label: 'Borough', weight: 15, category: 'Logistics', enabled: true },
@@ -172,18 +164,35 @@
       return s;
     };
 
-    /** Short label for directory chip from form value. */
-    const volunteerDirectoryLabel = (raw) => {
+    /** "Volunteer" only when they are a volunteer; otherwise empty (no label). */
+    const volunteerBadgeOnly = (raw) => {
       const s = String(raw || '').trim();
-      if (!s) return { text: 'Type not set', muted: true };
+      if (!s) return '';
       const t = s.toLowerCase();
       if (t === 'yes' || t === 'volunteer' || (t.includes('volunteer') && !t.includes('not volunteer'))) {
-        return { text: 'Volunteer', muted: false };
+        return 'Volunteer';
       }
-      if (t === 'no' || t.includes('participant') || t.includes('seeking') || t.includes('looking for')) {
-        return { text: 'Participant', muted: false };
-      }
-      return { text: s, muted: false };
+      return '';
+    };
+
+    const mergeSurveyCompareRows = (c1, c2) => {
+      const m1 = new Map((c1.allQuestions || []).map(x => [x.question, x.answer]));
+      const m2 = new Map((c2.allQuestions || []).map(x => [x.question, x.answer]));
+      const order = [];
+      const seen = new Set();
+      (c1.allQuestions || []).forEach(x => {
+        if (!seen.has(x.question)) { seen.add(x.question); order.push(x.question); }
+      });
+      (c2.allQuestions || []).forEach(x => {
+        if (!seen.has(x.question)) { seen.add(x.question); order.push(x.question); }
+      });
+      const norm = (s) => String(s || '').trim().toLowerCase();
+      return order.map(q => {
+        const a1 = m1.get(q) ?? '';
+        const a2 = m2.get(q) ?? '';
+        const same = norm(a1) !== '' && norm(a1) === norm(a2);
+        return { question: q, a1, a2, same };
+      });
     };
 
     // --- COMPONENTS ---
@@ -194,6 +203,74 @@
         <dd className="mt-1 text-sm text-gray-900 break-words">{value || "N/A"}</dd>
       </div>
     );
+
+    const BreakdownMiniTable = ({ title, rows, maxRows = 14 }) => (
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 h-full">
+        <h3 className="text-sm font-bold text-gray-800 mb-3 border-b border-gray-100 pb-2">{title}</h3>
+        <div className="space-y-1 max-h-64 overflow-y-auto text-sm">
+          {(rows || []).slice(0, maxRows).map((r, i) => (
+            <div key={i} className="flex justify-between gap-2 py-1 border-b border-gray-50 last:border-0">
+              <span className="text-gray-600 truncate" title={r.label}>{r.label}</span>
+              <span className="font-semibold text-brand-800 flex-shrink-0">{r.count}</span>
+            </div>
+          ))}
+          {(!rows || rows.length === 0) && <p className="text-gray-400 text-xs">No data</p>}
+        </div>
+      </div>
+    );
+
+    const SignUpAllQA = ({ companion }) => {
+      const rows = (companion && companion.allQuestions && companion.allQuestions.length > 0)
+        ? companion.allQuestions
+        : [];
+      return (
+        <div>
+          <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider border-b pb-2 mb-3">All sign-up questions &amp; responses</h4>
+          <div className="max-h-[min(60vh,520px)] overflow-y-auto border border-gray-200 rounded-lg bg-white divide-y divide-gray-100">
+            {rows.map((row, i) => (
+              <div key={i} className="p-3 hover:bg-gray-50/80">
+                <dt className="text-xs font-bold text-gray-500">{row.question}</dt>
+                <dd className="text-sm text-gray-900 mt-1 whitespace-pre-wrap break-words">{String(row.answer || '').trim() ? row.answer : '—'}</dd>
+              </div>
+            ))}
+            {rows.length === 0 && (
+              <p className="p-4 text-gray-500 text-sm">No form columns loaded. Redeploy the latest script so each row includes allQuestions.</p>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    const ExternalSurveyInsightsBlock = ({ title, sheetData }) => {
+      const d = sheetData;
+      if (!d || !d.exists) {
+        return (
+          <div className="border border-dashed border-amber-200 bg-amber-50/40 rounded-lg p-5 text-sm text-amber-900">
+            <h3 className="font-bold text-gray-900 mb-1">{title}</h3>
+            <p>Could not find a sheet tab named <strong>{d && d.sheetName ? d.sheetName : title}</strong>. Add that tab to this spreadsheet to see results here.</p>
+          </div>
+        );
+      }
+      if (d.totalRows === 0) {
+        return (
+          <div className="border border-gray-200 rounded-lg p-5 text-sm text-gray-600">
+            <h3 className="font-bold text-gray-900 mb-1">{title}</h3>
+            <p>Sheet exists but has no data rows yet (only a header row or empty).</p>
+          </div>
+        );
+      }
+      return (
+        <div>
+          <h3 className="text-lg font-bold text-gray-900 mb-1">{title}</h3>
+          <p className="text-sm text-gray-600 mb-4">{d.totalRows} response{d.totalRows === 1 ? '' : 's'} · frequency by answer (top values per question)</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {(d.columns || []).map((col, i) => (
+              <BreakdownMiniTable key={i} title={col.header} rows={col.breakdown} maxRows={18} />
+            ))}
+          </div>
+        </div>
+      );
+    };
 
     const AvailabilityGrid = ({ availability }) => {
       const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -330,100 +407,82 @@
     const MatchComparison = ({ c1, c2, config }) => {
       const { percent, reasons } = calculateMatchPercentage(c1, c2, config);
       const overlaps = getOverlappingAvailability(c1, c2);
-
-      const renderRow = (key) => {
-        const label = DEFAULT_CRITERIA_CONFIG.find(c => c.key === key)?.label || key;
-        const v1 = c1[key] || '-';
-        const v2 = c2[key] || '-';
-        const isMatch = String(v1).toLowerCase() === String(v2).toLowerCase() && v1 !== '-' && v1 !== 'No';
-        
-        return (
-           <div key={key} className={`grid grid-cols-3 gap-4 p-3 border-b border-gray-50 last:border-0 ${isMatch ? 'bg-green-100 rounded-md border-transparent' : 'hover:bg-gray-50'}`}>
-              <div className="text-sm font-medium text-gray-500">{label}</div>
-              <div className={`text-sm ${isMatch ? 'font-bold text-green-900' : 'text-gray-900'}`}>{v1}</div>
-              <div className={`text-sm ${isMatch ? 'font-bold text-green-900' : 'text-gray-900'}`}>{v2}</div>
-           </div>
-        );
-      };
-
-      const renderSection = (title, keys) => (
-         <div className="mb-6 bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 font-bold text-gray-700 text-sm uppercase tracking-wider">{title}</div>
-            <div className="p-2">
-               {/* Header Row for Section */}
-               <div className="grid grid-cols-3 gap-4 px-3 py-2 text-xs font-bold text-gray-400 uppercase">
-                  <div>Criteria</div>
-                  <div>{c1.firstName}</div>
-                  <div>{c2.firstName}</div>
-               </div>
-               {keys.map(renderRow)}
-            </div>
-         </div>
-      );
+      const qaRows = mergeSurveyCompareRows(c1, c2);
+      const inCommon = qaRows.filter(r => r.same);
+      const i1 = (c1.firstName && c1.firstName[0]) ? c1.firstName[0] : '?';
+      const i2 = (c2.firstName && c2.firstName[0]) ? c2.firstName[0] : '?';
 
       return (
         <div className="space-y-6">
-           {/* Score Header */}
            <div className="flex items-center justify-between bg-gradient-to-r from-brand-50 to-white p-6 rounded-xl border border-brand-100 shadow-sm">
               <div className="flex flex-col items-center">
-                 <div className="h-16 w-16 bg-brand-100 rounded-full flex items-center justify-center text-brand-700 font-bold text-2xl mb-2 border-4 border-white shadow-sm">{c1.firstName[0]}</div>
+                 <div className="h-16 w-16 bg-brand-100 rounded-full flex items-center justify-center text-brand-700 font-bold text-2xl mb-2 border-4 border-white shadow-sm">{i1}</div>
                  <div className="font-bold text-gray-900">{c1.firstName}</div>
+                 {volunteerBadgeOnly(c1.volunteer) ? <span className="text-[10px] font-bold uppercase mt-1 text-teal-800 bg-teal-100 px-2 py-0.5 rounded">Volunteer</span> : null}
               </div>
-              
-              <div className="flex flex-col items-center flex-1 px-8">
+              <div className="flex flex-col items-center flex-1 px-4 sm:px-8">
                  <div className="text-5xl font-black text-brand-600 tracking-tighter">{percent}%</div>
-                 <div className="text-xs uppercase tracking-widest font-bold text-brand-400 mt-1">Match</div>
+                 <div className="text-xs uppercase tracking-widest font-bold text-brand-400 mt-1">Match score</div>
+                 {reasons.length > 0 && (
+                   <div className="mt-2 flex flex-wrap justify-center gap-1 max-w-md">
+                     {reasons.map((r, i) => <span key={i} className="text-[10px] bg-white/80 border border-brand-100 px-2 py-0.5 rounded text-brand-800">{r}</span>)}
+                   </div>
+                 )}
               </div>
-
               <div className="flex flex-col items-center">
-                 <div className="h-16 w-16 bg-purple-100 rounded-full flex items-center justify-center text-purple-700 font-bold text-2xl mb-2 border-4 border-white shadow-sm">{c2.firstName[0]}</div>
+                 <div className="h-16 w-16 bg-purple-100 rounded-full flex items-center justify-center text-purple-700 font-bold text-2xl mb-2 border-4 border-white shadow-sm">{i2}</div>
                  <div className="font-bold text-gray-900">{c2.firstName}</div>
+                 {volunteerBadgeOnly(c2.volunteer) ? <span className="text-[10px] font-bold uppercase mt-1 text-teal-800 bg-teal-100 px-2 py-0.5 rounded">Volunteer</span> : null}
               </div>
            </div>
 
-           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-300px)] overflow-hidden">
-              {/* Left Column: Data Comparison */}
-              <div className="overflow-y-auto pr-2 space-y-6">
-                 {renderSection("Identity", ['age', 'pronouns', 'gender', 'raceEthnicity', 'lgbtq'])}
-                 {renderSection("Logistics", ['borough', 'willingToTravel'])}
-                 
-                 <div className="bg-white rounded-lg border border-gray-200 p-4">
-                    <h4 className="font-bold text-gray-700 text-sm uppercase tracking-wider mb-3">Availability Overlap</h4>
-                    <div className="flex flex-wrap gap-2">
-                       {overlaps.length > 0 ? overlaps.map(d => (
-                          <span key={d} className="px-3 py-1 bg-green-100 text-green-800 text-xs rounded-full font-bold border border-green-200 shadow-sm">{d}</span>
-                       )) : <span className="text-red-500 text-sm italic">No overlapping days found.</span>}
-                    </div>
-                 </div>
-              </div>
+           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+              <h3 className="text-sm font-bold text-emerald-900 uppercase tracking-wide mb-2">What they have in common</h3>
+              {inCommon.length === 0 ? (
+                <p className="text-sm text-emerald-800/80">No identical answers on shared sign-up questions (or answers are blank).</p>
+              ) : (
+                <ul className="space-y-2 max-h-40 overflow-y-auto text-sm">
+                  {inCommon.map((r, i) => (
+                    <li key={i} className="border-b border-emerald-100/80 pb-2 last:border-0">
+                      <span className="font-semibold text-emerald-950 block">{r.question}</span>
+                      <span className="text-emerald-900 whitespace-pre-wrap break-words">{r.a1}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+           </div>
 
-              {/* Right Column: Essays */}
-              <div className="bg-slate-50 rounded-lg border border-slate-200 flex flex-col h-full overflow-hidden">
-                 <div className="p-4 border-b border-slate-200 bg-white">
-                    <h3 className="flex items-center text-lg font-bold text-slate-800">
-                        <ICONS.BookOpen className="w-5 h-5 mr-2 text-brand-600" />
-                        Manual Essay Comparison
-                    </h3>
+           <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <h4 className="font-bold text-gray-700 text-sm uppercase tracking-wider mb-3">Availability overlap</h4>
+              <div className="flex flex-wrap gap-2">
+                 {overlaps.length > 0 ? overlaps.map(d => (
+                    <span key={d} className="px-3 py-1 bg-green-100 text-green-800 text-xs rounded-full font-bold border border-green-200">{d}</span>
+                 )) : <span className="text-gray-500 text-sm">No overlapping available days.</span>}
+              </div>
+           </div>
+
+           <div>
+              <h3 className="flex items-center text-lg font-bold text-gray-900 mb-2">
+                 <ICONS.BookOpen className="w-5 h-5 mr-2 text-brand-600" />
+                 All sign-up questions &amp; responses
+              </h3>
+              <p className="text-xs text-gray-500 mb-3">Green rows = same non-empty answer. Scroll for full form.</p>
+              <div className="border border-gray-200 rounded-lg overflow-hidden max-h-[min(55vh,480px)] overflow-y-auto">
+                 <div className="grid grid-cols-12 gap-0 bg-gray-100 text-xs font-bold text-gray-600 uppercase px-2 py-2 border-b border-gray-200 sticky top-0 z-10">
+                    <div className="col-span-12 sm:col-span-4 px-2">Question</div>
+                    <div className="col-span-6 sm:col-span-4 px-2 border-t sm:border-t-0 border-gray-200 sm:border-l pt-2 sm:pt-0">{c1.firstName}</div>
+                    <div className="col-span-6 sm:col-span-4 px-2 border-t sm:border-t-0 border-gray-200 sm:border-l pt-2 sm:pt-0">{c2.firstName}</div>
                  </div>
-                 <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                   {Object.entries(c1.essays).map(([key, text]) => (
-                      <div key={key} className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
-                         <h4 className="text-sm font-bold text-brand-800 mb-4 pb-2 border-b border-gray-100">
-                            {ESSAY_QUESTIONS[key] || key}
-                         </h4>
-                         <div className="grid grid-cols-2 gap-6">
-                            <div>
-                               <strong className="block text-xs uppercase text-slate-400 mb-2">{c1.firstName}</strong>
-                               <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{text || "No answer"}</p>
-                            </div>
-                            <div className="border-l border-slate-100 pl-6">
-                               <strong className="block text-xs uppercase text-slate-400 mb-2">{c2.firstName}</strong>
-                               <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{c2.essays[key] || "No answer"}</p>
-                            </div>
-                         </div>
-                      </div>
-                   ))}
-                 </div>
+                 {qaRows.map((r, i) => (
+                    <div key={i} className={`grid grid-cols-12 gap-0 border-b border-gray-100 text-sm px-2 py-2 ${r.same ? 'bg-green-50' : 'bg-white hover:bg-gray-50/80'}`}>
+                       <div className="col-span-12 sm:col-span-4 font-medium text-gray-600 text-xs sm:text-sm pr-2">{r.question}</div>
+                       <div className={`col-span-6 sm:col-span-4 whitespace-pre-wrap break-words border-t sm:border-t-0 border-gray-100 sm:border-l pl-0 sm:pl-2 pt-2 sm:pt-0 ${r.same ? 'font-semibold text-green-900' : 'text-gray-900'}`}>{r.a1 || '—'}</div>
+                       <div className={`col-span-6 sm:col-span-4 whitespace-pre-wrap break-words border-t sm:border-t-0 border-gray-100 sm:border-l pl-0 sm:pl-2 pt-2 sm:pt-0 ${r.same ? 'font-semibold text-green-900' : 'text-gray-900'}`}>{r.a2 || '—'}</div>
+                    </div>
+                 ))}
+                 {qaRows.length === 0 && (
+                    <p className="p-4 text-gray-500 text-sm">No allQuestions data. Save &amp; reload after updating the Apps Script backend.</p>
+                 )}
               </div>
            </div>
         </div>
@@ -455,8 +514,8 @@
                       >
                          <div className="flex items-center space-x-6">
                             <div className="flex items-center -space-x-3">
-                               <div className="h-12 w-12 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold text-lg ring-4 ring-white z-10">{c1.firstName[0]}</div>
-                               <div className="h-12 w-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-lg ring-4 ring-white z-0">{c2.firstName[0]}</div>
+                               <div className="h-12 w-12 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold text-lg ring-4 ring-white z-10">{(c1.firstName && c1.firstName[0]) ? c1.firstName[0] : '?'}</div>
+                               <div className="h-12 w-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-lg ring-4 ring-white z-0">{(c2.firstName && c2.firstName[0]) ? c2.firstName[0] : '?'}</div>
                             </div>
                             <div>
                                <h3 className="text-lg font-bold text-gray-900 group-hover:text-brand-600 transition">{c1.firstName} & {c2.firstName}</h3>
@@ -468,6 +527,12 @@
                                      <span key={i} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">{r}</span>
                                   ))}
                                </div>
+                               {(volunteerBadgeOnly(c1.volunteer) || volunteerBadgeOnly(c2.volunteer)) && (
+                                  <div className="flex flex-wrap gap-1.5 mt-2">
+                                     {volunteerBadgeOnly(c1.volunteer) && <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-teal-100 text-teal-800 border border-teal-200">{c1.firstName}: Volunteer</span>}
+                                     {volunteerBadgeOnly(c2.volunteer) && <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-teal-100 text-teal-800 border border-teal-200">{c2.firstName}: Volunteer</span>}
+                                  </div>
+                               )}
                             </div>
                          </div>
                          <div className="text-gray-300 group-hover:text-brand-500 transition-colors">
@@ -544,27 +609,13 @@
       );
     };
 
-    const BreakdownMiniTable = ({ title, rows, maxRows = 14 }) => (
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 h-full">
-        <h3 className="text-sm font-bold text-gray-800 mb-3 border-b border-gray-100 pb-2">{title}</h3>
-        <div className="space-y-1 max-h-64 overflow-y-auto text-sm">
-          {(rows || []).slice(0, maxRows).map((r, i) => (
-            <div key={i} className="flex justify-between gap-2 py-1 border-b border-gray-50 last:border-0">
-              <span className="text-gray-600 truncate" title={r.label}>{r.label}</span>
-              <span className="font-semibold text-brand-800 flex-shrink-0">{r.count}</span>
-            </div>
-          ))}
-          {(!rows || rows.length === 0) && <p className="text-gray-400 text-xs">No data</p>}
-        </div>
-      </div>
-    );
-
     const InsightsAndReminders = () => {
       const [page, setPage] = useState(null);
       const [busy, setBusy] = useState(true);
       const [cc, setCc] = useState('');
       const [subj, setSubj] = useState('');
       const [body, setBody] = useState('');
+      const [toEmail, setToEmail] = useState('danfrey76@gmail.com');
       const [preview, setPreview] = useState(null);
       const [remBusy, setRemBusy] = useState(false);
 
@@ -577,6 +628,11 @@
               setCc(d.reminder.ccEmail || '');
               setSubj(d.reminder.subject || '');
               setBody(d.reminder.body || '');
+              if (d.reminder.toEmail === null || d.reminder.toEmail === undefined) {
+                setToEmail('danfrey76@gmail.com');
+              } else {
+                setToEmail(d.reminder.toEmail || '');
+              }
             }
             setBusy(false);
           })
@@ -598,7 +654,7 @@
             reload();
           })
           .withFailureHandler(e => { setRemBusy(false); alert(e.message || String(e)); })
-          .saveReminderEmailSettings({ ccEmail: cc, subject: subj, body: body });
+          .saveReminderEmailSettings({ ccEmail: cc, subject: subj, body: body, toEmail: toEmail });
       };
 
       const runPreview = () => {
@@ -665,9 +721,12 @@
         <div className="p-8 space-y-10 overflow-auto max-h-full pb-16">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
-              <ICONS.BarChart className="w-8 h-8 text-brand-600"/> Survey response insights
+              <ICONS.BarChart className="w-8 h-8 text-brand-600"/> Insights &amp; surveys
             </h1>
-            <p className="text-gray-600 text-sm mb-6">Counts from your Sign Up Form tab. Open this page again or click Refresh to update.</p>
+            <p className="text-gray-600 text-sm mb-6">
+              Sign Up Form summaries, <strong>Pre-Survey Results</strong> and <strong>Post Survey Results</strong> tabs, plus email reminders. Refresh this page to reload.
+            </p>
+            <h2 className="text-lg font-bold text-gray-800 mb-3">Sign Up Form (directory)</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
               <div className="bg-white border rounded-lg p-4 shadow-sm">
                 <div className="text-xs font-bold uppercase text-gray-500">Total sign-ups</div>
@@ -713,14 +772,33 @@
             </div>
           </div>
 
+          <div className="space-y-10 border-t border-gray-200 pt-10">
+            <ExternalSurveyInsightsBlock title="Pre-Survey Results" sheetData={page.preSurvey} />
+            <ExternalSurveyInsightsBlock title="Post Survey Results" sheetData={page.postSurvey} />
+          </div>
+
           <div className="border-t border-gray-200 pt-10">
             <h2 className="text-xl font-bold text-gray-900 mb-2">6-month match reminder emails</h2>
             <p className="text-sm text-gray-600 mb-4">
-              For each <strong>non-canceled</strong> match older than <strong>180 days</strong> that has not already received this reminder, sends <strong>one email</strong> to both companions (both addresses in To). Canceled matches are skipped.
+              For each <strong>non-canceled</strong> match older than <strong>180 days</strong> that has not already received this reminder, sends <strong>one email per match</strong>. Canceled matches are skipped.
             </p>
             <p className="text-xs text-amber-900 bg-amber-50 border border-amber-100 rounded p-3 mb-4">
               Leave subject and body empty to use built-in defaults. In a custom body you can use placeholders: {'{{first1}}'}, {'{{last1}}'}, {'{{first2}}'}, {'{{last2}}'}.
             </p>
+            <div className="mb-4">
+              <label className="text-xs font-bold text-gray-500 uppercase">Reminder recipient (To)</label>
+              <input
+                type="text"
+                className="mt-1 w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                value={toEmail}
+                onChange={e => setToEmail(e.target.value)}
+                placeholder="danfrey76@gmail.com"
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                Default is <strong>danfrey76@gmail.com</strong> until you save something else. When sending to that address (or any override), the message includes participant emails at the bottom for reference.
+                Clear this field completely and click <strong>Save email settings</strong> to send future reminders <strong>directly to both matched participants</strong> (To = their addresses from the sign-up sheet).
+              </p>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase">CC staff (optional)</label>
@@ -795,6 +873,7 @@
       const [savingMatch, setSavingMatch] = useState(false);
       const saveMatchInFlight = useRef(false);
       const [pendingMatchTargetIds, setPendingMatchTargetIds] = useState([]);
+      const [matchPickerQuery, setMatchPickerQuery] = useState('');
 
       useEffect(() => {
         google.script.run
@@ -895,6 +974,65 @@
             .createMatchesBatch(matchObjs);
       }, [selectedCompanion, companions, pendingMatchTargetIds]);
 
+      const downloadPublicProfilePdf = useCallback(() => {
+         const id = selectedCompanion && selectedCompanion.id;
+         if (!id) return;
+         google.script.run
+            .withSuccessHandler((res) => {
+               if (!res || !res.base64) {
+                  alert('Could not create PDF.');
+                  return;
+               }
+               const a = document.createElement('a');
+               a.href = 'data:application/pdf;base64,' + res.base64;
+               a.download = (res && res.fileName) ? res.fileName : 'profile.pdf';
+               document.body.appendChild(a);
+               a.click();
+               document.body.removeChild(a);
+            })
+            .withFailureHandler((e) => alert(e.message || String(e)))
+            .getProfilePdfBase64(String(id));
+      }, [selectedCompanion]);
+
+      const copyPublicProfileLink = useCallback(() => {
+         const id = selectedCompanion && selectedCompanion.id;
+         if (!id) return;
+         google.script.run
+            .withSuccessHandler((res) => {
+               if (!res || !res.ok || !res.url) {
+                  alert((res && res.message) || 'Could not build the public link.');
+                  return;
+               }
+               const url = res.url;
+               if (navigator.clipboard && window.isSecureContext) {
+                  navigator.clipboard.writeText(url).then(() => {
+                     alert('Public link copied. It shows first name and form responses only (no contact info).');
+                  }).catch(() => {
+                     window.prompt('Copy this link:', url);
+                  });
+               } else {
+                  window.prompt('Copy this link:', url);
+               }
+            })
+            .withFailureHandler((e) => alert(e.message || String(e)))
+            .getPublicShareLink(String(id));
+      }, [selectedCompanion]);
+
+      const openPublicProfilePage = useCallback(() => {
+         const id = selectedCompanion && selectedCompanion.id;
+         if (!id) return;
+         google.script.run
+            .withSuccessHandler((res) => {
+               if (res && res.ok && res.url) {
+                  window.open(res.url, '_blank', 'noopener,noreferrer');
+               } else {
+                  alert((res && res.message) || 'Could not open the public page.');
+               }
+            })
+            .withFailureHandler((e) => alert(e.message || String(e)))
+            .getPublicShareLink(String(id));
+      }, [selectedCompanion]);
+
       const filteredCompanions = useMemo(() => {
         return companions.filter(c => {
           const searchMatch = !search || 
@@ -921,6 +1059,24 @@
         });
         return s;
       }, [matches]);
+
+      /** Everyone except the selected person; optional name filter; sorted by match % (reference only). */
+      const findMatchCandidates = useMemo(() => {
+        if (!selectedCompanion) return [];
+        const q = matchPickerQuery.trim().toLowerCase();
+        return companions
+          .filter(c => c.id !== selectedCompanion.id)
+          .filter(c => {
+            if (!q) return true;
+            const name = `${c.firstName || ''} ${c.lastName || ''}`.toLowerCase();
+            return name.includes(q);
+          })
+          .map(c => {
+            const { percent, reasons } = calculateMatchPercentage(selectedCompanion, c, config);
+            return { c, percent, reasons };
+          })
+          .sort((a, b) => b.percent - a.percent);
+      }, [companions, selectedCompanion, config, matchPickerQuery]);
 
       if (loading) return <div className="h-screen flex flex-col items-center justify-center"><div className="loader mb-4"></div><p className="text-gray-500">Loading...</p></div>;
 
@@ -1029,13 +1185,13 @@
 
                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {filteredCompanions.map(c => {
-                             const vol = volunteerDirectoryLabel(c.volunteer);
+                             const volBadge = volunteerBadgeOnly(c.volunteer);
                              const enrolled = formatEnrollmentDisplay(c.enrollmentDate);
                              const intStatus = String(c.internalStatus || '').trim() || '—';
                              const hasActiveMatch = idsWithActiveMatch.has(String(c.id));
                              const initial = (c.firstName && c.firstName[0]) ? c.firstName[0] : '?';
                              return (
-                             <div key={c.id} onClick={() => { setSelectedCompanion(c); setIsMatchMode(false); setPendingMatchTargetIds([]); }} className="bg-white rounded-lg shadow cursor-pointer hover:shadow-md transition border border-gray-200 group">
+                             <div key={c.id} onClick={() => { setSelectedCompanion(c); setIsMatchMode(false); setPendingMatchTargetIds([]); setMatchPickerQuery(''); }} className="bg-white rounded-lg shadow cursor-pointer hover:shadow-md transition border border-gray-200 group">
                                 <div className="p-5 flex items-start gap-4">
                                    <div className="w-14 h-14 flex-shrink-0 bg-brand-100 rounded-full flex items-center justify-center text-brand-700 font-bold text-lg group-hover:bg-brand-200 transition">{initial}</div>
                                    <div className="min-w-0 flex-1 space-y-2">
@@ -1044,9 +1200,9 @@
                                          <p className="text-sm text-gray-500 truncate">{c.borough || '—'}</p>
                                       </div>
                                       <div className="flex flex-wrap gap-1.5">
-                                         <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${
-                                            vol.muted ? 'bg-gray-100 text-gray-500' : 'bg-teal-50 text-teal-800 border border-teal-100'
-                                         }`} title={c.volunteer || ''}>{vol.text}</span>
+                                         {volBadge ? (
+                                         <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-100" title="Volunteer">{volBadge}</span>
+                                         ) : null}
                                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-white border border-gray-200 text-gray-700" title="Enrollment date">
                                             Enrolled {enrolled}
                                          </span>
@@ -1077,67 +1233,69 @@
           {/* Modal Overlay */}
           {selectedCompanion && (
              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => {setSelectedCompanion(null); setIsMatchMode(false); setPendingMatchTargetIds([]);}}></div>
-                <div className="bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all w-full max-w-4xl max-h-[90vh] flex flex-col relative z-10 min-h-0">
+                <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => {setSelectedCompanion(null); setIsMatchMode(false); setPendingMatchTargetIds([]); setMatchPickerQuery('');}}></div>
+                <div className="bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all w-full max-w-5xl max-h-[90vh] flex flex-col relative z-10 min-h-0">
                    <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 overflow-y-auto flex-1 flex flex-col min-h-0">
-                      <div className="flex justify-between items-start mb-6 border-b border-gray-100 pb-4">
-                         <div>
-                            <h3 className="text-xl leading-6 font-bold text-gray-900">{selectedCompanion.firstName} {selectedCompanion.lastName}</h3>
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6 border-b border-gray-100 pb-4">
+                         <div className="min-w-0 flex-1">
+                            <h3 className="text-xl leading-6 font-bold text-gray-900 flex flex-wrap items-center gap-2">
+                               {selectedCompanion.firstName} {selectedCompanion.lastName}
+                               {volunteerBadgeOnly(selectedCompanion.volunteer) ? (
+                                  <span className="text-[10px] font-bold uppercase px-2 py-1 rounded bg-teal-100 text-teal-800">Volunteer</span>
+                               ) : null}
+                            </h3>
                             <p className="text-sm text-gray-500 mt-1">{selectedCompanion.email} • {selectedCompanion.phone}</p>
+                            <p className="text-[11px] text-gray-400 mt-2 max-w-xl">
+                               PDF &amp; public link use <strong>first name only</strong> and <strong>form responses</strong> with contact-related columns removed (not the full view below).
+                            </p>
                          </div>
-                         <button 
-                            type="button"
-                            onClick={() => {setSelectedCompanion(null); setIsMatchMode(false); setPendingMatchTargetIds([]);}} 
-                            className="bg-red-500 hover:bg-red-600 text-white rounded-md p-2 transition"
-                         >
-                            <ICONS.Close className="w-5 h-5"/>
-                         </button>
+                         <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                            <button
+                               type="button"
+                               onClick={downloadPublicProfilePdf}
+                               className="px-3 py-2 rounded-md border border-gray-300 bg-white text-sm font-medium text-gray-800 hover:bg-gray-50"
+                            >Download PDF</button>
+                            <button
+                               type="button"
+                               onClick={copyPublicProfileLink}
+                               className="px-3 py-2 rounded-md border border-brand-200 bg-brand-50 text-sm font-medium text-brand-800 hover:bg-brand-100"
+                            >Copy public link</button>
+                            <button
+                               type="button"
+                               onClick={openPublicProfilePage}
+                               className="px-3 py-2 rounded-md text-sm font-medium text-brand-700 hover:underline"
+                            >Open public page</button>
+                            <button 
+                               type="button"
+                               onClick={() => {setSelectedCompanion(null); setIsMatchMode(false); setPendingMatchTargetIds([]); setMatchPickerQuery('');}} 
+                               className="bg-red-500 hover:bg-red-600 text-white rounded-md p-2 transition"
+                               aria-label="Close"
+                            >
+                               <ICONS.Close className="w-5 h-5"/>
+                            </button>
+                         </div>
                       </div>
                       
                       {!isMatchMode ? (
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div className="space-y-4">
-                               <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider border-b pb-1">Core Identity</h4>
-                               <div className="bg-gray-50 rounded p-4 space-y-2">
-                                  <DetailRow label="Volunteer / participant" value={selectedCompanion.volunteer} />
-                                  <DetailRow label="Enrollment date" value={formatEnrollmentDisplay(selectedCompanion.enrollmentDate)} />
-                                  <DetailRow label="Internal status" value={selectedCompanion.internalStatus} highlight />
-                                  <DetailRow label="Borough" value={selectedCompanion.borough} />
-                                  <DetailRow label="Neighborhood" value={selectedCompanion.neighborhood} />
-                                  <DetailRow label="Age" value={selectedCompanion.age} />
-                                  <DetailRow label="Pronouns" value={selectedCompanion.pronouns} />
-                                  <DetailRow label="Gender" value={selectedCompanion.gender} />
-                                  <DetailRow label="Race" value={selectedCompanion.raceEthnicity} />
-                                  <DetailRow label="LGBTQ+" value={selectedCompanion.lgbtq} />
-                                  <DetailRow label="Relationship Status" value={selectedCompanion.relationshipStatus} />
-                                  <DetailRow label="Veteran Status" value={selectedCompanion.isVeteran} />
-                               </div>
-                               
-                               <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider border-b pb-1">Contact & Logistics</h4>
-                               <div className="bg-gray-50 rounded p-4 space-y-2">
-                                  <DetailRow label="Email" value={selectedCompanion.email} />
-                                  <DetailRow label="Phone" value={selectedCompanion.phone} />
-                                  <DetailRow label="Willing to Travel" value={selectedCompanion.willingToTravel} />
-                                  <DetailRow label="Accessibility Needs" value={selectedCompanion.accessibilityNeeds} />
-                               </div>
-
-                               <div className="bg-yellow-50 p-4 rounded border border-yellow-100">
-                                   <label className="text-xs font-bold text-yellow-800 uppercase block mb-1">Internal Notes</label>
-                                   <textarea 
-                                     className="w-full text-sm p-2 rounded border border-yellow-300"
-                                     defaultValue={selectedCompanion.internalNotes}
-                                     onBlur={(e) => google.script.run.updateCompanionNote(selectedCompanion.id, e.target.value)}
-                                   ></textarea>
-                               </div>
+                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                            <div className="lg:col-span-2 space-y-6">
+                               <SignUpAllQA companion={selectedCompanion} />
                             </div>
                             <div className="space-y-6">
-                               <button type="button" onClick={() => { setPendingMatchTargetIds([]); setIsMatchMode(true); }} className="w-full bg-brand-600 text-white py-3 rounded-lg shadow hover:bg-brand-700 font-bold flex items-center justify-center">
+                               <button type="button" onClick={() => { setPendingMatchTargetIds([]); setMatchPickerQuery(''); setIsMatchMode(true); }} className="w-full bg-brand-600 text-white py-3 rounded-lg shadow hover:bg-brand-700 font-bold flex items-center justify-center">
                                   <ICONS.Match className="w-5 h-5 mr-2"/> Find Match
                                </button>
-
                                <div>
-                                  <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider mb-2 border-b pb-1">Lived Experiences</h4>
-                                  <div className="flex flex-wrap gap-2 mb-4">
+                                  <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider mb-2 border-b pb-1">Quick summary</h4>
+                                  <div className="bg-gray-50 rounded p-4 space-y-1 text-sm">
+                                     <p><span className="text-gray-500">Enrollment:</span> {formatEnrollmentDisplay(selectedCompanion.enrollmentDate)}</p>
+                                     <p><span className="text-gray-500">Internal status:</span> {String(selectedCompanion.internalStatus || '').trim() || '—'}</p>
+                                     <p><span className="text-gray-500">Borough:</span> {selectedCompanion.borough || '—'}</p>
+                                  </div>
+                               </div>
+                               <div>
+                                  <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider mb-2 border-b pb-1">Lived experiences</h4>
+                                  <div className="flex flex-wrap gap-2">
                                      {selectedCompanion.hasExperiencedDV === 'Yes' && <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded">DV Survivor</span>}
                                      {selectedCompanion.hasBeenIncarcerated === 'Yes' && <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded">Incarcerated</span>}
                                      {selectedCompanion.hasExperiencedHomelessness === 'Yes' && <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded">Homelessness</span>}
@@ -1145,28 +1303,36 @@
                                      {selectedCompanion.receivingSubstanceUseServices === 'Yes' && <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">Substance Use Svcs</span>}
                                   </div>
                                </div>
-
-                               <div>
-                                  <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider mb-2 border-b pb-1">Essays</h4>
-                                  <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
-                                     {Object.entries(selectedCompanion.essays).map(([key, text]) => (
-                                       <div key={key} className="bg-white border p-3 rounded">
-                                           <p className="text-xs font-bold text-gray-400 mb-1 uppercase">{key}</p>
-                                           <p className="text-sm text-gray-800">{text}</p>
-                                       </div>
-                                     ))}
-                                  </div>
-                               </div>
-
                                <div>
                                   <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider mb-2 border-b pb-1">Availability</h4>
                                   <AvailabilityGrid availability={selectedCompanion.availability} />
+                               </div>
+                               <div className="bg-yellow-50 p-4 rounded border border-yellow-100">
+                                   <label className="text-xs font-bold text-yellow-800 uppercase block mb-1">Internal notes</label>
+                                   <textarea 
+                                     className="w-full text-sm p-2 rounded border border-yellow-300"
+                                     defaultValue={selectedCompanion.internalNotes}
+                                     onBlur={(e) => google.script.run.updateCompanionNote(selectedCompanion.id, e.target.value)}
+                                   ></textarea>
                                </div>
                             </div>
                          </div>
                       ) : (
                          <div className="space-y-4 flex flex-col min-h-0 flex-1">
-                            <button type="button" onClick={() => { setPendingMatchTargetIds([]); setIsMatchMode(false); }} className="text-sm text-brand-600 hover:underline mb-2 self-start">&larr; Back to Details</button>
+                            <button type="button" onClick={() => { setPendingMatchTargetIds([]); setMatchPickerQuery(''); setIsMatchMode(false); }} className="text-sm text-brand-600 hover:underline mb-2 self-start">&larr; Back to Details</button>
+                            <p className="text-sm text-gray-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                               <strong>Everyone</strong> in the directory is listed (not only high criteria scores). The percentage is a <strong>guide only</strong>—you can match with <strong>any number</strong> of people: tap <strong>Add</strong> for each, then <strong>Create matches</strong>.
+                            </p>
+                            <div className="relative">
+                               <ICONS.Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+                               <input
+                                  type="text"
+                                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-brand-500 focus:border-brand-500"
+                                  placeholder="Filter by name (optional)…"
+                                  value={matchPickerQuery}
+                                  onChange={e => setMatchPickerQuery(e.target.value)}
+                               />
+                            </div>
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-gray-50 border border-gray-200 rounded-lg flex-shrink-0">
                                <p className="text-sm text-gray-700">
                                   <span className="font-bold text-gray-900">{pendingMatchTargetIds.length}</span>
@@ -1180,21 +1346,19 @@
                                   className="bg-brand-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-brand-700 disabled:opacity-50 disabled:pointer-events-none whitespace-nowrap shadow-sm"
                                >{savingMatch ? 'Saving…' : 'Create matches'}</button>
                             </div>
+                            <p className="text-xs text-gray-500">{findMatchCandidates.length} shown · sorted by match % (highest first)</p>
                             <div className="space-y-3 overflow-y-auto flex-1 min-h-0">
-                               {companions.filter(c => c.id !== selectedCompanion.id).map(c => {
-                                   const { percent, reasons } = calculateMatchPercentage(selectedCompanion, c, config);
-                                   return { c, percent, reasons };
-                               }).sort((a,b) => b.percent - a.percent).slice(0, 10).map(({ c, percent, reasons }) => {
+                               {findMatchCandidates.map(({ c, percent, reasons }) => {
                                   const isPending = pendingMatchTargetIds.includes(String(c.id));
                                   return (
                                   <div key={c.id} className="border rounded-lg p-4 flex justify-between items-center hover:bg-gray-50 gap-3">
                                      <div className="min-w-0">
                                          <div className="flex items-center space-x-3 flex-wrap">
                                             <h4 className="font-bold text-gray-900">{c.firstName} {c.lastName}</h4>
-                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${percent > 70 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>{percent}% Match</span>
+                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${percent > 70 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>{percent}% (guide)</span>
                                          </div>
                                          <div className="text-xs text-gray-500 mt-1 flex gap-2 flex-wrap">
-                                            {reasons.slice(0,3).map((r,i) => <span key={i} className="bg-gray-100 px-1 rounded">{r}</span>)}
+                                            {reasons.slice(0, 3).map((r,i) => <span key={i} className="bg-gray-100 px-1 rounded">{r}</span>)}
                                          </div>
                                      </div>
                                      <button
@@ -1210,6 +1374,9 @@
                                   </div>
                                   );
                                })}
+                               {findMatchCandidates.length === 0 && (
+                                  <p className="text-center text-gray-500 text-sm py-8">No one matches that filter. Clear the search box to see everyone.</p>
+                               )}
                             </div>
                          </div>
                       )}
