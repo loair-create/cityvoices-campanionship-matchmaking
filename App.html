@@ -40,7 +40,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useMemo, useRef } = React;
+    const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
     // --- ROBUST ICONS (Embedded SVGs to guarantee rendering) ---
     const IconWrapper = ({ children, className }) => (
@@ -415,8 +415,8 @@
            <h1 className="text-2xl font-bold text-gray-900 mb-6">Active Companions</h1>
            <div className="grid grid-cols-1 gap-6">
              {matches.map(match => {
-                const c1 = companions.find(c => c.id === match.companion1Id);
-                const c2 = companions.find(c => c.id === match.companion2Id);
+                const c1 = companions.find(c => String(c.id) === String(match.companion1Id));
+                const c2 = companions.find(c => String(c.id) === String(match.companion2Id));
                 if (!c1 || !c2) return null;
 
                 const { percent, reasons } = calculateMatchPercentage(c1, c2, config);
@@ -455,18 +455,22 @@
                           <div className="flex items-center space-x-4 w-full mr-4">
                              <div className="relative inline-block text-left">
                                 <select 
-                                   value={match.status} 
-                                   onChange={(e) => onUpdateStatus(match.id, e.target.value)}
+                                   value={match.status || 'Just Matched'} 
+                                   onChange={(e) => {
+                                      const next = e.target.value;
+                                      if (String(next).trim() === String(match.status || '').trim()) return;
+                                      onUpdateStatus(match.id, next);
+                                   }}
                                    className={`appearance-none pl-3 pr-8 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-brand-500 border-0 shadow-sm
                                      ${match.status === 'Active' ? 'bg-green-100 text-green-800' : 
                                        match.status === 'Canceled' ? 'bg-red-100 text-red-800' : 
                                        'bg-blue-100 text-blue-800'}`}
                                 >
-                                   <option>Just Matched</option>
-                                   <option>Introduction Sent</option>
-                                   <option>First Meeting Set</option>
-                                   <option>Active</option>
-                                   <option>Canceled</option>
+                                   <option value="Just Matched">Just Matched</option>
+                                   <option value="Introduction Sent">Introduction Sent</option>
+                                   <option value="First Meeting Set">First Meeting Set</option>
+                                   <option value="Active">Active</option>
+                                   <option value="Canceled">Canceled</option>
                                 </select>
                              </div>
                              
@@ -529,6 +533,9 @@
       const [showFilters, setShowFilters] = useState(false);
       const [filters, setFilters] = useState({});
       const [search, setSearch] = useState("");
+      const [savingMatch, setSavingMatch] = useState(false);
+      const saveMatchInFlight = useRef(false);
+      const [pendingMatchTargetIds, setPendingMatchTargetIds] = useState([]);
 
       useEffect(() => {
         google.script.run.withSuccessHandler(data => {
@@ -551,28 +558,76 @@
          alert("Configuration Saved!"); 
       };
 
-      const handleCreateMatch = (targetId) => {
+      const togglePendingMatchTarget = useCallback((targetId) => {
+         const id = String(targetId);
+         setPendingMatchTargetIds((prev) =>
+            prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+         );
+      }, []);
+
+      const handleCreateMatchesFinal = useCallback(() => {
+         if (saveMatchInFlight.current || pendingMatchTargetIds.length === 0) return;
          const c1 = selectedCompanion;
-         const c2 = companions.find(c => c.id === targetId);
-         if (!c1 || !c2) return;
-         
-         const newMatch = {
-            id: Math.random().toString(36).substr(2, 9),
-            companion1Id: c1.id,
-            companion2Id: c2.id,
-            c1Name: `${c1.firstName} ${c1.lastName}`,
-            c2Name: `${c2.firstName} ${c2.lastName}`,
-            status: "Just Matched",
-            notes: "",
-            createdAt: new Date().toISOString()
-         };
-         
-         setMatches([newMatch, ...matches]);
-         google.script.run.createMatch(newMatch);
-         setIsMatchMode(false);
-         setSelectedCompanion(null);
-         setActiveTab('matches');
-      };
+         if (!c1) return;
+
+         const baseTime = Date.now();
+         const matchObjs = [];
+         for (let idx = 0; idx < pendingMatchTargetIds.length; idx++) {
+            const targetId = pendingMatchTargetIds[idx];
+            const c2 = companions.find((c) => String(c.id) === String(targetId));
+            if (!c2) continue;
+            matchObjs.push({
+               id: 'm-' + baseTime.toString(36) + '-' + idx + '-' + c1.id + '-' + c2.id,
+               companion1Id: String(c1.id),
+               companion2Id: String(c2.id),
+               c1Name: `${c1.firstName} ${c1.lastName}`,
+               c2Name: `${c2.firstName} ${c2.lastName}`,
+               status: 'Just Matched',
+               notes: '',
+               createdAt: new Date().toISOString()
+            });
+         }
+         if (matchObjs.length === 0) return;
+
+         const ok = window.confirm(
+            `Create ${matchObjs.length} match(es) for ${c1.firstName} ${c1.lastName} with the selected people?`
+         );
+         if (!ok) return;
+
+         saveMatchInFlight.current = true;
+         setSavingMatch(true);
+         google.script.run
+            .withSuccessHandler((result) => {
+               saveMatchInFlight.current = false;
+               setSavingMatch(false);
+               const created = result && result.created ? result.created : [];
+               const skipped = result && typeof result.skipped === 'number' ? result.skipped : 0;
+               if (created.length === 0) {
+                  alert(
+                     skipped
+                        ? 'No new matches were saved (those pairs may already exist).'
+                        : 'No matches were saved.'
+                  );
+                  return;
+               }
+               setMatches((prev) => [...created, ...prev]);
+               setPendingMatchTargetIds([]);
+               setIsMatchMode(false);
+               setSelectedCompanion(null);
+               setActiveTab('matches');
+               if (skipped > 0) {
+                  alert(
+                     `${created.length} match(es) created. ${skipped} skipped (duplicate or invalid).`
+                  );
+               }
+            })
+            .withFailureHandler((err) => {
+               saveMatchInFlight.current = false;
+               setSavingMatch(false);
+               alert('Failed to save matches: ' + (err && err.message ? err.message : String(err)));
+            })
+            .createMatchesBatch(matchObjs);
+      }, [selectedCompanion, companions, pendingMatchTargetIds]);
 
       const filteredCompanions = useMemo(() => {
         return companions.filter(c => {
@@ -689,7 +744,7 @@
 
                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {filteredCompanions.map(c => (
-                             <div key={c.id} onClick={() => { setSelectedCompanion(c); setIsMatchMode(false); }} className="bg-white rounded-lg shadow cursor-pointer hover:shadow-md transition border border-gray-200 group">
+                             <div key={c.id} onClick={() => { setSelectedCompanion(c); setIsMatchMode(false); setPendingMatchTargetIds([]); }} className="bg-white rounded-lg shadow cursor-pointer hover:shadow-md transition border border-gray-200 group">
                                 <div className="p-5 flex items-center space-x-4">
                                    <div className="w-12 h-12 bg-brand-100 rounded-full flex items-center justify-center text-brand-700 font-bold text-lg group-hover:bg-brand-200 transition">{c.firstName[0]}</div>
                                    <div className="min-w-0 flex-1">
@@ -712,16 +767,17 @@
           {/* Modal Overlay */}
           {selectedCompanion && (
              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => {setSelectedCompanion(null); setIsMatchMode(false);}}></div>
-                <div className="bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all w-full max-w-4xl max-h-[90vh] flex flex-col relative z-10">
-                   <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 overflow-y-auto flex-1">
+                <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => {setSelectedCompanion(null); setIsMatchMode(false); setPendingMatchTargetIds([]);}}></div>
+                <div className="bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all w-full max-w-4xl max-h-[90vh] flex flex-col relative z-10 min-h-0">
+                   <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 overflow-y-auto flex-1 flex flex-col min-h-0">
                       <div className="flex justify-between items-start mb-6 border-b border-gray-100 pb-4">
                          <div>
                             <h3 className="text-xl leading-6 font-bold text-gray-900">{selectedCompanion.firstName} {selectedCompanion.lastName}</h3>
                             <p className="text-sm text-gray-500 mt-1">{selectedCompanion.email} • {selectedCompanion.phone}</p>
                          </div>
                          <button 
-                            onClick={() => {setSelectedCompanion(null); setIsMatchMode(false);}} 
+                            type="button"
+                            onClick={() => {setSelectedCompanion(null); setIsMatchMode(false); setPendingMatchTargetIds([]);}} 
                             className="bg-red-500 hover:bg-red-600 text-white rounded-md p-2 transition"
                          >
                             <ICONS.Close className="w-5 h-5"/>
@@ -762,7 +818,7 @@
                                </div>
                             </div>
                             <div className="space-y-6">
-                               <button onClick={() => setIsMatchMode(true)} className="w-full bg-brand-600 text-white py-3 rounded-lg shadow hover:bg-brand-700 font-bold flex items-center justify-center">
+                               <button type="button" onClick={() => { setPendingMatchTargetIds([]); setIsMatchMode(true); }} className="w-full bg-brand-600 text-white py-3 rounded-lg shadow hover:bg-brand-700 font-bold flex items-center justify-center">
                                   <ICONS.Match className="w-5 h-5 mr-2"/> Find Match
                                </button>
 
@@ -796,26 +852,51 @@
                             </div>
                          </div>
                       ) : (
-                         <div className="space-y-4">
-                            <button onClick={() => setIsMatchMode(false)} className="text-sm text-brand-600 hover:underline mb-2">&larr; Back to Details</button>
-                            <div className="space-y-3">
+                         <div className="space-y-4 flex flex-col min-h-0 flex-1">
+                            <button type="button" onClick={() => { setPendingMatchTargetIds([]); setIsMatchMode(false); }} className="text-sm text-brand-600 hover:underline mb-2 self-start">&larr; Back to Details</button>
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-gray-50 border border-gray-200 rounded-lg flex-shrink-0">
+                               <p className="text-sm text-gray-700">
+                                  <span className="font-bold text-gray-900">{pendingMatchTargetIds.length}</span>
+                                  {pendingMatchTargetIds.length === 1 ? ' person selected' : ' people selected'}
+                                  {pendingMatchTargetIds.length === 0 && <span className="text-gray-500"> — use Add next to each name, then press Create matches.</span>}
+                               </p>
+                               <button
+                                  type="button"
+                                  disabled={savingMatch || pendingMatchTargetIds.length === 0}
+                                  onClick={handleCreateMatchesFinal}
+                                  className="bg-brand-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-brand-700 disabled:opacity-50 disabled:pointer-events-none whitespace-nowrap shadow-sm"
+                               >{savingMatch ? 'Saving…' : 'Create matches'}</button>
+                            </div>
+                            <div className="space-y-3 overflow-y-auto flex-1 min-h-0">
                                {companions.filter(c => c.id !== selectedCompanion.id).map(c => {
                                    const { percent, reasons } = calculateMatchPercentage(selectedCompanion, c, config);
                                    return { c, percent, reasons };
-                               }).sort((a,b) => b.percent - a.percent).slice(0, 10).map(({ c, percent, reasons }) => (
-                                  <div key={c.id} className="border rounded-lg p-4 flex justify-between items-center hover:bg-gray-50">
-                                     <div>
-                                         <div className="flex items-center space-x-3">
+                               }).sort((a,b) => b.percent - a.percent).slice(0, 10).map(({ c, percent, reasons }) => {
+                                  const isPending = pendingMatchTargetIds.includes(String(c.id));
+                                  return (
+                                  <div key={c.id} className="border rounded-lg p-4 flex justify-between items-center hover:bg-gray-50 gap-3">
+                                     <div className="min-w-0">
+                                         <div className="flex items-center space-x-3 flex-wrap">
                                             <h4 className="font-bold text-gray-900">{c.firstName} {c.lastName}</h4>
                                             <span className={`px-2 py-0.5 rounded text-xs font-bold ${percent > 70 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>{percent}% Match</span>
                                          </div>
-                                         <div className="text-xs text-gray-500 mt-1 flex gap-2">
+                                         <div className="text-xs text-gray-500 mt-1 flex gap-2 flex-wrap">
                                             {reasons.slice(0,3).map((r,i) => <span key={i} className="bg-gray-100 px-1 rounded">{r}</span>)}
                                          </div>
                                      </div>
-                                     <button onClick={() => handleCreateMatch(c.id)} className="bg-brand-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-brand-700">Select</button>
+                                     <button
+                                       type="button"
+                                       disabled={savingMatch}
+                                       onClick={(e) => { e.stopPropagation(); togglePendingMatchTarget(c.id); }}
+                                       className={`flex-shrink-0 px-4 py-2 rounded text-sm font-medium border-2 transition disabled:opacity-50 disabled:pointer-events-none ${
+                                          isPending
+                                             ? 'border-brand-600 bg-brand-50 text-brand-800'
+                                             : 'border-gray-300 bg-white text-gray-700 hover:border-brand-400 hover:bg-brand-50/50'
+                                       }`}
+                                     >{isPending ? 'Added' : 'Add'}</button>
                                   </div>
-                               ))}
+                                  );
+                               })}
                             </div>
                          </div>
                       )}

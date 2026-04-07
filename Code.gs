@@ -12,10 +12,7 @@ function doGet(e) {
 }
 
 function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu('Friendship Squad')
-    .addItem('Open Dashboard', 'openApp')
-    .addToUi();
+  // Dashboard is opened via the web app / deployed URL; no spreadsheet menu.
 }
 
 function openApp() {
@@ -54,15 +51,18 @@ function getData() {
   
   const matchData = matchSheet.getDataRange().getValues();
   const matchRows = matchData.slice(1);
-  
-  const matches = matchRows.map(r => ({
-    id: String(r[0]),
-    companion1Id: String(r[1]),
-    companion2Id: String(r[2]),
-    status: r[3],
-    notes: r[4],
-    createdAt: r[5]
-  }));
+
+  /** Skip blank or partial rows so stray spreadsheet lines do not show as matches. */
+  const matches = matchRows
+    .map(r => ({
+      id: String(r[0] != null ? r[0] : '').trim(),
+      companion1Id: String(r[1] != null ? r[1] : '').trim(),
+      companion2Id: String(r[2] != null ? r[2] : '').trim(),
+      status: r[3],
+      notes: r[4],
+      createdAt: r[5]
+    }))
+    .filter(m => m.id && m.companion1Id && m.companion2Id);
 
   // 3. Get Criteria Settings
   const scriptProperties = PropertiesService.getScriptProperties();
@@ -87,21 +87,114 @@ function saveCriteriaSettings(settingsJson) {
  * SAVE A NEW MATCH
  */
 function createMatch(matchObj) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName('Matches');
-  if (!sheet) sheet = ss.insertSheet('Matches');
-  
-  sheet.appendRow([
-    matchObj.id,
-    matchObj.companion1Id,
-    matchObj.companion2Id,
-    matchObj.status,
-    matchObj.notes,
-    matchObj.createdAt,
-    matchObj.c1Name, // New: Save Names
-    matchObj.c2Name
-  ]);
-  return true;
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return false;
+  }
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName('Matches');
+    if (!sheet) sheet = ss.insertSheet('Matches');
+
+    const a = String(matchObj.companion1Id != null ? matchObj.companion1Id : '').trim();
+    const b = String(matchObj.companion2Id != null ? matchObj.companion2Id : '').trim();
+    if (!a || !b || a === b) return false;
+
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const x = String(data[i][1] != null ? data[i][1] : '').trim();
+      const y = String(data[i][2] != null ? data[i][2] : '').trim();
+      if (!x || !y) continue;
+      if ((x === a && y === b) || (x === b && y === a)) return false;
+    }
+
+    sheet.appendRow([
+      matchObj.id,
+      a,
+      b,
+      matchObj.status,
+      matchObj.notes,
+      matchObj.createdAt,
+      matchObj.c1Name,
+      matchObj.c2Name
+    ]);
+    return true;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Save multiple new matches in one lock (duplicate checks + within-batch dedupe).
+ * @param {Array<Object>} matchObjs
+ * @return {{ created: Array<Object>, skipped: number }}
+ */
+function createMatchesBatch(matchObjs) {
+  if (!matchObjs || !matchObjs.length) return { created: [], skipped: 0 };
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+  } catch (e) {
+    return { created: [], skipped: matchObjs.length };
+  }
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName('Matches');
+    if (!sheet) sheet = ss.insertSheet('Matches');
+
+    const data = sheet.getDataRange().getValues();
+    function pairKey(a, b) {
+      return a < b ? a + '\t' + b : b + '\t' + a;
+    }
+    const existingKeys = {};
+    for (let i = 1; i < data.length; i++) {
+      const x = String(data[i][1] != null ? data[i][1] : '').trim();
+      const y = String(data[i][2] != null ? data[i][2] : '').trim();
+      if (x && y) existingKeys[pairKey(x, y)] = true;
+    }
+
+    const created = [];
+    let skipped = 0;
+    for (let i = 0; i < matchObjs.length; i++) {
+      const matchObj = matchObjs[i];
+      const a = String(matchObj.companion1Id != null ? matchObj.companion1Id : '').trim();
+      const b = String(matchObj.companion2Id != null ? matchObj.companion2Id : '').trim();
+      if (!a || !b || a === b) {
+        skipped++;
+        continue;
+      }
+      const k = pairKey(a, b);
+      if (existingKeys[k]) {
+        skipped++;
+        continue;
+      }
+      existingKeys[k] = true;
+      sheet.appendRow([
+        matchObj.id,
+        a,
+        b,
+        matchObj.status,
+        matchObj.notes,
+        matchObj.createdAt,
+        matchObj.c1Name,
+        matchObj.c2Name
+      ]);
+      created.push({
+        id: String(matchObj.id),
+        companion1Id: a,
+        companion2Id: b,
+        status: matchObj.status,
+        notes: matchObj.notes,
+        createdAt: matchObj.createdAt
+      });
+    }
+    return { created: created, skipped: skipped };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
