@@ -277,6 +277,14 @@ function buildCompanionColumnIndices(headers) {
     }
     return -1;
   }
+  /** First column whose header contains any of the needles (in order). */
+  function colFirst(needles) {
+    for (var k = 0; k < needles.length; k++) {
+      var idx = col(needles[k]);
+      if (idx >= 0) return idx;
+    }
+    return -1;
+  }
   return {
     firstName: col('First Name'),
     lastName: col('Last Name'),
@@ -312,7 +320,27 @@ function buildCompanionColumnIndices(headers) {
     availThursday: col('[thursday]'),
     availFriday: col('[friday]'),
     availSaturday: col('[saturday]'),
-    availSunday: col('[sunday]')
+    availSunday: col('[sunday]'),
+    volunteer: colFirst([
+      'are you a volunteer',
+      'signing up as',
+      'volunteer',
+      'participant type',
+      'role'
+    ]),
+    enrollmentDate: colFirst([
+      'enrollment date',
+      'date enrolled',
+      'enrolled',
+      'sign up date',
+      'timestamp'
+    ]),
+    internalStatus: colFirst([
+      'internal status',
+      'staff status',
+      'companion status',
+      'program status'
+    ])
   };
 }
 
@@ -367,6 +395,301 @@ function parseCompanionRow(row, c, rowNum) {
       friday: avail('availFriday'),
       saturday: avail('availSaturday'),
       sunday: avail('availSunday')
-    }
+    },
+    volunteer: cellAt(row, c.volunteer),
+    enrollmentDate: cellAt(row, c.enrollmentDate),
+    internalStatus: cellAt(row, c.internalStatus)
   };
+}
+
+// --- SURVEY / INSIGHTS ---
+
+var REMINDER_DAYS_AFTER_MATCH = 180;
+
+function bucketVolunteer_(raw) {
+  var s = String(raw || '').trim();
+  if (!s) return 'Not specified';
+  var t = s.toLowerCase();
+  if (t === 'yes' || t === 'volunteer' || (t.indexOf('volunteer') >= 0 && t.indexOf('not volunteer') < 0)) {
+    return 'Volunteer';
+  }
+  if (t === 'no' || t.indexOf('participant') >= 0 || t.indexOf('seeking') >= 0 || t.indexOf('looking for') >= 0) {
+    return 'Participant';
+  }
+  return 'Other';
+}
+
+function countsToSortedList_(map) {
+  return Object.keys(map)
+    .map(function (k) {
+      return { label: k, count: map[k] };
+    })
+    .sort(function (a, b) {
+      return b.count - a.count;
+    });
+}
+
+function buildSurveyAnalysis_(companions, matches) {
+  var borough = {};
+  var age = {};
+  var volunteer = {};
+  var gender = {};
+  var lgbtq = {};
+  var race = {};
+  var internal = {};
+  var lived = { dv: 0, incarcerated: 0, homeless: 0, mh: 0, vet: 0 };
+  var n = companions.length;
+
+  companions.forEach(function (c) {
+    function bump(m, v) {
+      var key = String(v || '').trim() || '—';
+      m[key] = (m[key] || 0) + 1;
+    }
+    bump(borough, c.borough);
+    bump(age, c.age);
+    bump(volunteer, bucketVolunteer_(c.volunteer));
+    bump(gender, c.gender);
+    bump(lgbtq, c.lgbtq);
+    bump(race, c.raceEthnicity);
+    bump(internal, c.internalStatus);
+
+    if (String(c.hasExperiencedDV) === 'Yes') lived.dv++;
+    if (String(c.hasBeenIncarcerated) === 'Yes') lived.incarcerated++;
+    if (String(c.hasExperiencedHomelessness) === 'Yes') lived.homeless++;
+    if (String(c.receivingMentalHealthServices) === 'Yes') lived.mh++;
+    if (String(c.isVeteran) === 'Yes') lived.vet++;
+  });
+
+  var matchedIds = {};
+  var activeMatches = 0;
+  matches.forEach(function (m) {
+    if (String(m.status || '').trim() === 'Canceled') return;
+    activeMatches++;
+    matchedIds[String(m.companion1Id)] = true;
+    matchedIds[String(m.companion2Id)] = true;
+  });
+  var matchedPeople = 0;
+  companions.forEach(function (c) {
+    if (matchedIds[String(c.id)]) matchedPeople++;
+  });
+
+  return {
+    totalSignups: n,
+    boroughBreakdown: countsToSortedList_(borough),
+    ageBreakdown: countsToSortedList_(age),
+    volunteerBreakdown: countsToSortedList_(volunteer),
+    genderBreakdown: countsToSortedList_(gender),
+    lgbtqBreakdown: countsToSortedList_(lgbtq),
+    raceBreakdown: countsToSortedList_(race),
+    internalStatusBreakdown: countsToSortedList_(internal),
+    activeMatchPairs: activeMatches,
+    peopleInActiveMatch: matchedPeople,
+    peopleNotInActiveMatch: Math.max(0, n - matchedPeople),
+    livedExperienceRates:
+      n > 0
+        ? [
+            { label: 'DV survivor (Yes)', count: lived.dv, pct: Math.round((100 * lived.dv) / n) },
+            { label: 'Incarceration history (Yes)', count: lived.incarcerated, pct: Math.round((100 * lived.incarcerated) / n) },
+            { label: 'Homelessness history (Yes)', count: lived.homeless, pct: Math.round((100 * lived.homeless) / n) },
+            { label: 'Receiving mental health services (Yes)', count: lived.mh, pct: Math.round((100 * lived.mh) / n) },
+            { label: 'Veteran (Yes)', count: lived.vet, pct: Math.round((100 * lived.vet) / n) }
+          ]
+        : []
+  };
+}
+
+/**
+ * Survey-style aggregates for the Insights tab (does not change sheet data).
+ */
+function getSurveyAnalysis() {
+  var data = getData();
+  return buildSurveyAnalysis_(data.companions, data.matches);
+}
+
+/**
+ * Payload for Insights: analysis + reminder email settings + trigger flag.
+ */
+function getInsightsPageData() {
+  var data = getData();
+  var analysis = buildSurveyAnalysis_(data.companions, data.matches);
+  var props = PropertiesService.getScriptProperties();
+  var triggerOn = false;
+  try {
+    triggerOn = ScriptApp.getProjectTriggers().some(function (t) {
+      return t.getHandlerFunction() === 'runSixMonthReminderJob';
+    });
+  } catch (e) {
+    triggerOn = false;
+  }
+  return {
+    analysis: analysis,
+    reminder: {
+      ccEmail: props.getProperty('REMINDER_CC_EMAIL') || '',
+      subject: props.getProperty('REMINDER_EMAIL_SUBJECT') || '',
+      body: props.getProperty('REMINDER_EMAIL_BODY') || ''
+    },
+    dailyReminderTriggerActive: triggerOn
+  };
+}
+
+function saveReminderEmailSettings(settings) {
+  var props = PropertiesService.getScriptProperties();
+  if (settings.ccEmail != null) props.setProperty('REMINDER_CC_EMAIL', String(settings.ccEmail).trim());
+  if (settings.subject != null) props.setProperty('REMINDER_EMAIL_SUBJECT', String(settings.subject).trim());
+  if (settings.body != null) props.setProperty('REMINDER_EMAIL_BODY', String(settings.body));
+  return true;
+}
+
+function getSixMonthReminderLog_() {
+  try {
+    return JSON.parse(PropertiesService.getScriptProperties().getProperty('SIX_MO_REMINDER_LOG') || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
+function defaultReminderSubject_() {
+  return 'Companionship Connections — 6-month check-in';
+}
+
+function defaultReminderBody_(c1, c2) {
+  return (
+    'Hello,\n\n' +
+    'This is a friendly reminder from City Voices / Companionship Connections.\n\n' +
+    'Your companionship match between ' +
+    c1.firstName +
+    ' ' +
+    c1.lastName +
+    ' and ' +
+    c2.firstName +
+    ' ' +
+    c2.lastName +
+    ' began about six months ago. We hope the connection has been meaningful.\n\n' +
+    'If you would like support, have feedback, or need anything from our team, please reply to this email.\n\n' +
+    'Thank you,\nCompanionship Connections'
+  );
+}
+
+/**
+ * Matches eligible for a 6-month reminder (non-canceled, past REMINDER_DAYS_AFTER_MATCH, not already logged as sent).
+ */
+function previewSixMonthReminders() {
+  var data = getData();
+  var companionsById = {};
+  data.companions.forEach(function (c) {
+    companionsById[String(c.id)] = c;
+  });
+  var log = getSixMonthReminderLog_();
+  var now = new Date().getTime();
+  var thresholdMs = REMINDER_DAYS_AFTER_MATCH * 86400000;
+  var list = [];
+  data.matches.forEach(function (m) {
+    if (String(m.status || '').trim() === 'Canceled') return;
+    var created = new Date(m.createdAt).getTime();
+    if (isNaN(created) || now - created < thresholdMs) return;
+    var sent = log[m.id];
+    var c1 = companionsById[String(m.companion1Id)];
+    var c2 = companionsById[String(m.companion2Id)];
+    list.push({
+      matchId: m.id,
+      status: m.status,
+      daysSinceMatch: Math.floor((now - created) / 86400000),
+      pairLabel: c1 && c2 ? c1.firstName + ' & ' + c2.firstName : 'Unknown',
+      reminderAlreadySent: !!sent,
+      sentAt: sent || null
+    });
+  });
+  return list;
+}
+
+/**
+ * Send 6-month check-in emails for eligible matches (one email per match, both participant emails in To).
+ * @return {{ sent: number, skipped: number, errors: string[] }}
+ */
+function runSixMonthReminderJob() {
+  var data = getData();
+  var companionsById = {};
+  data.companions.forEach(function (c) {
+    companionsById[String(c.id)] = c;
+  });
+  var props = PropertiesService.getScriptProperties();
+  var log = getSixMonthReminderLog_();
+  var now = new Date();
+  var nowMs = now.getTime();
+  var thresholdMs = REMINDER_DAYS_AFTER_MATCH * 86400000;
+  var subjectCustom = String(props.getProperty('REMINDER_EMAIL_SUBJECT') || '').trim();
+  var subjectDefault = subjectCustom || defaultReminderSubject_();
+  var bodyOverride = String(props.getProperty('REMINDER_EMAIL_BODY') || '').trim();
+  var cc = String(props.getProperty('REMINDER_CC_EMAIL') || '').trim();
+
+  var stats = { sent: 0, skipped: 0, errors: [] };
+
+  data.matches.forEach(function (m) {
+    if (String(m.status || '').trim() === 'Canceled') return;
+    if (log[m.id]) return;
+
+    var created = new Date(m.createdAt).getTime();
+    if (isNaN(created) || nowMs - created < thresholdMs) return;
+
+    var c1 = companionsById[String(m.companion1Id)];
+    var c2 = companionsById[String(m.companion2Id)];
+    if (!c1 || !c2) {
+      stats.skipped++;
+      return;
+    }
+
+    var emails = [];
+    function addEmail(e) {
+      e = String(e || '').trim();
+      if (e.indexOf('@') > 0 && emails.indexOf(e) < 0) emails.push(e);
+    }
+    addEmail(c1.email);
+    addEmail(c2.email);
+    if (emails.length === 0) {
+      stats.skipped++;
+      return;
+    }
+
+    var body = bodyOverride ? bodyOverride : defaultReminderBody_(c1, c2);
+    body = String(body)
+      .split('{{first1}}').join(c1.firstName)
+      .split('{{last1}}').join(c1.lastName)
+      .split('{{first2}}').join(c2.firstName)
+      .split('{{last2}}').join(c2.lastName);
+
+    try {
+      var options = {
+        to: emails.join(','),
+        subject: subjectDefault,
+        body: body
+      };
+      if (cc) options.cc = cc;
+      MailApp.sendEmail(options);
+      log[m.id] = now.toISOString();
+      stats.sent++;
+    } catch (err) {
+      stats.errors.push(String(m.id) + ': ' + err.message);
+    }
+  });
+
+  props.setProperty('SIX_MO_REMINDER_LOG', JSON.stringify(log));
+  return stats;
+}
+
+/**
+ * Install a daily time-driven trigger (8 AM, script timezone) for 6-month reminders.
+ */
+function installDailySixMonthReminderTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'runSixMonthReminderJob') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('runSixMonthReminderJob').timeBased().everyDays(1).atHour(8).create();
+  return true;
+}
+
+function removeDailySixMonthReminderTriggers() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'runSixMonthReminderJob') ScriptApp.deleteTrigger(t);
+  });
+  return true;
 }
