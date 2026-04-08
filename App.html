@@ -215,6 +215,27 @@
       return `${mo}/${da}/${y}`;
     };
 
+    const LAST_CONTACT_STALE_AFTER_DAYS = 14;
+
+    /** True when last contact exists and is strictly more than 14 days before today (local date). */
+    const isLastContactOverTwoWeeksOld = (raw) => {
+      const s = String(raw || '').trim();
+      if (!s) return false;
+      const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      let contactDay;
+      if (m) {
+        contactDay = new Date(parseInt(m[3], 10), parseInt(m[1], 10) - 1, parseInt(m[2], 10));
+      } else {
+        contactDay = new Date(s);
+      }
+      if (isNaN(contactDay.getTime())) return false;
+      contactDay.setHours(0, 0, 0, 0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const diffDays = (today.getTime() - contactDay.getTime()) / 86400000;
+      return diffDays > LAST_CONTACT_STALE_AFTER_DAYS;
+    };
+
     const DEFAULT_VISIBILITY_SETTINGS = {
       directory: {
         volunteerBadge: true,
@@ -1664,10 +1685,25 @@
                              const intStatus = String(c.internalStatus || '').trim() || '—';
                              const hasActiveMatch = idsWithActiveMatch.has(String(c.id));
                              const initial = (c.firstName && c.firstName[0]) ? c.firstName[0] : '?';
+                             const contactStale = isLastContactOverTwoWeeksOld(c.lastContactDate);
                              return (
-                             <div key={c.id} onClick={() => { setSelectedCompanion(c); setIsMatchMode(false); setPendingMatchTargetIds([]); setMatchPickerQuery(''); }} className="bg-white rounded-lg shadow cursor-pointer hover:shadow-md transition border border-gray-200 group">
+                             <div
+                                key={c.id}
+                                onClick={() => { setSelectedCompanion(c); setIsMatchMode(false); setPendingMatchTargetIds([]); setMatchPickerQuery(''); }}
+                                className={`bg-white rounded-lg shadow cursor-pointer hover:shadow-md transition border group ${contactStale ? 'border-red-300 ring-1 ring-red-100' : 'border-gray-200'}`}
+                                title={contactStale ? 'Last contact was more than 2 weeks ago — open profile to update' : undefined}
+                             >
                                 <div className="p-5 flex items-start gap-4">
-                                   <div className="w-14 h-14 flex-shrink-0 bg-brand-100 rounded-full flex items-center justify-center text-brand-700 font-bold text-lg group-hover:bg-brand-200 transition">{initial}</div>
+                                   <div className="relative flex-shrink-0">
+                                      <div className="w-14 h-14 bg-brand-100 rounded-full flex items-center justify-center text-brand-700 font-bold text-lg group-hover:bg-brand-200 transition">{initial}</div>
+                                      {contactStale ? (
+                                         <span
+                                            className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-red-500 border-2 border-white shadow"
+                                            title="Last contact over 2 weeks ago"
+                                            aria-label="Last contact overdue"
+                                         />
+                                      ) : null}
+                                   </div>
                                    <div className="min-w-0 flex-1 space-y-2">
                                       <div>
                                          <h3 className="text-gray-900 font-bold truncate">{c.firstName} {c.lastName}</h3>
@@ -1688,6 +1724,11 @@
                                          ) : (
                                             <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-orange-100 text-orange-900">Needs match</span>
                                          )}
+                                         {contactStale ? (
+                                            <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-red-100 text-red-800 border border-red-200" title="Last contact over 2 weeks ago">
+                                               Contact due
+                                            </span>
+                                         ) : null}
                                       </div>
                                    </div>
                                 </div>
@@ -1708,6 +1749,7 @@
           {selectedCompanion && (() => {
              const dVis = visibilitySettings.directory;
              const mpVis = visibilitySettings.matchPicker;
+             const lastContactStale = isLastContactOverTwoWeeksOld(selectedCompanion.lastContactDate);
              return (
              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                 <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => {setSelectedCompanion(null); setIsMatchMode(false); setPendingMatchTargetIds([]); setMatchPickerQuery('');}}></div>
@@ -1817,12 +1859,22 @@
                                      <p className="text-[11px] text-amber-900/80 mt-2">Saved to your internal status column. Only <strong>Active</strong>, <strong>Quit</strong>, and <strong>Unresponsive</strong> are saved when selected from the list.</p>
                                   </div>
                                   <div>
-                                     <label htmlFor={`last-contact-${selectedCompanion.id}`} className="text-xs font-bold text-amber-900 uppercase tracking-wide block mb-1.5">Last contact date</label>
+                                     <label
+                                        htmlFor={`last-contact-${selectedCompanion.id}`}
+                                        className={`text-xs font-bold uppercase tracking-wide block mb-1.5 ${lastContactStale ? 'text-red-700' : 'text-amber-900'}`}
+                                     >
+                                        Last contact date
+                                        {lastContactStale ? (
+                                          <span className="block normal-case font-semibold text-red-600 mt-0.5">Over {LAST_CONTACT_STALE_AFTER_DAYS} days ago — follow up</span>
+                                        ) : null}
+                                     </label>
                                      <div className="flex flex-wrap items-center gap-2">
                                         <input
                                            id={`last-contact-${selectedCompanion.id}`}
                                            type="date"
-                                           className="flex-1 min-w-[10rem] max-w-full box-border text-sm border border-amber-300 rounded-md px-3 py-2 bg-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+                                           className={`flex-1 min-w-[10rem] max-w-full box-border text-sm rounded-md px-3 py-2 bg-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 border-2 ${
+                                              lastContactStale ? 'border-red-500 text-red-900' : 'border-amber-300'
+                                           }`}
                                            key={`lcd-${selectedCompanion.id}-${selectedCompanion.lastContactDate || ''}`}
                                            defaultValue={lastContactRawToDateInput(selectedCompanion.lastContactDate)}
                                            onChange={(e) => {
@@ -1874,7 +1926,15 @@
                                   <div className="bg-gray-50 rounded p-4 space-y-1 text-sm">
                                      <p><span className="text-gray-500">Enrollment:</span> {formatDateMMDD(selectedCompanion.enrollmentDate)}</p>
                                      <p><span className="text-gray-500">Internal status:</span> {String(selectedCompanion.internalStatus || '').trim() || '—'}</p>
-                                     <p><span className="text-gray-500">Last contact:</span> {formatDateMMDD(selectedCompanion.lastContactDate)}</p>
+                                     <p>
+                                        <span className="text-gray-500">Last contact:</span>{' '}
+                                        <span className={lastContactStale ? 'text-red-600 font-semibold' : 'text-gray-900'}>
+                                           {formatDateMMDD(selectedCompanion.lastContactDate)}
+                                        </span>
+                                        {lastContactStale ? (
+                                           <span className="text-red-500 text-xs font-medium ml-1">(stale)</span>
+                                        ) : null}
+                                     </p>
                                      <p><span className="text-gray-500">Borough:</span> {selectedCompanion.borough || '—'}</p>
                                   </div>
                                </div>
