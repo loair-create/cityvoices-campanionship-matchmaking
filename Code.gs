@@ -574,6 +574,28 @@ function updateCompanionNote(rowNumber, note) {
   return true;
 }
 
+/**
+ * Update the Internal status (or staff/companion/program status) cell for a sign-up row.
+ * @param {string|number} rowNumber Sheet row (same as companion id from the app).
+ * @param {string} value New status text
+ * @return {boolean} false if sheet or column missing
+ */
+function updateCompanionInternalStatus(rowNumber, value) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(FORM_SHEET_NAME);
+  if (!sheet) return false;
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return false;
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  const c = buildCompanionColumnIndices(headers);
+  const colIdx = c.internalStatus;
+  if (colIdx == null || colIdx < 0) return false;
+  const r = parseInt(String(rowNumber), 10);
+  if (isNaN(r) || r < 2) return false;
+  sheet.getRange(r, colIdx + 1).setValue(value != null ? String(value) : '');
+  return true;
+}
+
 // --- PARSER (column indices built once per sheet; avoids O(rows × cols × fields) findIndex scans) ---
 function buildCompanionColumnIndices(headers) {
   const lower = [];
@@ -736,7 +758,7 @@ function parseCompanionRow(row, c, rowNum) {
 // --- SURVEY / INSIGHTS ---
 
 var REMINDER_DAYS_AFTER_MATCH = 180;
-/** When REMINDER_TO_EMAIL is not set, reminders go to this staff address (e.g. Dan) to follow up and send the Post survey. Clear the field in Reminders & save to send To the participants instead. */
+/** Default internal recipient when Reminders “To” is unset or invalid. Participant emails are never used as To for this job. */
 var REMINDER_DEFAULT_TO_EMAIL = 'danfrey76@gmail.com';
 
 function bucketVolunteer_(raw) {
@@ -1003,8 +1025,7 @@ function previewSixMonthReminders() {
 }
 
 /**
- * Send 6-month staff reminder emails for eligible matches (one email per match — e.g. to Dan to send Post survey).
- * To-line: REMINDER_TO_EMAIL if set (non-empty); if explicitly empty string, both participants; if property never set, REMINDER_DEFAULT_TO_EMAIL.
+ * Send 6-month internal reminder emails only (one per eligible match). To is always staff — never the matched participants.
  * @return {{ sent: number, skipped: number, errors: string[] }}
  */
 function runSixMonthReminderJob() {
@@ -1047,10 +1068,6 @@ function runSixMonthReminderJob() {
     }
     addEmail(c1.email);
     addEmail(c2.email);
-    if (emails.length === 0) {
-      stats.skipped++;
-      return;
-    }
 
     var body = bodyOverride ? bodyOverride : defaultReminderBody_(c1, c2);
     body = String(body)
@@ -1059,19 +1076,14 @@ function runSixMonthReminderJob() {
       .split('{{first2}}').join(c2.firstName)
       .split('{{last2}}').join(c2.lastName);
 
-    var toLine;
-    if (rawToProp === null) {
+    var toLine =
+      rawToProp === null ? REMINDER_DEFAULT_TO_EMAIL : String(rawToProp).trim();
+    if (!toLine || toLine.indexOf('@') < 1) {
       toLine = REMINDER_DEFAULT_TO_EMAIL;
-    } else {
-      toLine = String(rawToProp).trim();
     }
-    if (toLine === '') {
-      toLine = emails.join(',');
-    } else {
-      body +=
-        '\n\n---\nParticipant emails (for reference): ' +
-        (emails.length ? emails.join(', ') : '(none on file)');
-    }
+    body +=
+      '\n\n---\nParticipant emails (for reference only — not emailed as To): ' +
+      (emails.length ? emails.join(', ') : '(none on file)');
 
     try {
       var options = {
@@ -1093,9 +1105,7 @@ function runSixMonthReminderJob() {
 }
 
 /**
- * Send one test 6-month reminder email. Does not update the reminder log or email participants
- * unless you put their addresses in the test recipient field.
- * Uses the first non-canceled match (any age) for sample names, or placeholders if none.
+ * Send one test internal reminder (To = test address only; participant emails appear in body, never as To).
  * @param {string} testToEmail - where to send (required)
  * @return {{ ok: boolean, message?: string, error?: string }}
  */
@@ -1155,7 +1165,7 @@ function sendSixMonthReminderTestEmail(testToEmail) {
     '---\n\n' +
     body;
   if (emails.length) {
-    body += '\n\n---\nParticipant emails on file (reference only): ' + emails.join(', ');
+    body += '\n\n---\nParticipant emails on file (reference only — not emailed as To): ' + emails.join(', ');
   }
 
   try {
