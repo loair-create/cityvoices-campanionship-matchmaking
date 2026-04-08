@@ -51,6 +51,114 @@ function isContactOrSensitiveHeader_(header) {
   return false;
 }
 
+/** Display dates as MM/dd/yyyy (script time zone). */
+function formatDateMMDD_(value) {
+  if (value == null || value === '') return '';
+  var d = value instanceof Date ? value : null;
+  if (!d) {
+    var tryParse = new Date(value);
+    if (!isNaN(tryParse.getTime())) d = tryParse;
+  }
+  if (!d || isNaN(d.getTime())) return String(value);
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'MM/dd/yyyy');
+}
+
+var VISIBILITY_SETTINGS_KEY = 'UI_VISIBILITY_SETTINGS';
+
+function getDefaultVisibilitySettings_() {
+  return {
+    directory: {
+      volunteerBadge: true,
+      contactEmailPhone: true,
+      publicShareHint: true,
+      shareActions: true,
+      allSignUpQA: true,
+      quickSummary: true,
+      livedExperienceTags: true,
+      availabilityGrid: true,
+      internalNotes: true
+    },
+    matchPicker: {
+      matchPercent: true,
+      matchReasons: true
+    },
+    public: {
+      showLastName: false,
+      showFormResponses: true,
+      restrictQuestions: false,
+      includedQuestionHeaders: []
+    }
+  };
+}
+
+function mergeVisibilitySettings_(saved) {
+  var d = getDefaultVisibilitySettings_();
+  if (!saved || typeof saved !== 'object') return d;
+  if (saved.directory && typeof saved.directory === 'object') {
+    d.directory = Object.assign({}, d.directory, saved.directory);
+  }
+  if (saved.matchPicker && typeof saved.matchPicker === 'object') {
+    d.matchPicker = Object.assign({}, d.matchPicker, saved.matchPicker);
+  }
+  if (saved.public && typeof saved.public === 'object') {
+    d.public = Object.assign({}, d.public, saved.public);
+    if (Array.isArray(saved.public.includedQuestionHeaders)) {
+      d.public.includedQuestionHeaders = saved.public.includedQuestionHeaders.map(function (h) {
+        return String(h);
+      });
+    }
+  }
+  return d;
+}
+
+function getVisibilitySettings_() {
+  var raw = PropertiesService.getScriptProperties().getProperty(VISIBILITY_SETTINGS_KEY);
+  if (!raw) return getDefaultVisibilitySettings_();
+  try {
+    return mergeVisibilitySettings_(JSON.parse(raw));
+  } catch (e) {
+    return getDefaultVisibilitySettings_();
+  }
+}
+
+/**
+ * Column headers from the sign-up sheet (row 1), for display-settings checklists.
+ * @return {string[]}
+ */
+function getSignUpFormHeaders() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(FORM_SHEET_NAME);
+  if (!sheet) return [];
+  var lc = sheet.getLastColumn();
+  if (lc < 1) return [];
+  var row = sheet.getRange(1, 1, 1, lc).getValues()[0];
+  var out = [];
+  var seen = {};
+  for (var i = 0; i < row.length; i++) {
+    var h = String(row[i] != null ? row[i] : '').trim();
+    if (!h || seen[h]) continue;
+    seen[h] = true;
+    out.push(h);
+  }
+  return out;
+}
+
+function applyPublicQuestionFilter_(allQuestions, visibility) {
+  var pub = visibility && visibility.public ? visibility.public : getDefaultVisibilitySettings_().public;
+  var base = filterPublicQuestions_(allQuestions);
+  if (pub.showFormResponses === false) return [];
+  if (pub.restrictQuestions && pub.includedQuestionHeaders && pub.includedQuestionHeaders.length > 0) {
+    var set = {};
+    for (var i = 0; i < pub.includedQuestionHeaders.length; i++) {
+      set[String(pub.includedQuestionHeaders[i]).trim()] = true;
+    }
+    return base.filter(function (item) {
+      return set[String(item.question || '').trim()];
+    });
+  }
+  return base;
+}
+
 function filterPublicQuestions_(allQuestions) {
   if (!allQuestions || !allQuestions.length) return [];
   return allQuestions.filter(function (item) {
@@ -63,14 +171,17 @@ function filterPublicQuestions_(allQuestions) {
   });
 }
 
-function buildPublicTemplateData_(companion) {
+function buildPublicTemplateData_(companion, visibility) {
+  var vis = visibility && visibility.public ? visibility.public : getDefaultVisibilitySettings_().public;
   var first = String(companion.firstName || 'Participant').trim() || 'Participant';
-  var filtered = filterPublicQuestions_(companion.allQuestions || []);
+  var last = String(companion.lastName || '').trim();
+  var displayName = vis.showLastName && last ? first + ' ' + last : first;
+  var filtered = applyPublicQuestionFilter_(companion.allQuestions || [], visibility || getVisibilitySettings_());
   var rows = filtered.map(function (q) {
     var a = q.answer != null ? String(q.answer).trim() : '';
     return { question: q.question, answer: a ? q.answer : '—' };
   });
-  return { firstName: first, rows: rows };
+  return { firstName: first, displayName: displayName, rows: rows };
 }
 
 function getCompanionByRow_(rowNum) {
@@ -93,13 +204,15 @@ function getCompanionByRow_(rowNum) {
 function servePublicProfile_(rowParam) {
   try {
     var c = getCompanionByRow_(rowParam);
-    var data = buildPublicTemplateData_(c);
+    var visibility = getVisibilitySettings_();
+    var data = buildPublicTemplateData_(c, visibility);
     var t = HtmlService.createTemplateFromFile('PublicProfile');
+    t.displayName = data.displayName;
     t.firstName = data.firstName;
     t.rows = data.rows;
     return t
       .evaluate()
-      .setTitle(data.firstName + ' — Profile')
+      .setTitle(data.displayName + ' — Profile')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   } catch (err) {
@@ -142,8 +255,10 @@ function getPublicShareLink(rowId) {
  */
 function getProfilePdfBase64(rowId) {
   var c = getCompanionByRow_(rowId);
-  var data = buildPublicTemplateData_(c);
+  var visibility = getVisibilitySettings_();
+  var data = buildPublicTemplateData_(c, visibility);
   var t = HtmlService.createTemplateFromFile('PublicProfile');
+  t.displayName = data.displayName;
   t.firstName = data.firstName;
   t.rows = data.rows;
   var pdfBlob = t.evaluate().getAs(MimeType.PDF);
@@ -217,7 +332,7 @@ function getData() {
     try { criteria = JSON.parse(savedCriteria); } catch(e) {}
   }
   
-  return { companions, matches, criteria };
+  return { companions, matches, criteria, visibility: getVisibilitySettings_() };
 }
 
 /**
@@ -225,6 +340,14 @@ function getData() {
  */
 function saveCriteriaSettings(settingsJson) {
   PropertiesService.getScriptProperties().setProperty('MATCHING_CRITERIA', settingsJson);
+  return true;
+}
+
+/**
+ * Save directory / match picker / public profile visibility toggles (JSON).
+ */
+function saveVisibilitySettings(settingsJson) {
+  PropertiesService.getScriptProperties().setProperty(VISIBILITY_SETTINGS_KEY, settingsJson);
   return true;
 }
 
@@ -376,6 +499,58 @@ function deleteMatch(matchId) {
   return false;
 }
 
+/**
+ * Delete many matches in one pass (rows removed high-to-low so indices stay valid).
+ * @param {string[]} matchIds
+ * @return {{ deleted: number }}
+ */
+function deleteMatchesBatch(matchIds) {
+  if (!matchIds || !matchIds.length) return { deleted: 0 };
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Matches');
+  if (!sheet) return { deleted: 0 };
+  const data = sheet.getDataRange().getValues();
+  const want = {};
+  for (let k = 0; k < matchIds.length; k++) {
+    want[String(matchIds[k])] = true;
+  }
+  const rowsToDelete = [];
+  for (let i = 1; i < data.length; i++) {
+    if (want[String(data[i][0])]) rowsToDelete.push(i + 1);
+  }
+  rowsToDelete.sort(function (a, b) {
+    return b - a;
+  });
+  for (let r = 0; r < rowsToDelete.length; r++) {
+    sheet.deleteRow(rowsToDelete[r]);
+  }
+  return { deleted: rowsToDelete.length };
+}
+
+/**
+ * Set status column for many matches at once.
+ * @param {string[]} matchIds
+ * @param {string} status
+ * @return {{ updated: number }}
+ */
+function updateMatchesStatusBatch(matchIds, status) {
+  if (!matchIds || !matchIds.length) return { updated: 0 };
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Matches');
+  if (!sheet) return { updated: 0 };
+  const data = sheet.getDataRange().getValues();
+  const want = {};
+  for (let k = 0; k < matchIds.length; k++) {
+    want[String(matchIds[k])] = true;
+  }
+  let n = 0;
+  for (let i = 1; i < data.length; i++) {
+    if (want[String(data[i][0])]) {
+      sheet.getRange(i + 1, 4).setValue(status);
+      n++;
+    }
+  }
+  return { updated: n };
+}
+
 function updateCompanionNote(rowNumber, note) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(FORM_SHEET_NAME);
@@ -475,7 +650,9 @@ function buildCompanionColumnIndices(headers) {
 function cellAt(row, colIndex) {
   if (colIndex == null || colIndex < 0 || colIndex >= row.length) return '';
   var v = row[colIndex];
-  return v != null ? String(v) : '';
+  if (v == null) return '';
+  if (v instanceof Date) return formatDateMMDD_(v);
+  return String(v);
 }
 
 /** Every column on the sign-up row as { question, answer } (uses sheet headers). */
@@ -488,7 +665,7 @@ function buildAllFormQandA_(headers, row) {
     var v = i < row.length ? row[i] : '';
     var val = '';
     if (v instanceof Date) {
-      val = Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+      val = formatDateMMDD_(v);
     } else {
       val = v != null ? String(v) : '';
     }
@@ -552,7 +729,7 @@ function parseCompanionRow(row, c, rowNum) {
 // --- SURVEY / INSIGHTS ---
 
 var REMINDER_DAYS_AFTER_MATCH = 180;
-/** When REMINDER_TO_EMAIL is not set in script properties, reminders go here (staff). Clear the field in Insights & save to send To the matched participants instead. */
+/** When REMINDER_TO_EMAIL is not set in script properties, reminders go here (staff). Clear the field in Reminders & save to send To the matched participants instead. */
 var REMINDER_DEFAULT_TO_EMAIL = 'danfrey76@gmail.com';
 
 function bucketVolunteer_(raw) {
@@ -605,7 +782,7 @@ function analyzeExternalSurveySheet_(sheetName) {
       var cell = rows[r][c];
       var key;
       if (cell instanceof Date) {
-        key = Utilities.formatDate(cell, tz, 'yyyy-MM-dd');
+        key = Utilities.formatDate(cell, tz, 'MM/dd/yyyy');
       } else {
         key = cell != null ? String(cell).trim() : '';
       }
@@ -704,11 +881,22 @@ function getSurveyAnalysis() {
 }
 
 /**
- * Payload for Insights: analysis + reminder email settings + trigger flag.
+ * Payload for Insights: sign-up aggregates + external survey tabs.
  */
 function getInsightsPageData() {
   var data = getData();
   var analysis = buildSurveyAnalysis_(data.companions, data.matches);
+  return {
+    analysis: analysis,
+    preSurvey: analyzeExternalSurveySheet_(PRE_SURVEY_SHEET_NAME),
+    postSurvey: analyzeExternalSurveySheet_(POST_SURVEY_SHEET_NAME)
+  };
+}
+
+/**
+ * Settings + trigger flag for the 6-month reminders tab only (lighter than full insights).
+ */
+function getSixMonthReminderPageData() {
   var props = PropertiesService.getScriptProperties();
   var triggerOn = false;
   try {
@@ -719,9 +907,6 @@ function getInsightsPageData() {
     triggerOn = false;
   }
   return {
-    analysis: analysis,
-    preSurvey: analyzeExternalSurveySheet_(PRE_SURVEY_SHEET_NAME),
-    postSurvey: analyzeExternalSurveySheet_(POST_SURVEY_SHEET_NAME),
     reminder: {
       ccEmail: props.getProperty('REMINDER_CC_EMAIL') || '',
       subject: props.getProperty('REMINDER_EMAIL_SUBJECT') || '',
@@ -898,6 +1083,86 @@ function runSixMonthReminderJob() {
 
   props.setProperty('SIX_MO_REMINDER_LOG', JSON.stringify(log));
   return stats;
+}
+
+/**
+ * Send one test 6-month reminder email. Does not update the reminder log or email participants
+ * unless you put their addresses in the test recipient field.
+ * Uses the first non-canceled match (any age) for sample names, or placeholders if none.
+ * @param {string} testToEmail - where to send (required)
+ * @return {{ ok: boolean, message?: string, error?: string }}
+ */
+function sendSixMonthReminderTestEmail(testToEmail) {
+  var to = String(testToEmail || '').trim();
+  if (!to || to.indexOf('@') < 1) {
+    return { ok: false, error: 'Enter a valid email address to receive the test.' };
+  }
+
+  var data = getData();
+  var companionsById = {};
+  data.companions.forEach(function (c) {
+    companionsById[String(c.id)] = c;
+  });
+
+  var c1 = null;
+  var c2 = null;
+  for (var i = 0; i < data.matches.length; i++) {
+    var m = data.matches[i];
+    if (String(m.status || '').trim() === 'Canceled') continue;
+    var x1 = companionsById[String(m.companion1Id)];
+    var x2 = companionsById[String(m.companion2Id)];
+    if (x1 && x2) {
+      c1 = x1;
+      c2 = x2;
+      break;
+    }
+  }
+  if (!c1 || !c2) {
+    c1 = { firstName: 'Alex', lastName: 'Sample', email: 'participant1@example.com' };
+    c2 = { firstName: 'Jordan', lastName: 'Example', email: 'participant2@example.com' };
+  }
+
+  var props = PropertiesService.getScriptProperties();
+  var subjectCustom = String(props.getProperty('REMINDER_EMAIL_SUBJECT') || '').trim();
+  var subjectDefault = subjectCustom || defaultReminderSubject_();
+  var bodyOverride = String(props.getProperty('REMINDER_EMAIL_BODY') || '').trim();
+  var cc = String(props.getProperty('REMINDER_CC_EMAIL') || '').trim();
+
+  var body = bodyOverride ? bodyOverride : defaultReminderBody_(c1, c2);
+  body = String(body)
+    .split('{{first1}}').join(c1.firstName)
+    .split('{{last1}}').join(c1.lastName)
+    .split('{{first2}}').join(c2.firstName)
+    .split('{{last2}}').join(c2.lastName);
+
+  var emails = [];
+  function addEmail(e) {
+    e = String(e || '').trim();
+    if (e.indexOf('@') > 0 && emails.indexOf(e) < 0) emails.push(e);
+  }
+  addEmail(c1.email);
+  addEmail(c2.email);
+
+  body =
+    'This is a TEST from the Companionship Connections dashboard. It was not saved as a sent reminder.\n\n' +
+    '---\n\n' +
+    body;
+  if (emails.length) {
+    body += '\n\n---\nParticipant emails on file (reference only): ' + emails.join(', ');
+  }
+
+  try {
+    var options = {
+      to: to,
+      subject: '[TEST] ' + subjectDefault,
+      body: body
+    };
+    if (cc) options.cc = cc;
+    MailApp.sendEmail(options);
+    return { ok: true, message: 'Test email sent to ' + to + '.' };
+  } catch (err) {
+    return { ok: false, error: String(err.message || err) };
+  }
 }
 
 /**
