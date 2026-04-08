@@ -63,6 +63,25 @@ function formatDateMMDD_(value) {
   return Utilities.formatDate(d, Session.getScriptTimeZone(), 'MM/dd/yyyy');
 }
 
+/** Matches sheet column I — ensure header exists for older spreadsheets. */
+function ensureMatchesLastContactColumn_(sheet) {
+  if (!sheet) return;
+  var lc = sheet.getLastColumn();
+  if (lc < 9) {
+    sheet.getRange(1, 9).setValue('Last Contact Date');
+  }
+}
+
+function formatMatchSheetDateCell_(v) {
+  if (v == null || v === '') return '';
+  if (v instanceof Date) return formatDateMMDD_(v);
+  var s = String(v).trim();
+  if (!s) return '';
+  var d = new Date(s);
+  if (!isNaN(d.getTime())) return formatDateMMDD_(d);
+  return s;
+}
+
 var VISIBILITY_SETTINGS_KEY = 'UI_VISIBILITY_SETTINGS';
 
 function getDefaultVisibilitySettings_() {
@@ -306,13 +325,24 @@ function getData() {
   if (!matchSheet) {
     matchSheet = ss.insertSheet('Matches');
     // Added Name columns for better spreadsheet readability
-    matchSheet.appendRow(['Match ID', 'Companion 1 ID', 'Companion 2 ID', 'Status', 'Notes', 'Created At', 'C1 Name', 'C2 Name']);
+    matchSheet.appendRow([
+      'Match ID',
+      'Companion 1 ID',
+      'Companion 2 ID',
+      'Status',
+      'Notes',
+      'Created At',
+      'C1 Name',
+      'C2 Name',
+      'Last Contact Date'
+    ]);
   }
   
   const lastMatchRow = matchSheet.getLastRow();
   let matches = [];
   if (lastMatchRow >= 2) {
-    const matchCols = Math.max(matchSheet.getLastColumn(), 6);
+    ensureMatchesLastContactColumn_(matchSheet);
+    const matchCols = Math.max(matchSheet.getLastColumn(), 9);
     const matchData = matchSheet.getRange(1, 1, lastMatchRow, matchCols).getValues();
     const matchRows = matchData.slice(1);
     matches = matchRows
@@ -323,7 +353,8 @@ function getData() {
           companion2Id: String(r[2] != null ? r[2] : '').trim(),
           status: r[3],
           notes: r[4],
-          createdAt: r[5]
+          createdAt: r[5],
+          lastContactDate: formatMatchSheetDateCell_(r[8])
         };
       })
       .filter(function (m) {
@@ -385,6 +416,7 @@ function createMatch(matchObj) {
       if ((x === a && y === b) || (x === b && y === a)) return false;
     }
 
+    ensureMatchesLastContactColumn_(sheet);
     sheet.appendRow([
       matchObj.id,
       a,
@@ -393,7 +425,8 @@ function createMatch(matchObj) {
       matchObj.notes,
       matchObj.createdAt,
       matchObj.c1Name,
-      matchObj.c2Name
+      matchObj.c2Name,
+      ''
     ]);
     return true;
   } finally {
@@ -447,6 +480,7 @@ function createMatchesBatch(matchObjs) {
         continue;
       }
       existingKeys[k] = true;
+      ensureMatchesLastContactColumn_(sheet);
       sheet.appendRow([
         matchObj.id,
         a,
@@ -455,7 +489,8 @@ function createMatchesBatch(matchObjs) {
         matchObj.notes,
         matchObj.createdAt,
         matchObj.c1Name,
-        matchObj.c2Name
+        matchObj.c2Name,
+        ''
       ]);
       created.push({
         id: String(matchObj.id),
@@ -463,7 +498,8 @@ function createMatchesBatch(matchObjs) {
         companion2Id: b,
         status: matchObj.status,
         notes: matchObj.notes,
-        createdAt: matchObj.createdAt
+        createdAt: matchObj.createdAt,
+        lastContactDate: ''
       });
     }
     return { created: created, skipped: skipped };
@@ -491,6 +527,55 @@ function updateMatchData(matchId, field, value) {
     }
   }
   return false;
+}
+
+/**
+ * Per-pair last contact on the Matches sheet (column I). Pass empty string to clear.
+ * @param {string} matchId
+ * @param {string} isoDateOrEmpty YYYY-MM-DD from HTML date input
+ * @return {boolean}
+ */
+function updateMatchLastContactDate(matchId, isoDateOrEmpty) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Matches');
+  if (!sheet) return false;
+  ensureMatchesLastContactColumn_(sheet);
+  var data = sheet.getDataRange().getValues();
+  var mid = String(matchId != null ? matchId : '').trim();
+  if (!mid) return false;
+  var rowIdx = -1;
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === mid) {
+      rowIdx = i + 1;
+      break;
+    }
+  }
+  if (rowIdx < 2) return false;
+  var colIdx = 9;
+  var t = String(isoDateOrEmpty != null ? isoDateOrEmpty : '').trim();
+  if (!t) {
+    sheet.getRange(rowIdx, colIdx).setValue('');
+    return true;
+  }
+  var parts = t.split('-');
+  if (parts.length === 3) {
+    var y = parseInt(parts[0], 10);
+    var mo = parseInt(parts[1], 10) - 1;
+    var da = parseInt(parts[2], 10);
+    if (!isNaN(y) && !isNaN(mo) && !isNaN(da)) {
+      var d = new Date(y, mo, da);
+      if (
+        !isNaN(d.getTime()) &&
+        d.getFullYear() === y &&
+        d.getMonth() === mo &&
+        d.getDate() === da
+      ) {
+        sheet.getRange(rowIdx, colIdx).setValue(d);
+        return true;
+      }
+    }
+  }
+  sheet.getRange(rowIdx, colIdx).setValue(t);
+  return true;
 }
 
 function deleteMatch(matchId) {
