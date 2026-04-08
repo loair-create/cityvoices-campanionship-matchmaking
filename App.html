@@ -185,6 +185,36 @@
       return false;
     };
 
+    const INTERNAL_STATUS_OPTIONS = ['Active', 'Quit', 'Unresponsive'];
+
+    /** Convert sheet/display MM/DD/YYYY (or parseable date string) to yyyy-MM-dd for HTML date inputs. */
+    const lastContactRawToDateInput = (raw) => {
+      const s = String(raw || '').trim();
+      if (!s) return '';
+      const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (m) {
+        const mm = m[1].padStart(2, '0');
+        const dd = m[2].padStart(2, '0');
+        return `${m[3]}-${mm}-${dd}`;
+      }
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) {
+        const y = d.getFullYear();
+        const mo = String(d.getMonth() + 1).padStart(2, '0');
+        const da = String(d.getDate()).padStart(2, '0');
+        return `${y}-${mo}-${da}`;
+      }
+      return '';
+    };
+
+    const dateInputToMMDD = (iso) => {
+      if (!iso || String(iso).length < 10) return '';
+      const y = iso.slice(0, 4);
+      const mo = iso.slice(5, 7);
+      const da = iso.slice(8, 10);
+      return `${mo}/${da}/${y}`;
+    };
+
     const DEFAULT_VISIBILITY_SETTINGS = {
       directory: {
         volunteerBadge: true,
@@ -1744,36 +1774,107 @@
                                <button type="button" onClick={() => { setPendingMatchTargetIds([]); setMatchPickerQuery(''); setIsMatchMode(true); }} className="w-full bg-brand-600 text-white py-3 rounded-lg shadow hover:bg-brand-700 font-bold flex items-center justify-center">
                                   <ICONS.Match className="w-5 h-5 mr-2"/> Find Match
                                </button>
-                               <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4">
-                                  <label htmlFor={`internal-status-${selectedCompanion.id}`} className="text-xs font-bold text-amber-900 uppercase tracking-wide block mb-1.5">Internal status</label>
-                                  <input
-                                     id={`internal-status-${selectedCompanion.id}`}
-                                     type="text"
-                                     key={selectedCompanion.id}
-                                     className="w-full max-w-full box-border text-sm border border-amber-300 rounded-md px-3 py-2 bg-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
-                                     defaultValue={String(selectedCompanion.internalStatus || '').trim()}
-                                     placeholder="e.g. Active, On hold, Matched…"
-                                     onBlur={(e) => {
-                                        const v = e.target.value;
-                                        const id = selectedCompanion.id;
-                                        google.script.run
-                                          .withFailureHandler((err) => alert(err.message || String(err)))
-                                          .updateCompanionInternalStatus(id, v);
-                                        setCompanions((prev) =>
-                                          prev.map((c) => (String(c.id) === String(id) ? { ...c, internalStatus: v } : c))
-                                        );
-                                        setSelectedCompanion((prev) =>
-                                          prev && String(prev.id) === String(id) ? { ...prev, internalStatus: v } : prev
-                                        );
-                                     }}
-                                  />
-                                  <p className="text-[11px] text-amber-900/80 mt-2">Saved to the sign-up sheet when you leave this field. Uses your &quot;internal status&quot; (or staff/companion status) column.</p>
+                               <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 space-y-4">
+                                  <div>
+                                     <label htmlFor={`internal-status-${selectedCompanion.id}`} className="text-xs font-bold text-amber-900 uppercase tracking-wide block mb-1.5">Internal status</label>
+                                     <select
+                                        id={`internal-status-${selectedCompanion.id}`}
+                                        className="w-full max-w-full box-border text-sm border border-amber-300 rounded-md px-3 py-2 bg-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+                                        value={(() => {
+                                          const s = String(selectedCompanion.internalStatus || '').trim();
+                                          if (!s) return '';
+                                          if (INTERNAL_STATUS_OPTIONS.includes(s)) return s;
+                                          return s;
+                                        })()}
+                                        onChange={(e) => {
+                                          const v = e.target.value;
+                                          const id = selectedCompanion.id;
+                                          google.script.run
+                                            .withFailureHandler((err) => alert(err.message || String(err)))
+                                            .updateCompanionInternalStatus(id, v);
+                                          setCompanions((prev) =>
+                                            prev.map((c) => (String(c.id) === String(id) ? { ...c, internalStatus: v } : c))
+                                          );
+                                          setSelectedCompanion((prev) =>
+                                            prev && String(prev.id) === String(id) ? { ...prev, internalStatus: v } : prev
+                                          );
+                                        }}
+                                     >
+                                        <option value="">— None / clear —</option>
+                                        {INTERNAL_STATUS_OPTIONS.map((opt) => (
+                                          <option key={opt} value={opt}>{opt}</option>
+                                        ))}
+                                        {(() => {
+                                          const s = String(selectedCompanion.internalStatus || '').trim();
+                                          if (s && !INTERNAL_STATUS_OPTIONS.includes(s)) {
+                                            return (
+                                              <option value={s}>{s} (from sheet — choose Active, Quit, or Unresponsive to replace)</option>
+                                            );
+                                          }
+                                          return null;
+                                        })()}
+                                     </select>
+                                     <p className="text-[11px] text-amber-900/80 mt-2">Saved to your internal status column. Only <strong>Active</strong>, <strong>Quit</strong>, and <strong>Unresponsive</strong> are saved when selected from the list.</p>
+                                  </div>
+                                  <div>
+                                     <label htmlFor={`last-contact-${selectedCompanion.id}`} className="text-xs font-bold text-amber-900 uppercase tracking-wide block mb-1.5">Last contact date</label>
+                                     <div className="flex flex-wrap items-center gap-2">
+                                        <input
+                                           id={`last-contact-${selectedCompanion.id}`}
+                                           type="date"
+                                           className="flex-1 min-w-[10rem] max-w-full box-border text-sm border border-amber-300 rounded-md px-3 py-2 bg-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+                                           key={`lcd-${selectedCompanion.id}-${selectedCompanion.lastContactDate || ''}`}
+                                           defaultValue={lastContactRawToDateInput(selectedCompanion.lastContactDate)}
+                                           onChange={(e) => {
+                                              const iso = e.target.value;
+                                              const id = selectedCompanion.id;
+                                              google.script.run
+                                                .withFailureHandler((err) => alert(err.message || String(err)))
+                                                .updateCompanionLastContactDate(id, iso);
+                                              const display = iso ? dateInputToMMDD(iso) : '';
+                                              setCompanions((prev) =>
+                                                prev.map((c) =>
+                                                  String(c.id) === String(id) ? { ...c, lastContactDate: display } : c
+                                                )
+                                              );
+                                              setSelectedCompanion((prev) =>
+                                                prev && String(prev.id) === String(id)
+                                                  ? { ...prev, lastContactDate: display }
+                                                  : prev
+                                              );
+                                           }}
+                                        />
+                                        <button
+                                           type="button"
+                                           className="text-xs font-medium text-amber-900 underline px-1 py-1"
+                                           onClick={() => {
+                                              const id = selectedCompanion.id;
+                                              google.script.run
+                                                .withFailureHandler((err) => alert(err.message || String(err)))
+                                                .updateCompanionLastContactDate(id, '');
+                                              setCompanions((prev) =>
+                                                prev.map((c) =>
+                                                  String(c.id) === String(id) ? { ...c, lastContactDate: '' } : c
+                                                )
+                                              );
+                                              setSelectedCompanion((prev) =>
+                                                prev && String(prev.id) === String(id)
+                                                  ? { ...prev, lastContactDate: '' }
+                                                  : prev
+                                              );
+                                           }}
+                                        >Clear date</button>
+                                     </div>
+                                     <p className="text-[11px] text-amber-900/80 mt-2">Stored in <strong>Last Contact Date</strong> on the sign-up sheet (column added automatically if needed). Shown elsewhere as MM/DD/YYYY.</p>
+                                  </div>
                                </div>
                                {dVis.quickSummary ? (
                                <div>
                                   <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider mb-2 border-b pb-1">Quick summary</h4>
                                   <div className="bg-gray-50 rounded p-4 space-y-1 text-sm">
                                      <p><span className="text-gray-500">Enrollment:</span> {formatDateMMDD(selectedCompanion.enrollmentDate)}</p>
+                                     <p><span className="text-gray-500">Internal status:</span> {String(selectedCompanion.internalStatus || '').trim() || '—'}</p>
+                                     <p><span className="text-gray-500">Last contact:</span> {formatDateMMDD(selectedCompanion.lastContactDate)}</p>
                                      <p><span className="text-gray-500">Borough:</span> {selectedCompanion.borough || '—'}</p>
                                   </div>
                                </div>
