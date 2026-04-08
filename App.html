@@ -761,7 +761,7 @@
       'Canceled'
     ];
 
-    const ActiveMatches = ({ matches, companions, onUpdateStatus, onDeleteMatch, onUpdateNotes, onBulkDeleteComplete, onBulkStatusComplete, config }) => {
+    const ActiveMatches = ({ matches, companions, onUpdateStatus, onDeleteMatch, onUpdateNotes, onUpdateMatchLastContact, onBulkDeleteComplete, onBulkStatusComplete, config }) => {
       const [viewMatch, setViewMatch] = useState(null);
       const [selectedIds, setSelectedIds] = useState([]);
       const [bulkStatus, setBulkStatus] = useState('Active');
@@ -879,7 +879,7 @@
                    <div key={match.id} className={`bg-white rounded-lg shadow-sm border overflow-hidden hover:shadow-md transition ${isSel ? 'border-brand-400 ring-1 ring-brand-200' : 'border-gray-200'}`}>
                       {/* Match Header */}
                       <div 
-                         onClick={() => setViewMatch({ c1, c2, matchId: match.id })}
+                         onClick={() => setViewMatch({ c1, c2, matchId: match.id, lastContactDate: match.lastContactDate || '' })}
                          className="p-6 cursor-pointer border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-white to-gray-50 group"
                       >
                          <div className="flex items-center space-x-6">
@@ -911,49 +911,72 @@
                       </div>
 
                       {/* Match Actions */}
-                      <div className="bg-gray-50 px-6 py-4 flex items-center justify-between gap-3 min-w-0">
-                          <div className="flex items-center space-x-3 w-full min-w-0 mr-2 flex-wrap sm:flex-nowrap">
-                             <input
-                                type="checkbox"
-                                className="h-5 w-5 rounded border-gray-300 text-brand-600 focus:ring-brand-500 flex-shrink-0"
-                                checked={isSel}
-                                onChange={() => toggleSelected(match.id)}
-                                aria-label={`Select match ${c1.firstName} and ${c2.firstName}`}
-                             />
-                             <div className="relative inline-block text-left">
-                                <select 
-                                   value={match.status || 'Just Matched'} 
-                                   onChange={(e) => {
-                                      const next = e.target.value;
-                                      if (String(next).trim() === String(match.status || '').trim()) return;
-                                      onUpdateStatus(match.id, next);
-                                   }}
-                                   className={`appearance-none pl-3 pr-8 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-brand-500 border-0 shadow-sm
-                                     ${match.status === 'Active' ? 'bg-green-100 text-green-800' : 
-                                       match.status === 'Canceled' ? 'bg-red-100 text-red-800' : 
-                                       'bg-blue-100 text-blue-800'}`}
-                                >
-                                   {MATCH_STATUS_OPTIONS.map((opt) => (
-                                      <option key={opt} value={opt}>{opt}</option>
-                                   ))}
-                                </select>
+                      <div className="bg-gray-50 px-6 py-4 flex flex-col gap-3 min-w-0">
+                          <div className="flex items-center justify-between gap-3 min-w-0">
+                             <div className="flex items-center space-x-3 w-full min-w-0 mr-2 flex-wrap sm:flex-nowrap">
+                                <input
+                                   type="checkbox"
+                                   className="h-5 w-5 rounded border-gray-300 text-brand-600 focus:ring-brand-500 flex-shrink-0"
+                                   checked={isSel}
+                                   onChange={() => toggleSelected(match.id)}
+                                   aria-label={`Select match ${c1.firstName} and ${c2.firstName}`}
+                                />
+                                <div className="relative inline-block text-left">
+                                   <select 
+                                      value={match.status || 'Just Matched'} 
+                                      onChange={(e) => {
+                                         const next = e.target.value;
+                                         if (String(next).trim() === String(match.status || '').trim()) return;
+                                         onUpdateStatus(match.id, next);
+                                      }}
+                                      className={`appearance-none pl-3 pr-8 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-brand-500 border-0 shadow-sm
+                                        ${match.status === 'Active' ? 'bg-green-100 text-green-800' : 
+                                          match.status === 'Canceled' ? 'bg-red-100 text-red-800' : 
+                                          'bg-blue-100 text-blue-800'}`}
+                                   >
+                                      {MATCH_STATUS_OPTIONS.map((opt) => (
+                                         <option key={opt} value={opt}>{opt}</option>
+                                      ))}
+                                   </select>
+                                </div>
+                                
+                                <div className="flex-1 relative min-w-[8rem]">
+                                   <ICONS.Edit className="w-3 h-3 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                                   <input 
+                                      type="text" 
+                                      className="w-full text-sm border-gray-300 rounded-md pl-8 focus:ring-brand-500 focus:border-brand-500 placeholder-gray-400 bg-white"
+                                      placeholder="Internal notes..."
+                                      value={match.notes || ""}
+                                      onChange={(e) => onUpdateNotes(match.id, e.target.value)}
+                                   />
+                                </div>
                              </div>
                              
-                             <div className="flex-1 relative">
-                                <ICONS.Edit className="w-3 h-3 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                                <input 
-                                   type="text" 
-                                   className="w-full text-sm border-gray-300 rounded-md pl-8 focus:ring-brand-500 focus:border-brand-500 placeholder-gray-400 bg-white"
-                                   placeholder="Internal notes..."
-                                   value={match.notes || ""}
-                                   onChange={(e) => onUpdateNotes(match.id, e.target.value)}
-                                />
-                             </div>
+                             <button type="button" onClick={() => onDeleteMatch(match.id)} className="text-gray-400 hover:text-red-500 transition p-2 hover:bg-red-50 rounded-full flex-shrink-0 self-start sm:self-center">
+                                <ICONS.Delete className="w-4 h-4" />
+                             </button>
                           </div>
-                          
-                          <button onClick={() => onDeleteMatch(match.id)} className="text-gray-400 hover:text-red-500 transition p-2 hover:bg-red-50 rounded-full">
-                             <ICONS.Delete className="w-4 h-4" />
-                          </button>
+                          <div className="flex flex-wrap items-center gap-2 pl-0 sm:pl-11 border-t border-gray-200/80 pt-3">
+                             <span className="text-xs font-bold text-gray-500 uppercase tracking-wide whitespace-nowrap">Last contact</span>
+                             <input
+                                type="date"
+                                className="text-sm border border-gray-300 rounded-md px-2 py-1.5 bg-white focus:ring-brand-500 focus:border-brand-500"
+                                key={`match-lc-${match.id}-${match.lastContactDate || ''}`}
+                                defaultValue={lastContactRawToDateInput(match.lastContactDate)}
+                                onChange={(e) => onUpdateMatchLastContact && onUpdateMatchLastContact(match.id, e.target.value)}
+                                aria-label={`Last contact date for ${c1.firstName} and ${c2.firstName}`}
+                             />
+                             <button
+                                type="button"
+                                className="text-xs font-medium text-gray-600 hover:text-brand-700 px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50"
+                                onClick={() => onUpdateMatchLastContact && onUpdateMatchLastContact(match.id, '')}
+                             >
+                                Clear
+                             </button>
+                             {!match.lastContactDate ? (
+                                <span className="text-xs text-gray-500">Not set</span>
+                             ) : null}
+                          </div>
                       </div>
                    </div>
                 );
@@ -973,6 +996,10 @@
                         >
                            <ICONS.Close className="w-5 h-5"/>
                         </button>
+                     </div>
+                     <div className="px-6 py-2 bg-gray-100 border-b border-gray-200 text-sm text-gray-700">
+                        <span className="font-semibold text-gray-800">Last contact (this pair):</span>{' '}
+                        {viewMatch.lastContactDate ? formatDateMMDD(viewMatch.lastContactDate) : '—'}
                      </div>
                      <div className="p-6 overflow-y-auto flex-1 bg-gray-50">
                         <MatchComparison c1={viewMatch.c1} c2={viewMatch.c2} config={config} />
@@ -1556,6 +1583,7 @@
              <nav className="flex-1 px-4 py-6 space-y-2">
                 <button type="button" onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center px-4 py-3 rounded-md transition ${activeTab === 'dashboard' ? 'bg-brand-800 shadow-md' : 'hover:bg-brand-800 hover:bg-opacity-50 text-brand-100'}`}>
                    <ICONS.Users className="w-5 h-5 mr-3" /> Directory
+                   {companions.length > 0 && <span className="ml-auto bg-brand-600 text-xs py-0.5 px-2 rounded-full">{companions.length}</span>}
                 </button>
                 <button type="button" onClick={() => setActiveTab('matches')} className={`w-full flex items-center px-4 py-3 rounded-md transition ${activeTab === 'matches' ? 'bg-brand-800 shadow-md' : 'hover:bg-brand-800 hover:bg-opacity-50 text-brand-100'}`}>
                    <ICONS.Match className="w-5 h-5 mr-3" /> Matches 
@@ -1633,6 +1661,13 @@
                        onBulkStatusComplete={(ids, status) => {
                           const idSet = new Set(ids.map(String));
                           setMatches((m) => m.map((x) => (idSet.has(String(x.id)) ? { ...x, status } : x)));
+                       }}
+                       onUpdateMatchLastContact={(id, iso) => {
+                          const display = iso ? dateInputToMMDD(iso) : '';
+                          setMatches((m) =>
+                             m.map((x) => (String(x.id) === String(id) ? { ...x, lastContactDate: display } : x))
+                          );
+                          google.script.run.updateMatchLastContactDate(String(id), iso || '');
                        }}
                     />
                 </div>
