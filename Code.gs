@@ -574,11 +574,12 @@ function updateCompanionNote(rowNumber, note) {
   return true;
 }
 
+/** Allowed internal status values for the directory dropdown (empty = clear cell). */
+var INTERNAL_STATUS_ALLOWED_ = { Active: true, Quit: true, Unresponsive: true };
+
 /**
- * Update the Internal status (or staff/companion/program status) cell for a sign-up row.
- * @param {string|number} rowNumber Sheet row (same as companion id from the app).
- * @param {string} value New status text
- * @return {boolean} false if sheet or column missing
+ * Update internal status. Only Active, Quit, Unresponsive, or blank are written.
+ * @return {boolean}
  */
 function updateCompanionInternalStatus(rowNumber, value) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -592,7 +593,56 @@ function updateCompanionInternalStatus(rowNumber, value) {
   if (colIdx == null || colIdx < 0) return false;
   const r = parseInt(String(rowNumber), 10);
   if (isNaN(r) || r < 2) return false;
-  sheet.getRange(r, colIdx + 1).setValue(value != null ? String(value) : '');
+  var v = String(value != null ? value : '').trim();
+  if (v && !INTERNAL_STATUS_ALLOWED_[v]) return false;
+  sheet.getRange(r, colIdx + 1).setValue(v);
+  return true;
+}
+
+/**
+ * Update Last Contact Date. Pass empty string to clear. Pass YYYY-MM-DD (from HTML date input) to set a calendar date.
+ * Creates a "Last Contact Date" column if none matches.
+ * @return {boolean}
+ */
+function updateCompanionLastContactDate(rowNumber, isoDateOrEmpty) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(FORM_SHEET_NAME);
+  if (!sheet) return false;
+  const lastCol = sheet.getLastColumn();
+  const headers =
+    lastCol >= 1 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  const c = buildCompanionColumnIndices(headers);
+  var colIdx = c.lastContactDate;
+  if (colIdx == null || colIdx < 0) {
+    colIdx = Math.max(headers.length, 0);
+    sheet.getRange(1, colIdx + 1).setValue('Last Contact Date');
+  }
+  const r = parseInt(String(rowNumber), 10);
+  if (isNaN(r) || r < 2) return false;
+  var t = String(isoDateOrEmpty != null ? isoDateOrEmpty : '').trim();
+  if (!t) {
+    sheet.getRange(r, colIdx + 1).setValue('');
+    return true;
+  }
+  var parts = t.split('-');
+  if (parts.length === 3) {
+    var y = parseInt(parts[0], 10);
+    var mo = parseInt(parts[1], 10) - 1;
+    var da = parseInt(parts[2], 10);
+    if (!isNaN(y) && !isNaN(mo) && !isNaN(da)) {
+      var d = new Date(y, mo, da);
+      if (
+        !isNaN(d.getTime()) &&
+        d.getFullYear() === y &&
+        d.getMonth() === mo &&
+        d.getDate() === da
+      ) {
+        sheet.getRange(r, colIdx + 1).setValue(d);
+        return true;
+      }
+    }
+  }
+  sheet.getRange(r, colIdx + 1).setValue(t);
   return true;
 }
 
@@ -672,6 +722,12 @@ function buildCompanionColumnIndices(headers) {
       'staff status',
       'companion status',
       'program status'
+    ]),
+    lastContactDate: colFirst([
+      'last contact date',
+      'last contact',
+      'contact date',
+      'date of last contact'
     ])
   };
 }
@@ -751,7 +807,8 @@ function parseCompanionRow(row, c, rowNum) {
     },
     volunteer: cellAt(row, c.volunteer),
     enrollmentDate: cellAt(row, c.enrollmentDate),
-    internalStatus: cellAt(row, c.internalStatus)
+    internalStatus: cellAt(row, c.internalStatus),
+    lastContactDate: cellAt(row, c.lastContactDate)
   };
 }
 
