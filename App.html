@@ -192,6 +192,8 @@
         publicShareHint: true,
         shareActions: true,
         allSignUpQA: true,
+        restrictDirectoryColumns: false,
+        includedDirectoryQuestionHeaders: [],
         quickSummary: true,
         livedExperienceTags: true,
         availabilityGrid: true,
@@ -250,13 +252,13 @@
     );
 
     const BreakdownMiniTable = ({ title, rows, maxRows = 14 }) => (
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 h-full">
-        <h3 className="text-sm font-bold text-gray-800 mb-3 border-b border-gray-100 pb-2">{title}</h3>
-        <div className="space-y-1 max-h-64 overflow-y-auto text-sm">
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 h-full min-w-0">
+        <h3 className="text-sm font-bold text-gray-800 mb-3 border-b border-gray-100 pb-2 break-words">{title}</h3>
+        <div className="space-y-1 max-h-64 overflow-y-auto overflow-x-hidden text-sm">
           {(rows || []).slice(0, maxRows).map((r, i) => (
-            <div key={i} className="flex justify-between gap-2 py-1 border-b border-gray-50 last:border-0">
-              <span className="text-gray-600 truncate" title={r.label}>{r.label}</span>
-              <span className="font-semibold text-brand-800 flex-shrink-0">{r.count}</span>
+            <div key={i} className="flex justify-between gap-2 py-1 border-b border-gray-50 last:border-0 min-w-0">
+              <span className="text-gray-600 truncate min-w-0 flex-1 pr-1" title={r.label}>{r.label}</span>
+              <span className="font-semibold text-brand-800 flex-shrink-0 tabular-nums">{r.count}</span>
             </div>
           ))}
           {(!rows || rows.length === 0) && <p className="text-gray-400 text-xs">No data</p>}
@@ -264,22 +266,39 @@
       </div>
     );
 
-    const SignUpAllQA = ({ companion }) => {
-      const rows = (companion && companion.allQuestions && companion.allQuestions.length > 0)
-        ? companion.allQuestions
-        : [];
+    const SignUpAllQA = ({ companion, directoryFilter }) => {
+      const rows = useMemo(() => {
+        const all =
+          companion && companion.allQuestions && companion.allQuestions.length > 0 ? companion.allQuestions : [];
+        if (!directoryFilter || !directoryFilter.restrictDirectoryColumns) return all;
+        const inc = directoryFilter.includedDirectoryQuestionHeaders || [];
+        if (inc.length === 0) return [];
+        const set = new Set(inc.map((h) => String(h).trim()));
+        return all.filter((r) => set.has(String(r.question || '').trim()));
+      }, [companion, directoryFilter]);
+
+      const emptyHint =
+        directoryFilter &&
+        directoryFilter.restrictDirectoryColumns &&
+        (directoryFilter.includedDirectoryQuestionHeaders || []).length === 0
+          ? 'No columns selected. Open Display settings and choose columns for the directory profile, or turn off “Only show selected sign-up columns.”'
+          : null;
+
       return (
-        <div>
+        <div className="min-w-0">
           <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider border-b pb-2 mb-3">All sign-up questions &amp; responses</h4>
-          <div className="max-h-[min(60vh,520px)] overflow-y-auto border border-gray-200 rounded-lg bg-white divide-y divide-gray-100">
+          <div className="max-h-[min(60vh,520px)] overflow-y-auto overflow-x-hidden border border-gray-200 rounded-lg bg-white divide-y divide-gray-100">
             {rows.map((row, i) => (
-              <div key={i} className="p-3 hover:bg-gray-50/80">
-                <dt className="text-xs font-bold text-gray-500">{row.question}</dt>
+              <div key={i} className="p-3 hover:bg-gray-50/80 min-w-0">
+                <dt className="text-xs font-bold text-gray-500 break-words">{row.question}</dt>
                 <dd className="text-sm text-gray-900 mt-1 whitespace-pre-wrap break-words">{String(row.answer || '').trim() ? row.answer : '—'}</dd>
               </div>
             ))}
             {rows.length === 0 && (
-              <p className="p-4 text-gray-500 text-sm">No form columns loaded. Redeploy the latest script so each row includes allQuestions.</p>
+              <p className="p-4 text-gray-500 text-sm break-words">
+                {emptyHint ||
+                  'No form columns loaded. Redeploy the latest script so each row includes allQuestions.'}
+              </p>
             )}
           </div>
         </div>
@@ -320,19 +339,19 @@
     const AvailabilityGrid = ({ availability }) => {
       const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
       return (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs min-w-0">
           {days.map(day => {
             const status = availability[day];
             const isUnavailable = status === 'Unavailable';
             const isFlexible = status === 'Flexible';
             return (
-              <div key={day} className={`p-2 rounded border ${
+              <div key={day} className={`p-2 rounded border min-w-0 overflow-hidden ${
                 isUnavailable ? 'bg-gray-50 border-gray-200 text-gray-400' :
                 isFlexible ? 'bg-green-50 border-green-200 text-green-700 font-medium' :
                 'bg-blue-50 border-blue-200 text-blue-700'
               }`}>
-                <div className="font-semibold capitalize mb-1">{day}</div>
-                <div>{status}</div>
+                <div className="font-semibold capitalize mb-1 break-words leading-tight">{day}</div>
+                <div className="break-words leading-snug text-[11px] sm:text-xs">{status}</div>
               </div>
             );
           })}
@@ -393,7 +412,7 @@
             </div>
           )}
 
-          <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-lg shadow border border-gray-200 overflow-x-auto overflow-y-hidden">
              <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                    <tr>
@@ -475,16 +494,16 @@
       };
 
       const checkRow = (label, checked, onCheck, hint) => (
-        <label className="flex items-start gap-3 py-2 cursor-pointer select-none">
+        <label className="flex items-start gap-3 py-2 cursor-pointer select-none min-w-0">
           <input
             type="checkbox"
-            className="h-5 w-5 mt-0.5 text-brand-600 focus:ring-brand-500 border-gray-300 rounded"
+            className="h-5 w-5 mt-0.5 text-brand-600 focus:ring-brand-500 border-gray-300 rounded shrink-0"
             checked={!!checked}
             onChange={(e) => onCheck(e.target.checked)}
           />
-          <span>
-            <span className="text-sm font-medium text-gray-900 block">{label}</span>
-            {hint ? <span className="text-xs text-gray-500 block mt-0.5">{hint}</span> : null}
+          <span className="min-w-0">
+            <span className="text-sm font-medium text-gray-900 block break-words">{label}</span>
+            {hint ? <span className="text-xs text-gray-500 block mt-0.5 break-words">{hint}</span> : null}
           </span>
         </label>
       );
@@ -521,7 +540,38 @@
               {checkRow('Lived experience tags', dir.livedExperienceTags, (v) => setDir('livedExperienceTags', v))}
               {checkRow('Availability grid', dir.availabilityGrid, (v) => setDir('availabilityGrid', v))}
               {checkRow('Internal notes (editable)', dir.internalNotes, (v) => setDir('internalNotes', v))}
+              {checkRow(
+                'Only show selected sign-up columns on directory profile',
+                dir.restrictDirectoryColumns,
+                (v) => onChange({ ...value, directory: { ...dir, restrictDirectoryColumns: v } }),
+                'Pick exact sheet columns below. Requires “All sign-up questions & responses” above to be on.'
+              )}
             </div>
+            {dir.restrictDirectoryColumns && (
+              <div className="mt-4 border border-gray-200 rounded-lg p-3 bg-gray-50 max-h-72 overflow-y-auto overflow-x-hidden">
+                <p className="text-xs font-bold text-gray-600 uppercase mb-2">Columns on directory profile</p>
+                <p className="text-xs text-gray-500 mb-2 break-words">Every header from your sign-up sheet. Check the ones to show when the option above is on.</p>
+                {(formHeaders || []).length === 0 ? (
+                  <p className="text-sm text-gray-500">No columns loaded yet. Reload the app after the script has access to the sheet.</p>
+                ) : (
+                  (formHeaders || []).map((h) => (
+                    <label key={h} className="flex items-start gap-2 py-1.5 text-sm cursor-pointer min-w-0">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 mt-0.5 text-brand-600 rounded border-gray-300 shrink-0"
+                        checked={(dir.includedDirectoryQuestionHeaders || []).includes(h)}
+                        onChange={() => {
+                          const cur = dir.includedDirectoryQuestionHeaders || [];
+                          const next = cur.includes(h) ? cur.filter((x) => x !== h) : [...cur, h];
+                          onChange({ ...value, directory: { ...dir, includedDirectoryQuestionHeaders: next } });
+                        }}
+                      />
+                      <span className="text-gray-800 break-words min-w-0">{h}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            )}
           </div>
 
           <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
@@ -542,20 +592,20 @@
               {checkRow('Limit to selected questions only', pub.restrictQuestions, (v) => setPub({ restrictQuestions: v }), 'When on, only checked questions appear (after removing contact/internal fields).')}
             </div>
             {pub.restrictQuestions && (
-              <div className="mt-4 border border-gray-200 rounded-lg p-3 bg-gray-50 max-h-72 overflow-y-auto">
+              <div className="mt-4 border border-gray-200 rounded-lg p-3 bg-gray-50 max-h-72 overflow-y-auto overflow-x-hidden">
                 <p className="text-xs font-bold text-gray-600 uppercase mb-2">Questions on public page</p>
                 {safeHeaders.length === 0 ? (
                   <p className="text-sm text-gray-500">No columns loaded. Open the app once with data or check the sheet tab name.</p>
                 ) : (
                   safeHeaders.map((h) => (
-                    <label key={h} className="flex items-start gap-2 py-1.5 text-sm cursor-pointer">
+                    <label key={h} className="flex items-start gap-2 py-1.5 text-sm cursor-pointer min-w-0">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 mt-0.5 text-brand-600 rounded border-gray-300"
+                        className="h-4 w-4 mt-0.5 text-brand-600 rounded border-gray-300 shrink-0"
                         checked={(pub.includedQuestionHeaders || []).includes(h)}
                         onChange={() => togglePublicHeader(h)}
                       />
-                      <span className="text-gray-800 break-words">{h}</span>
+                      <span className="text-gray-800 break-words min-w-0">{h}</span>
                     </label>
                   ))
                 )}
@@ -575,25 +625,25 @@
       const i2 = (c2.firstName && c2.firstName[0]) ? c2.firstName[0] : '?';
 
       return (
-        <div className="space-y-6">
-           <div className="flex items-center justify-between bg-gradient-to-r from-brand-50 to-white p-6 rounded-xl border border-brand-100 shadow-sm">
-              <div className="flex flex-col items-center">
-                 <div className="h-16 w-16 bg-brand-100 rounded-full flex items-center justify-center text-brand-700 font-bold text-2xl mb-2 border-4 border-white shadow-sm">{i1}</div>
-                 <div className="font-bold text-gray-900">{c1.firstName}</div>
+        <div className="space-y-6 min-w-0">
+           <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center sm:justify-between gap-6 bg-gradient-to-r from-brand-50 to-white p-4 sm:p-6 rounded-xl border border-brand-100 shadow-sm w-full min-w-0">
+              <div className="flex flex-col items-center min-w-0 max-w-full">
+                 <div className="h-16 w-16 bg-brand-100 rounded-full flex items-center justify-center text-brand-700 font-bold text-2xl mb-2 border-4 border-white shadow-sm shrink-0">{i1}</div>
+                 <div className="font-bold text-gray-900 text-center break-words px-1">{c1.firstName}</div>
                  {volunteerBadgeOnly(c1.volunteer) ? <span className="text-[10px] font-bold uppercase mt-1 text-teal-800 bg-teal-100 px-2 py-0.5 rounded">Volunteer</span> : null}
               </div>
-              <div className="flex flex-col items-center flex-1 px-4 sm:px-8">
-                 <div className="text-5xl font-black text-brand-600 tracking-tighter">{percent}%</div>
-                 <div className="text-xs uppercase tracking-widest font-bold text-brand-400 mt-1">Match score</div>
+              <div className="flex flex-col items-center flex-1 min-w-0 px-2 sm:px-6 max-w-full">
+                 <div className="text-4xl sm:text-5xl font-black text-brand-600 tracking-tighter">{percent}%</div>
+                 <div className="text-xs uppercase tracking-widest font-bold text-brand-400 mt-1 text-center">Match score</div>
                  {reasons.length > 0 && (
-                   <div className="mt-2 flex flex-wrap justify-center gap-1 max-w-md">
-                     {reasons.map((r, i) => <span key={i} className="text-[10px] bg-white/80 border border-brand-100 px-2 py-0.5 rounded text-brand-800">{r}</span>)}
+                   <div className="mt-2 flex flex-wrap justify-center gap-1 max-w-full">
+                     {reasons.map((r, i) => <span key={i} className="text-[10px] bg-white/80 border border-brand-100 px-2 py-0.5 rounded text-brand-800 max-w-full break-words text-center">{r}</span>)}
                    </div>
                  )}
               </div>
-              <div className="flex flex-col items-center">
-                 <div className="h-16 w-16 bg-purple-100 rounded-full flex items-center justify-center text-purple-700 font-bold text-2xl mb-2 border-4 border-white shadow-sm">{i2}</div>
-                 <div className="font-bold text-gray-900">{c2.firstName}</div>
+              <div className="flex flex-col items-center min-w-0 max-w-full">
+                 <div className="h-16 w-16 bg-purple-100 rounded-full flex items-center justify-center text-purple-700 font-bold text-2xl mb-2 border-4 border-white shadow-sm shrink-0">{i2}</div>
+                 <div className="font-bold text-gray-900 text-center break-words px-1">{c2.firstName}</div>
                  {volunteerBadgeOnly(c2.volunteer) ? <span className="text-[10px] font-bold uppercase mt-1 text-teal-800 bg-teal-100 px-2 py-0.5 rounded">Volunteer</span> : null}
               </div>
            </div>
@@ -730,9 +780,9 @@
 
       return (
         <div className="p-8">
-           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-6">
-              <h1 className="text-2xl font-bold text-gray-900">Active Companions</h1>
-              <div className="flex flex-wrap items-center gap-2">
+           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-6 min-w-0">
+              <h1 className="text-2xl font-bold text-gray-900 break-words">Active Companions</h1>
+              <div className="flex flex-wrap items-center gap-2 min-w-0">
                  <button
                     type="button"
                     disabled={bulkBusy || listableIds.length === 0}
@@ -809,8 +859,8 @@
                       </div>
 
                       {/* Match Actions */}
-                      <div className="bg-gray-50 px-6 py-4 flex items-center justify-between gap-3">
-                          <div className="flex items-center space-x-3 w-full mr-2 flex-wrap sm:flex-nowrap">
+                      <div className="bg-gray-50 px-6 py-4 flex items-center justify-between gap-3 min-w-0">
+                          <div className="flex items-center space-x-3 w-full min-w-0 mr-2 flex-wrap sm:flex-nowrap">
                              <input
                                 type="checkbox"
                                 className="h-5 w-5 rounded border-gray-300 text-brand-600 focus:ring-brand-500 flex-shrink-0"
@@ -1037,7 +1087,7 @@
       };
 
       const runSend = () => {
-        if (!window.confirm('Send 6-month reminder emails now for all eligible matches that have not been sent yet?')) return;
+        if (!window.confirm('Send Post-survey reminder emails now for all eligible matches (staff To line) that have not been sent yet?')) return;
         setRemBusy(true);
         google.script.run
           .withSuccessHandler(s => {
@@ -1107,50 +1157,51 @@
         <div className="p-8 space-y-8 overflow-auto max-h-full pb-16">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
-              <ICONS.Mail className="w-8 h-8 text-brand-600"/> 6-month reminder emails
+              <ICONS.Mail className="w-8 h-8 text-brand-600"/> 6-month reminder (Post survey)
             </h1>
-            <p className="text-sm text-gray-600 max-w-3xl">
-              For each <strong>non-canceled</strong> match older than <strong>180 days</strong> that has not already received this reminder, the job sends <strong>one email per match</strong>. Canceled matches are skipped. Use <strong>Send test</strong> to verify formatting without logging a real send.
+            <p className="text-sm text-gray-600 max-w-3xl break-words">
+              When a match is <strong>about six months</strong> old (and not canceled), the app can email <strong>Dan</strong> (or whoever you put in <strong>To</strong>) as a nudge to <strong>reach out to that companionship pair and send them the Post survey</strong>. One email per eligible match. Canceled matches are skipped. Edit the <strong>subject</strong> and <strong>body</strong> below, then click <strong>Save email settings</strong>. Use <strong>Send test</strong> to preview without logging a real send.
             </p>
           </div>
 
-          <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 max-w-4xl">
-            <p className="text-xs text-amber-900 bg-amber-50 border border-amber-100 rounded p-3 mb-4">
-              Leave subject and body empty to use built-in defaults. In a custom body you can use placeholders: {'{{first1}}'}, {'{{last1}}'}, {'{{first2}}'}, {'{{last2}}'}.
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 max-w-4xl box-border">
+            <h2 className="text-lg font-bold text-gray-900 mb-1">Email copy</h2>
+            <p className="text-sm text-gray-600 mb-4 break-words">
+              These fields control what is sent. Leave both empty to use the built-in reminder (Dan / Post survey wording). You can use name placeholders in the body: {'{{first1}}'}, {'{{last1}}'}, {'{{first2}}'}, {'{{last2}}'}.
             </p>
             <div className="mb-4">
               <label className="text-xs font-bold text-gray-500 uppercase">Reminder recipient (To)</label>
               <input
                 type="text"
-                className="mt-1 w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                className="mt-1 w-full max-w-full box-border border border-gray-300 rounded px-3 py-2 text-sm"
                 value={toEmail}
                 onChange={e => setToEmail(e.target.value)}
                 placeholder="danfrey76@gmail.com"
               />
-              <p className="text-xs text-gray-500 mt-2">
-                Default is <strong>danfrey76@gmail.com</strong> until you save something else. When sending to that address (or any override), the message includes participant emails at the bottom for reference.
-                Clear this field completely and click <strong>Save email settings</strong> to send future reminders <strong>directly to both matched participants</strong> (To = their addresses from the sign-up sheet).
+              <p className="text-xs text-gray-500 mt-2 break-words">
+                Default is <strong>danfrey76@gmail.com</strong> until you save something else. That message is meant for <strong>staff</strong> (e.g. Dan); participant emails are appended at the bottom for reference.
+                Clear this field completely and click <strong>Save email settings</strong> to send future reminders <strong>directly to both matched participants</strong> instead.
               </p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="text-xs font-bold text-gray-500 uppercase">CC staff (optional)</label>
-                <input type="email" className="mt-1 w-full border border-gray-300 rounded px-3 py-2 text-sm" value={cc} onChange={e => setCc(e.target.value)} placeholder="you@example.org" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 min-w-0">
+              <div className="min-w-0">
+                <label className="text-xs font-bold text-gray-500 uppercase">CC (optional)</label>
+                <input type="email" className="mt-1 w-full max-w-full box-border border border-gray-300 rounded px-3 py-2 text-sm" value={cc} onChange={e => setCc(e.target.value)} placeholder="you@example.org" />
               </div>
-              <div>
-                <label className="text-xs font-bold text-gray-500 uppercase">Subject (optional override)</label>
-                <input type="text" className="mt-1 w-full border border-gray-300 rounded px-3 py-2 text-sm" value={subj} onChange={e => setSubj(e.target.value)} placeholder="Uses default if empty" />
+              <div className="min-w-0 md:col-span-2">
+                <label className="text-xs font-bold text-gray-500 uppercase">Email subject line</label>
+                <input type="text" className="mt-1 w-full max-w-full box-border border border-gray-300 rounded px-3 py-2 text-sm" value={subj} onChange={e => setSubj(e.target.value)} placeholder="Leave blank for default subject" />
               </div>
             </div>
-            <div className="mb-4">
-              <label className="text-xs font-bold text-gray-500 uppercase">Email body (optional)</label>
-              <textarea className="mt-1 w-full border border-gray-300 rounded px-3 py-2 text-sm h-32 font-mono" value={body} onChange={e => setBody(e.target.value)} placeholder="Blank = default 6-month check-in message" />
+            <div className="mb-4 min-w-0">
+              <label className="text-xs font-bold text-gray-500 uppercase">Email body</label>
+              <textarea className="mt-1 w-full max-w-full box-border border border-gray-300 rounded px-3 py-2 text-sm min-h-[10rem] font-mono leading-relaxed" value={body} onChange={e => setBody(e.target.value)} placeholder="Leave blank for default body (reminder to reach out and send Post survey)" />
             </div>
-            <div className="border-t border-gray-100 pt-4 mb-4">
+            <div className="border-t border-gray-100 pt-4 mb-4 min-w-0">
               <label className="text-xs font-bold text-gray-500 uppercase">Send test to</label>
               <input
                 type="email"
-                className="mt-1 w-full border border-gray-300 rounded px-3 py-2 text-sm max-w-md"
+                className="mt-1 w-full max-w-md box-border border border-gray-300 rounded px-3 py-2 text-sm"
                 value={testToEmail}
                 onChange={e => setTestToEmail(e.target.value)}
                 placeholder="Leave blank to use “Reminder recipient (To)” above"
@@ -1182,8 +1233,8 @@
             </div>
             {preview && (
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm">
-                <h4 className="font-bold mb-2">Match preview ({preview.length})</h4>
-                <p className="text-xs text-gray-500 mb-2">Matches at least 180 days old (non-canceled). “Would email” = reminder not logged yet.</p>
+                <h4 className="font-bold mb-2">Eligible for Post survey reminder ({preview.length})</h4>
+                <p className="text-xs text-gray-500 mb-2">Matches at least 180 days old (non-canceled). “Would email” = staff reminder not logged yet.</p>
                 <div className="max-h-56 overflow-y-auto space-y-1">
                   {preview.map((row, i) => (
                     <div key={i} className="flex flex-wrap justify-between gap-2 border-b border-gray-200 py-1.5">
@@ -1609,9 +1660,9 @@
                                       </div>
                                    </div>
                                 </div>
-                                <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
-                                   <span className="text-xs font-medium text-gray-500 bg-white px-2 py-1 rounded border border-gray-200">{c.age || '—'}</span>
-                                   <span className="text-xs text-brand-600 font-medium group-hover:underline">View Profile &rarr;</span>
+                                <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-between items-center gap-3 min-w-0">
+                                   <span className="text-xs font-medium text-gray-500 bg-white px-2 py-1 rounded border border-gray-200 shrink-0">{c.age || '—'}</span>
+                                   <span className="text-xs text-brand-600 font-medium group-hover:underline truncate min-w-0 text-right">View Profile &rarr;</span>
                                 </div>
                              </div>
                              );
@@ -1629,10 +1680,10 @@
              return (
              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                 <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => {setSelectedCompanion(null); setIsMatchMode(false); setPendingMatchTargetIds([]); setMatchPickerQuery('');}}></div>
-                <div className="bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all w-full max-w-5xl max-h-[90vh] flex flex-col relative z-10 min-h-0">
-                   <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 overflow-y-auto flex-1 flex flex-col min-h-0">
-                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6 border-b border-gray-100 pb-4">
-                         <div className="min-w-0 flex-1">
+                <div className="bg-white rounded-lg text-left shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col min-h-0 relative z-10">
+                   <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 pt-5 pb-4 sm:p-6 sm:pb-5">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6 border-b border-gray-100 pb-4 min-w-0">
+                         <div className="min-w-0 flex-1 pr-1">
                             <h3 className="text-xl leading-6 font-bold text-gray-900 flex flex-wrap items-center gap-2">
                                {selectedCompanion.firstName} {selectedCompanion.lastName}
                                {dVis.volunteerBadge && volunteerBadgeOnly(selectedCompanion.volunteer) ? (
@@ -1648,7 +1699,7 @@
                                </p>
                             ) : null}
                          </div>
-                         <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                         <div className="flex flex-wrap items-center gap-2 flex-shrink-0 sm:max-w-[50%] lg:max-w-none">
                             {dVis.shareActions ? (
                                <>
                                   <button
@@ -1680,15 +1731,15 @@
                       </div>
                       
                       {!isMatchMode ? (
-                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                            <div className="lg:col-span-2 space-y-6">
+                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start min-w-0">
+                            <div className="lg:col-span-2 space-y-6 min-w-0">
                                {dVis.allSignUpQA ? (
-                                  <SignUpAllQA companion={selectedCompanion} />
+                                  <SignUpAllQA companion={selectedCompanion} directoryFilter={dVis} />
                                ) : (
                                   <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg p-6 text-center">Sign-up Q&amp;A is hidden (Display settings).</p>
                                )}
                             </div>
-                            <div className="space-y-6">
+                            <div className="space-y-6 min-w-0">
                                <button type="button" onClick={() => { setPendingMatchTargetIds([]); setMatchPickerQuery(''); setIsMatchMode(true); }} className="w-full bg-brand-600 text-white py-3 rounded-lg shadow hover:bg-brand-700 font-bold flex items-center justify-center">
                                   <ICONS.Match className="w-5 h-5 mr-2"/> Find Match
                                </button>
@@ -1769,8 +1820,8 @@
                                {findMatchCandidates.map(({ c, percent, reasons }) => {
                                   const isPending = pendingMatchTargetIds.includes(String(c.id));
                                   return (
-                                  <div key={c.id} className="border rounded-lg p-4 flex justify-between items-center hover:bg-gray-50 gap-3">
-                                     <div className="min-w-0">
+                                  <div key={c.id} className="border rounded-lg p-4 flex justify-between items-start sm:items-center hover:bg-gray-50 gap-3 min-w-0">
+                                     <div className="min-w-0 flex-1">
                                          <div className="flex items-center space-x-3 flex-wrap">
                                             <h4 className="font-bold text-gray-900">{c.firstName} {c.lastName}</h4>
                                             {mpVis.matchPercent ? (
