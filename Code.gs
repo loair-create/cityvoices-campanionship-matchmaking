@@ -73,6 +73,8 @@ function getDefaultVisibilitySettings_() {
       publicShareHint: true,
       shareActions: true,
       allSignUpQA: true,
+      restrictDirectoryColumns: false,
+      includedDirectoryQuestionHeaders: [],
       quickSummary: true,
       livedExperienceTags: true,
       availabilityGrid: true,
@@ -96,6 +98,11 @@ function mergeVisibilitySettings_(saved) {
   if (!saved || typeof saved !== 'object') return d;
   if (saved.directory && typeof saved.directory === 'object') {
     d.directory = Object.assign({}, d.directory, saved.directory);
+    if (Array.isArray(saved.directory.includedDirectoryQuestionHeaders)) {
+      d.directory.includedDirectoryQuestionHeaders = saved.directory.includedDirectoryQuestionHeaders.map(function (h) {
+        return String(h);
+      });
+    }
   }
   if (saved.matchPicker && typeof saved.matchPicker === 'object') {
     d.matchPicker = Object.assign({}, d.matchPicker, saved.matchPicker);
@@ -729,7 +736,7 @@ function parseCompanionRow(row, c, rowNum) {
 // --- SURVEY / INSIGHTS ---
 
 var REMINDER_DAYS_AFTER_MATCH = 180;
-/** When REMINDER_TO_EMAIL is not set in script properties, reminders go here (staff). Clear the field in Reminders & save to send To the matched participants instead. */
+/** When REMINDER_TO_EMAIL is not set, reminders go to this staff address (e.g. Dan) to follow up and send the Post survey. Clear the field in Reminders & save to send To the participants instead. */
 var REMINDER_DEFAULT_TO_EMAIL = 'danfrey76@gmail.com';
 
 function bucketVolunteer_(raw) {
@@ -942,14 +949,15 @@ function getSixMonthReminderLog_() {
 }
 
 function defaultReminderSubject_() {
-  return 'Companionship Connections — 6-month check-in';
+  return 'Reminder: reach out — Post survey (6-month match check-in)';
 }
 
+/** Staff reminder (default To: Dan): prompt to contact the pair and send the Post survey. */
 function defaultReminderBody_(c1, c2) {
   return (
-    'Hello,\n\n' +
-    'This is a friendly reminder from City Voices / Companionship Connections.\n\n' +
-    'Your companionship match between ' +
+    'Hi Dan,\n\n' +
+    'This is an automated reminder from the Companionship Connections dashboard.\n\n' +
+    'The match between ' +
     c1.firstName +
     ' ' +
     c1.lastName +
@@ -957,14 +965,13 @@ function defaultReminderBody_(c1, c2) {
     c2.firstName +
     ' ' +
     c2.lastName +
-    ' began about six months ago. We hope the connection has been meaningful.\n\n' +
-    'If you would like support, have feedback, or need anything from our team, please reply to this email.\n\n' +
-    'Thank you,\nCompanionship Connections'
+    ' has been together for about six months. Please reach out to this companionship pair and send them the Post survey.\n\n' +
+    'Thank you,\nCompanionship Connections (system)'
   );
 }
 
 /**
- * Matches eligible for a 6-month reminder (non-canceled, past REMINDER_DAYS_AFTER_MATCH, not already logged as sent).
+ * Matches eligible for a 6-month staff reminder (non-canceled, past REMINDER_DAYS_AFTER_MATCH, not already logged as sent).
  */
 function previewSixMonthReminders() {
   var data = getData();
@@ -996,7 +1003,7 @@ function previewSixMonthReminders() {
 }
 
 /**
- * Send 6-month check-in emails for eligible matches (one email per match).
+ * Send 6-month staff reminder emails for eligible matches (one email per match — e.g. to Dan to send Post survey).
  * To-line: REMINDER_TO_EMAIL if set (non-empty); if explicitly empty string, both participants; if property never set, REMINDER_DEFAULT_TO_EMAIL.
  * @return {{ sent: number, skipped: number, errors: string[] }}
  */
@@ -1144,7 +1151,7 @@ function sendSixMonthReminderTestEmail(testToEmail) {
   addEmail(c2.email);
 
   body =
-    'This is a TEST from the Companionship Connections dashboard. It was not saved as a sent reminder.\n\n' +
+    'This is a TEST from the Companionship Connections dashboard (6-month / Post survey staff reminder). It was not saved as a sent reminder.\n\n' +
     '---\n\n' +
     body;
   if (emails.length) {
