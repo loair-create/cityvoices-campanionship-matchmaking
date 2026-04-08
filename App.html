@@ -344,13 +344,14 @@
             const status = availability[day];
             const isUnavailable = status === 'Unavailable';
             const isFlexible = status === 'Flexible';
+            const dayTitle = day.charAt(0).toUpperCase() + day.slice(1);
             return (
-              <div key={day} className={`p-2 rounded border min-w-0 overflow-hidden ${
+              <div key={day} className={`p-2 rounded border min-w-0 ${
                 isUnavailable ? 'bg-gray-50 border-gray-200 text-gray-400' :
                 isFlexible ? 'bg-green-50 border-green-200 text-green-700 font-medium' :
                 'bg-blue-50 border-blue-200 text-blue-700'
               }`}>
-                <div className="font-semibold capitalize mb-1 break-words leading-tight">{day}</div>
+                <div className="font-semibold mb-1 whitespace-nowrap">{dayTitle}</div>
                 <div className="break-words leading-snug text-[11px] sm:text-xs">{status}</div>
               </div>
             );
@@ -1179,14 +1180,14 @@
                 placeholder="danfrey76@gmail.com"
               />
               <p className="text-xs text-gray-500 mt-2 break-words">
-                Default is <strong>danfrey76@gmail.com</strong> until you save something else. That message is meant for <strong>staff</strong> (e.g. Dan); participant emails are appended at the bottom for reference.
-                Clear this field completely and click <strong>Save email settings</strong> to send future reminders <strong>directly to both matched participants</strong> instead.
+                <strong>Internal only:</strong> These reminders are never addressed to the matched participants as recipients. They always go to this staff address (or the default <strong>danfrey76@gmail.com</strong> if the field is empty or invalid). Participant emails are listed in the message body for reference only.
               </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 min-w-0">
               <div className="min-w-0">
                 <label className="text-xs font-bold text-gray-500 uppercase">CC (optional)</label>
                 <input type="email" className="mt-1 w-full max-w-full box-border border border-gray-300 rounded px-3 py-2 text-sm" value={cc} onChange={e => setCc(e.target.value)} placeholder="you@example.org" />
+                <p className="text-[11px] text-gray-500 mt-1">Use staff addresses only; participants are never in the To line but would receive a copy if listed here.</p>
               </div>
               <div className="min-w-0 md:col-span-2">
                 <label className="text-xs font-bold text-gray-500 uppercase">Email subject line</label>
@@ -1743,12 +1744,36 @@
                                <button type="button" onClick={() => { setPendingMatchTargetIds([]); setMatchPickerQuery(''); setIsMatchMode(true); }} className="w-full bg-brand-600 text-white py-3 rounded-lg shadow hover:bg-brand-700 font-bold flex items-center justify-center">
                                   <ICONS.Match className="w-5 h-5 mr-2"/> Find Match
                                </button>
+                               <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4">
+                                  <label htmlFor={`internal-status-${selectedCompanion.id}`} className="text-xs font-bold text-amber-900 uppercase tracking-wide block mb-1.5">Internal status</label>
+                                  <input
+                                     id={`internal-status-${selectedCompanion.id}`}
+                                     type="text"
+                                     key={selectedCompanion.id}
+                                     className="w-full max-w-full box-border text-sm border border-amber-300 rounded-md px-3 py-2 bg-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+                                     defaultValue={String(selectedCompanion.internalStatus || '').trim()}
+                                     placeholder="e.g. Active, On hold, Matched…"
+                                     onBlur={(e) => {
+                                        const v = e.target.value;
+                                        const id = selectedCompanion.id;
+                                        google.script.run
+                                          .withFailureHandler((err) => alert(err.message || String(err)))
+                                          .updateCompanionInternalStatus(id, v);
+                                        setCompanions((prev) =>
+                                          prev.map((c) => (String(c.id) === String(id) ? { ...c, internalStatus: v } : c))
+                                        );
+                                        setSelectedCompanion((prev) =>
+                                          prev && String(prev.id) === String(id) ? { ...prev, internalStatus: v } : prev
+                                        );
+                                     }}
+                                  />
+                                  <p className="text-[11px] text-amber-900/80 mt-2">Saved to the sign-up sheet when you leave this field. Uses your &quot;internal status&quot; (or staff/companion status) column.</p>
+                               </div>
                                {dVis.quickSummary ? (
                                <div>
                                   <h4 className="font-bold text-gray-900 uppercase text-xs tracking-wider mb-2 border-b pb-1">Quick summary</h4>
                                   <div className="bg-gray-50 rounded p-4 space-y-1 text-sm">
                                      <p><span className="text-gray-500">Enrollment:</span> {formatDateMMDD(selectedCompanion.enrollmentDate)}</p>
-                                     <p><span className="text-gray-500">Internal status:</span> {String(selectedCompanion.internalStatus || '').trim() || '—'}</p>
                                      <p><span className="text-gray-500">Borough:</span> {selectedCompanion.borough || '—'}</p>
                                   </div>
                                </div>
