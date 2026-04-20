@@ -1,5 +1,5 @@
 /**
- * CITY VOICES COMPANIONSHIP APP v3
+ APP v3
  * Backend Logic
  */
 
@@ -9,16 +9,161 @@ var FORM_SHEET_NAME = 'Sign Up Form';
 var PRE_SURVEY_SHEET_NAME = 'Pre-Survey Results';
 var POST_SURVEY_SHEET_NAME = 'Post Survey Results';
 
+/** Script property name for the Lovable / external JSON API shared secret. */
+var LOVABLE_API_TOKEN_KEY = 'example';
+
 function doGet(e) {
   var p = e && e.parameter ? e.parameter : {};
   if (String(p.view || '') === 'public' && p.row != null && String(p.row).length > 0) {
     return servePublicProfile_(p.row);
+  }
+  /** JSON API over GET: ?api=1&action=getData&token=... */
+  if (String(p.api || '') === '1' && String(p.action || '').length > 0) {
+    return handleApiRequest_(String(p.action), buildApiParamsFromGet_(p), String(p.token || ''));
   }
   return HtmlService.createTemplateFromFile('App')
     .evaluate()
     .setTitle('Companionship Matching Dashboard')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**
+ * JSON API for external apps (e.g. Lovable). POST body: { "action": "getData", "token": "..." }
+ * or { "action": "...", "token": "...", "payload": { ... } }.
+ * Token may also be sent as query ?token= for POST.
+ */
+function doPost(e) {
+  var queryToken = e.parameter && e.parameter.token != null ? String(e.parameter.token) : '';
+  var raw = e.postData && e.postData.contents ? String(e.postData.contents) : '';
+  var parsed = {};
+  try {
+    parsed = raw ? JSON.parse(raw) : {};
+  } catch (err) {
+    return jsonApiOutput_({ ok: false, error: 'Invalid JSON body' });
+  }
+  var action = String(parsed.action || '');
+  var token = String(parsed.token || queryToken || '');
+  var params = extractApiParams_(parsed);
+  return handleApiRequest_(action, params, token);
+}
+
+function buildApiParamsFromGet_(p) {
+  var out = {};
+  if (!p) return out;
+  for (var k in p) {
+    if (k === 'api' || k === 'action' || k === 'token') continue;
+    out[k] = p[k];
+  }
+  return out;
+}
+
+function extractApiParams_(parsed) {
+  if (parsed.payload != null && typeof parsed.payload === 'object' && !Array.isArray(parsed.payload)) {
+    return parsed.payload;
+  }
+  var out = {};
+  for (var key in parsed) {
+    if (key === 'action' || key === 'token') continue;
+    out[key] = parsed[key];
+  }
+  return out;
+}
+
+function getLovableApiToken_() {
+  return PropertiesService.getScriptProperties().getProperty(LOVABLE_API_TOKEN_KEY) || '';
+}
+
+function verifyLovableApiToken_(token) {
+  var expected = getLovableApiToken_();
+  if (!expected) return false;
+  return String(token || '') === expected;
+}
+
+function jsonApiOutput_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function handleApiRequest_(action, params, token) {
+  if (!verifyLovableApiToken_(token)) {
+    return jsonApiOutput_({
+      ok: false,
+      error:
+        'Unauthorized. In Apps Script: Project Settings → Script properties → add LOVABLE_API_TOKEN, redeploy the web app, then send the same value as "token" in each request.'
+    });
+  }
+  try {
+    var result = dispatchApiAction_(String(action || ''), params || {});
+    return jsonApiOutput_({ ok: true, result: result });
+  } catch (err) {
+    return jsonApiOutput_({ ok: false, error: String(err.message || err) });
+  }
+}
+
+/**
+ * Routes external API actions to existing spreadsheet functions.
+ * @param {Object} params
+ */
+function dispatchApiAction_(action, params) {
+  switch (action) {
+    case 'getData':
+      return getData();
+    case 'getSignUpFormHeaders':
+      return getSignUpFormHeaders();
+    case 'getInsightsPageData':
+      return getInsightsPageData();
+    case 'getSixMonthReminderPageData':
+      return getSixMonthReminderPageData();
+    case 'getSurveyAnalysis':
+      return getSurveyAnalysis();
+    case 'saveCriteriaSettings':
+      return saveCriteriaSettings(String(params.settingsJson != null ? params.settingsJson : ''));
+    case 'saveVisibilitySettings':
+      return saveVisibilitySettings(String(params.settingsJson != null ? params.settingsJson : ''));
+    case 'saveReminderEmailSettings':
+      return saveReminderEmailSettings(params.settings || params);
+    case 'createMatch':
+      return createMatch(params.matchObj || params);
+    case 'createMatchesBatch':
+      return createMatchesBatch(params.matchObjs);
+    case 'updateMatchData':
+      return updateMatchData(String(params.matchId), String(params.field), params.value);
+    case 'updateMatchLastContactDate':
+      return updateMatchLastContactDate(String(params.matchId), String(params.isoDateOrEmpty != null ? params.isoDateOrEmpty : ''));
+    case 'deleteMatch':
+      return deleteMatch(String(params.matchId));
+    case 'deleteMatchesBatch':
+      return deleteMatchesBatch(params.matchIds);
+    case 'updateMatchesStatusBatch':
+      return updateMatchesStatusBatch(params.matchIds, String(params.status));
+    case 'updateCompanionNote':
+      return updateCompanionNote(params.rowNumber, params.note != null ? String(params.note) : '');
+    case 'updateCompanionInternalStatus':
+      return updateCompanionInternalStatus(params.rowNumber, params.value != null ? String(params.value) : '');
+    case 'updateCompanionLastContactDate':
+      return updateCompanionLastContactDate(
+        params.rowNumber,
+        params.isoDateOrEmpty != null ? String(params.isoDateOrEmpty) : ''
+      );
+    case 'getPublicShareLink':
+      return getPublicShareLink(String(params.rowId));
+    case 'getProfilePdfBase64':
+      return getProfilePdfBase64(String(params.rowId));
+    case 'previewSixMonthReminders':
+      return previewSixMonthReminders();
+    case 'runSixMonthReminderJob':
+      return runSixMonthReminderJob();
+    case 'sendSixMonthReminderTestEmail':
+      return sendSixMonthReminderTestEmail(String(params.testToEmail || params.email || ''));
+    case 'installDailySixMonthReminderTrigger':
+      return installDailySixMonthReminderTrigger();
+    case 'removeDailySixMonthReminderTriggers':
+      return removeDailySixMonthReminderTriggers();
+    case 'health':
+      return { service: 'companionship-api', time: new Date().toISOString() };
+    default:
+      throw new Error('Unknown action: ' + action);
+  }
 }
 
 function onOpen() {
