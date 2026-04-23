@@ -10,12 +10,24 @@ var PRE_SURVEY_SHEET_NAME = 'Pre-Survey Results';
 var POST_SURVEY_SHEET_NAME = 'Post Survey Results';
 
 /** Script property name for the Lovable / external JSON API shared secret. */
-var LOVABLE_API_TOKEN_KEY = 'example';
+var LOVABLE_API_TOKEN_KEY = 'LOVABLE_API_TOKEN';
 
 function doGet(e) {
   var p = e && e.parameter ? e.parameter : {};
   if (String(p.view || '') === 'public' && p.row != null && String(p.row).length > 0) {
     return servePublicProfile_(p.row);
+  }
+  /**
+   * JSON API over GET: ?payload=encodeURIComponent(JSON.stringify({ action, token, ... })).
+   * Lets browser apps call the same handlers as doPost without cross-origin POST/CORS workarounds.
+   */
+  if (p.payload != null && String(p.payload).length > 0) {
+    try {
+      var payloadObj = JSON.parse(p.payload);
+      return handleLovableRequest_(payloadObj, p.token != null ? String(p.token) : '');
+    } catch (err) {
+      return jsonApiOutput_({ ok: false, error: String(err.message || err) });
+    }
   }
   /** JSON API over GET: ?api=1&action=getData&token=... */
   if (String(p.api || '') === '1' && String(p.action || '').length > 0) {
@@ -42,10 +54,7 @@ function doPost(e) {
   } catch (err) {
     return jsonApiOutput_({ ok: false, error: 'Invalid JSON body' });
   }
-  var action = String(parsed.action || '');
-  var token = String(parsed.token || queryToken || '');
-  var params = extractApiParams_(parsed);
-  return handleApiRequest_(action, params, token);
+  return handleLovableRequest_(parsed, queryToken);
 }
 
 function buildApiParamsFromGet_(p) {
@@ -68,6 +77,23 @@ function extractApiParams_(parsed) {
     out[key] = parsed[key];
   }
   return out;
+}
+
+/**
+ * Shared Lovable / external JSON API: same routing and token check as doPost and legacy GET.
+ * @param {Object} parsed - { action, token?, ... } or { action, token, payload: { ... } } (nested params)
+ * @param {string} [queryToken] - optional ?token= from the URL (POST/GET)
+ */
+function handleLovableRequest_(parsed, queryToken) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return jsonApiOutput_({ ok: false, error: 'Invalid request' });
+  }
+  var action = String(parsed.action || '');
+  var token = String(
+    parsed.token != null && String(parsed.token).length > 0 ? parsed.token : queryToken != null ? queryToken : ''
+  );
+  var params = extractApiParams_(parsed);
+  return handleApiRequest_(action, params, token);
 }
 
 function getLovableApiToken_() {
