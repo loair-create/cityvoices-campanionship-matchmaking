@@ -1,141 +1,192 @@
-# Implementation guide (end-to-end)
+# Manual setup (step by step)
 
-You have three main pieces:
+Follow these phases **in order**. You need a Google account and access to create or edit a spreadsheet.
 
-1. **Google Sheet** — stores sign-ups (`Sign Up Form` tab), matches (`Matches` tab), optional survey tabs.
-2. **Google Apps Script** — `Code.gs` + HTML files; deployed as a **Web app**; exposes the JSON API and the legacy dashboard + public profiles.
-3. **Lovable** — new UI that calls the API (usually via a **CORS proxy** URL).
+**Two ways to work:**
 
-Supporting docs: [`API.md`](API.md) (API contract), [`LOVABLE_PROMPT.md`](LOVABLE_PROMPT.md) (paste into Lovable), [`cors-proxy/README.md`](cors-proxy/README.md) (proxy).
-
----
-
-## Phase 1 — Prepare the Google Sheet
-
-1. Open **Google Sheets** and create or open the spreadsheet you will use.
-2. Ensure you have a tab named **`Sign Up Form`** (exact name). Row **1** must be **headers** (from your Google Form or manual columns). Data starts row **2**. Each person’s **`id` in the app is the row number** (row 2 → `"2"`).
-3. (Optional) Add tabs **`Pre-Survey Results`** and **`Post Survey Results`** if you want the Insights charts; headers in row 1, data below.
-4. The **`Matches`** tab can be missing — the script will create it the first time it needs it.
+- **Spreadsheet-first (recommended for many teams):** use the sheet’s **Companion tools** menu, **Match Queue** tab, and optional **Volunteers** sync—no separate web UI required for daily work.
+- **Dashboard / Lovable:** deploy the same script as a **Web app**; optionally connect **Lovable** or use the built-in **App.html** dashboard.
 
 ---
 
-## Phase 2 — Create the Apps Script project
+## Phase 1 — Google Sheet
 
-1. In the spreadsheet: **Extensions → Apps Script** (or go to [script.google.com](https://script.google.com) and create a standalone project, then bind it to the sheet if you prefer).
-2. **Rename the project** (e.g. “Companionship Matching”).
-3. **Replace default `Code.gs`** with the contents of this repo’s **`Code.gs`** (copy the whole file).
-4. **Add HTML files** (same names as in the script):
-   - Click **+** next to “Files” → **HTML**.
-   - Name it **`App`** → paste contents of **`App.html`** from this repo.
-   - Add another HTML file **`PublicProfile`** → paste **`PublicProfile.html`**.
-5. **Save** (disk icon or Ctrl/Cmd-S).
+Do this in **Google Sheets** (browser).
 
----
-
-## Phase 3 — API token (Script properties)
-
-1. In the Apps Script editor: **Project Settings** (gear) → **Script properties**.
-2. **Add row**: Property = **`LOVABLE_API_TOKEN`**, Value = a **long random secret** (e.g. 32+ characters; you can use a password generator). **Copy and store it safely** — Lovable will need it.
-3. Save.
+1. Create a new spreadsheet **or** open the one your Google Form writes to.
+2. Rename or add a tab named **`Sign Up Form`** (exact spelling and spacing).
+3. **Row 1** = column headers (from your Form or typed manually). **Row 2+** = one person per row.
+4. Know this rule: each person’s **`id`** in the app is their **sheet row number** (row 2 → `"2"`). Do not delete rows in the middle if you rely on stable IDs.
+5. (Optional) Add tabs **`Pre-Survey Results`** and **`Post Survey Results`** with headers in row 1 if you want Insights charts later.
+6. You do **not** need to create **`Matches`** or **`Volunteers`** tabs manually—the script can create them when needed.
 
 ---
 
-## Phase 4 — Deploy the Web app
+## Phase 2 — Apps Script project
+
+Do this once per spreadsheet (unless you use a standalone script project linked to the sheet).
+
+1. With the spreadsheet open, click **Extensions → Apps Script**.
+2. Click **Untitled project** at the top and rename it (e.g. `Companionship Matching`).
+3. **Remove** the default empty `myFunction` / starter code in `Code.gs` if present—you will replace the whole file.
+
+### 2a — Add backend and feature scripts (`.gs`)
+
+For **each** file below: in Apps Script, click **+** next to **Files** → **Script** → name it exactly as shown (the editor shows `Name.gs`).
+
+| Order | File in this repo | Name in Apps Script editor |
+|-------|-------------------|----------------------------|
+| 1 | `Code.gs` | `Code` (the default main script) |
+| 2 | `VolunteersSync.gs` | `VolunteersSync` |
+| 3 | `SheetCompanionTools.gs` | `SheetCompanionTools` |
+| 4 | `MatchQueue.gs` | `MatchQueue` |
+
+**Notes:**
+
+- If you skip **VolunteersSync**, you only lose the automatic **Volunteers** tab sync; the rest still works.
+- **SheetCompanionTools** + **MatchQueue** provide the **Companion tools** menu and **Match Queue** workflow.
+
+### 2b — Add HTML files
+
+Click **+** → **HTML**. The **filename** you type must match what the code expects (no `.html` in the editor title).
+
+| File in this repo | Name in Apps Script (HTML) |
+|-------------------|----------------------------|
+| `App.html` | `App` |
+| `PublicProfile.html` | `PublicProfile` |
+| `SheetCompanionSidebar.html` | `SheetCompanionSidebar` |
+
+Paste the full file contents from this repo into each.
+
+### 2c — Save
+
+Press **Ctrl/Cmd-S** or click **Save project**.
+
+---
+
+## Phase 3 — Script property for API access (optional but common)
+
+Required if you use **Lovable**, **curl**, or any client that calls `action` + `token`.
+
+1. In Apps Script: **Project Settings** (gear) → **Script properties**.
+2. Click **Add script property**.
+3. Property: **`LOVABLE_API_TOKEN`**  
+   Value: a **long random secret** (32+ characters). Store it safely—you will paste it into Lovable or API clients.
+4. Save.
+
+If you **only** use the spreadsheet UI and never call the JSON API, you can skip this—the token is still safe to set if you might use the API later.
+
+---
+
+## Phase 4 — Deploy as Web app
+
+Required for:
+
+- Public profile links (`?view=public&row=…`)
+- PDF generation from the sidebar
+- **App.html** dashboard URL
+- JSON API (`POST` / `GET` with token)
+
+Steps:
 
 1. Click **Deploy** → **New deployment**.
-2. Type: **Web app**.
-3. **Execute as:** *Me* (your account).
-4. **Who has access:** *Anyone* (the real protection is **`LOVABLE_API_TOKEN`**, not “who can open the URL”).
-5. **Deploy**. Authorize when prompted (Google will ask for spreadsheet and possibly Gmail if you use mail features).
-6. **Copy the Web app URL** (ends with `/exec`). This is your **Apps Script API base URL** for POST requests.
+2. Click the gear → choose type **Web app**.
+3. Set:
+   - **Execute as:** Me
+   - **Who has access:** **Anyone** (anonymous), unless you intentionally restrict invokers. If access is too strict, browsers may show a Google sign-in page instead of JSON or the HTML app.
+4. Click **Deploy**.
+5. **Authorize** when Google prompts (spreadsheet access, external requests, etc.).
+6. **Copy the Web app URL** (ends with `/exec`). Save it—this is your deployment URL.
 
-**After every code change:** **Deploy** → **Manage deployments** → edit the deployment → **New version** → **Deploy** so the live URL updates.
-
-### If the browser shows a Google sign-in page (or a redirect) instead of JSON
-
-The Web app is not anonymous yet, or the wrong URL is in the frontend.
-
-1. **Who has access** on the **Web app** deployment must be **Anyone** (anonymous invocations). If it is **Only myself** or only people in your Google Workspace, browsers that are not already signed in as you will get a sign-in or access screen — `fetch` will not see `{ "ok": true, ... }`.
-2. **Use the Web app URL from** **Deploy → Manage deployments** (ends with `/exec`). Do not use a “Test” or editor preview URL, and do not use a link that opens the script project.
-3. **Re-deploy a new version** after changing this setting, then copy the URL again in case it changed.
-4. **Quick check (no browser session):** in a terminal, replace `YOUR_URL` and `YOUR_TOKEN` and run:
-   `curl -sS "YOUR_URL?api=1&action=health&token=YOUR_TOKEN"`
-   You should see JSON. If you see HTML or a login page, fix the deployment (step 1) or the URL (step 2).
-5. On some **Google Workspace** domains, an admin may need to allow deploying web apps as **Anyone**; otherwise the option may be missing or requests may still be blocked.
-
-**Note:** Visiting the base URL with **no** query string serves the legacy **HTML** dashboard (`App.html`), not JSON. API calls must include `payload=...` (Lovable GET) or `api=1&...` or a POST body, as in [`API.md`](API.md).
+**After every code change:** **Deploy → Manage deployments** → pencil icon → **New version** → **Deploy**, or the live URL may keep running old code.
 
 ---
 
-## Phase 5 — CORS proxy (optional; see GET + browser CORS)
+## Phase 5 — Reload the spreadsheet (menus)
 
-Browsers usually **block** `fetch()` from your Lovable domain to `script.google.com` (no CORS headers). So the Lovable app should call a **proxy** that forwards POST to your Web app URL and adds CORS.
-
-**Cloudflare Workers (no terminal required):**
-
-1. Sign in at [Cloudflare Workers](https://workers.cloudflare.com/).
-2. **Create a Worker** → paste the contents of **`cors-proxy/worker.js`** from this repo into the editor.
-3. **Settings → Variables** (or **Secrets**): add **`GAS_WEBAPP_URL`** = your full Web app URL from Phase 4 (must include `/exec`).
-4. **Save and deploy** the Worker.
-5. Copy the Worker’s public URL (e.g. `https://your-worker.workers.dev`).
-
-**In Lovable:** configure your API **base URL** to this **Worker URL**, **not** the raw Apps Script URL, when making `fetch` calls from the browser.
-
-The JSON body is unchanged: every request still includes `"token": "<your LOVABLE_API_TOKEN>"`.
+1. Close and reopen the spreadsheet **or** refresh the browser tab.
+2. Confirm the menu **Companion tools** appears in the menu bar.
+3. Try **Companion tools → Open sidebar (link & PDF)** and enter a real **Sign Up Form** row number (≥ 2).  
+   - If copy-link fails, open **Manage deployments**, copy the `/exec` URL, and build `?view=public&row=ROW` manually until deployment is correct.
 
 ---
 
-## Phase 6 — Build the app in Lovable
+## Phase 6 — Match Queue (spreadsheet matching)
 
-1. Open your Lovable project.
-2. Open **`LOVABLE_PROMPT.md`** from this repo. Copy everything **from** the project description (“Rebuild the Companionship Connections…”) **through** the end (or follow the file’s “paste below the line” instruction). Paste into Lovable’s project chat / instructions so the UI matches: Directory, Matches, Insights, Reminders, Criteria, Display, public PDF/link behavior, etc.
-3. Give Lovable the **technical wiring** (from [`API.md`](API.md)):
-   - **POST** to your **proxy URL** (or Apps Script URL if you ever use server-side only).
-   - **Content-Type:** `application/json`.
-   - Body shape: `{ "action": "<name>", "token": "<LOVABLE_API_TOKEN>", ...parameters }`.
-   - Success: `{ "ok": true, "result": ... }`; failure: `{ "ok": false, "error": "..." }`.
-4. **Secrets in Lovable:** store **`LOVABLE_API_TOKEN`** (and if needed the **proxy base URL**) in Lovable’s environment / secrets UI — **do not** commit the token in public code.
-5. Implement `fetch` (or Lovable’s HTTP helper) so each screen calls the right **`action`** (`getData` on load, `createMatchesBatch` when creating matches, etc.). Use the table in **`API.md`**.
+1. **Companion tools → Prepare Match Queue sheet** (creates the **Match Queue** tab).
+2. Each row: **Companion 1 row** and **Companion 2 row** = row numbers on **`Sign Up Form`**. Optional **Status** and **Notes**. Leave **Processed** blank until you run the processor.
+3. **Companion tools → Process Match Queue** appends pairs to the **`Matches`** tab.
 
 ---
 
-## Phase 7 — Smoke test (before training users)
+## Phase 7 — Volunteers tab (optional)
 
-1. **Health:** POST `{ "action": "health", "token": "YOUR_TOKEN" }` — expect `{ "ok": true, "result": { ... } }`. You can use an HTTP tool in the browser or Postman if you use one.
-2. **Data:** POST `{ "action": "getData", "token": "YOUR_TOKEN" }` — expect `companions`, `matches`, `criteria`, `visibility`.
-3. In **Lovable**: open the app, confirm the directory loads and one update works (e.g. change a match status).
-4. **Public link:** open the Web app URL with `?view=public&row=2` (use a real data row) — should show **`PublicProfile`** without contact fields.
-5. **Legacy dashboard (optional):** visiting the Web app URL **without** `view=public` still serves **`App.html`** (original embedded dashboard) if you need it during transition.
+If you use **`VolunteersSync.gs`**:
 
----
+1. Ensure column **AQ** on **Sign Up Form** marks volunteers (`TRUE`).
+2. Run **`syncVolunteersFromSignUpForm`** once from the Apps Script editor to test, **or** add triggers (**Edit → Triggers**):
+   - **On change** → `onChangeVolunteersSync` (good for new Form rows)
+   - Optional **On edit** → `onEditVolunteersSync`
 
-## Phase 8 — Forms and operations (ongoing)
-
-- **New responses:** Keep linking your Google Form to the **`Sign Up Form`** sheet (or paste rows) so row numbers stay consistent with **`id`**.
-- **Matching criteria & display settings:** Saved in **Script properties** (`MATCHING_CRITERIA`, `UI_VISIBILITY_SETTINGS`) when users click Save in Criteria / Display — whether they use Lovable or the legacy `App.html`.
-- **6‑month reminders:** Need **Gmail** authorization for `MailApp` when staff run reminder sends from the app.
+See the comments at the bottom of **`VolunteersSync.gs`** for trigger details.
 
 ---
 
-## Troubleshooting (short)
+## Phase 8 — CORS proxy (only if a browser app calls the API)
 
-| Issue | What to check |
-|--------|----------------|
-| `401` / Unauthorized from API | `LOVABLE_API_TOKEN` in Script properties matches the token in Lovable; redeploy Web app after code changes. |
-| CORS error in browser | Use the **Cloudflare Worker URL** as base, not raw `script.google.com`. |
-| Empty companions | Tab name **`Sign Up Form`**, headers row 1, data from row 2; script bound to the correct spreadsheet. |
-| Old behavior after edit | **New version** deployment of the Web app. |
+Browsers often block direct `fetch()` to `script.google.com`. If **Lovable** or another SPA runs in the browser:
+
+1. Deploy the Worker in **`cors-proxy/worker.js`** (see **`cors-proxy/README.md`**).
+2. Set the Worker secret **`GAS_WEBAPP_URL`** to your **Phase 4** `/exec` URL.
+3. Point your frontend’s API base URL at the **Worker URL**, not the raw Apps Script URL.
 
 ---
 
-## Files in this repo (what each is for)
+## Phase 9 — Lovable (optional external UI)
+
+1. Open **`LOVABLE_PROMPT.md`** in this repo (single source).
+2. Copy the instructions into your Lovable project as that file describes.
+3. Wire HTTP calls per **`API.md`**, using **`LOVABLE_API_TOKEN`** and your proxy URL if needed.
+
+---
+
+## Smoke test checklist
+
+| Step | What you do | Success |
+|------|-------------|---------|
+| 1 | Open Web app URL with no query string | Dashboard (**App.html**) loads |
+| 2 | Open `YOUR_WEBAPP_URL?view=public&row=2` (real row) | Public profile; no contact fields |
+| 3 | Companion sidebar → copy link for row 2 | Link uses your deployment URL |
+| 4 | POST `health` + token (Postman/curl) | `{ "ok": true, ... }` |
+| 5 | Match Queue → process one pair | New row on **Matches** |
+
+---
+
+## Troubleshooting
+
+| Problem | What to check |
+|---------|----------------|
+| No **Companion tools** menu | All `.gs` files saved; refresh sheet; **Code** contains `onOpen` → `sheetCompanionMenuOnOpen` |
+| API returns Unauthorized | **`LOVABLE_API_TOKEN`** matches the client |
+| Sign-in instead of JSON/HTML | Web app **Who has access**; correct **`/exec`** URL |
+| CORS in browser | Use **Phase 8** proxy as API base |
+| Empty directory | Tab **`Sign Up Form`** exact name; data from row 2 |
+| Old behavior after edit | **New version** deployment (**Phase 4**) |
+
+---
+
+## Files in this repo
 
 | File | Role |
 |------|------|
-| `Code.gs` | All backend: sheet I/O, API router, PDF, public profile, reminders |
-| `App.html` | Legacy full dashboard (still served at Web app root) |
-| `PublicProfile.html` | Public share page (`?view=public&row=`) |
+| `Code.gs` | Main backend: API, sheets, public profile, reminders, menu hook |
+| `App.html` | Legacy dashboard (Web app root) |
+| `PublicProfile.html` | Public share page template |
+| `SheetCompanionTools.gs` | **Companion tools** menu + sidebar |
+| `SheetCompanionSidebar.html` | Sidebar UI (link + PDF) |
+| `MatchQueue.gs` | **Match Queue** sheet + processor |
+| `VolunteersSync.gs` | Optional **Volunteers** tab sync |
 | `API.md` | JSON API reference |
-| `LOVABLE_PROMPT.md` | Product spec for Lovable |
-| `cors-proxy/worker.js` | Paste into Cloudflare for CORS |
+| `LOVABLE_PROMPT.md` | Lovable product spec |
+| `cors-proxy/worker.js` | Cloudflare Worker for CORS |
 | `IMPLEMENTATION.md` | This checklist |
