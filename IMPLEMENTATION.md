@@ -38,12 +38,14 @@ For **each** file below: in Apps Script, click **+** next to **Files** → **Scr
 |-------|-------------------|----------------------------|
 | 1 | `Code.gs` | `Code` (the default main script) |
 | 2 | `VolunteersSync.gs` | `VolunteersSync` |
-| 3 | `SheetCompanionTools.gs` | `SheetCompanionTools` |
-| 4 | `MatchQueue.gs` | `MatchQueue` |
+| 3 | `CompanionsSync.gs` | `CompanionsSync` |
+| 4 | `SheetCompanionTools.gs` | `SheetCompanionTools` |
+| 5 | `MatchQueue.gs` | `MatchQueue` |
 
 **Notes:**
 
-- If you skip **VolunteersSync**, you only lose the automatic **Volunteers** tab sync; the rest still works.
+- **CompanionsSync** depends on helpers in **VolunteersSync** — keep **VolunteersSync** in the project if you use **CompanionsSync**.
+- If you skip **VolunteersSync**, you lose **Volunteers** sync and must remove **CompanionsSync** too (or duplicate helpers).
 - **SheetCompanionTools** + **MatchQueue** provide the **Companion tools** menu and **Match Queue** workflow.
 
 ### 2b — Add HTML files
@@ -123,7 +125,7 @@ Steps:
 
 If you use **`VolunteersSync.gs`**:
 
-1. Ensure column **AQ** on **Sign Up Form** marks volunteers (`TRUE`).
+1. On **Sign Up Form**, column **AQ** = volunteer (`TRUE`), column **AR** = last contact date. **Volunteers** (AQ = TRUE) and **Companions** (AQ ≠ TRUE) tabs both use columns **E — Last Contact Date** (from AR) and **F — Notes** (manual; preserved on re-sync). Menu: **Companion tools → Sync Volunteers & Companions tabs** runs both.
 2. Run **`syncVolunteersFromSignUpForm`** once from the Apps Script editor to test, **or** add triggers (**Edit → Triggers**):
    - **On change** → `onChangeVolunteersSync` (good for new Form rows)
    - Optional **On edit** → `onEditVolunteersSync`
@@ -185,7 +187,8 @@ Browsers often block direct `fetch()` to `script.google.com`. If **Lovable** or 
 | `SheetCompanionTools.gs` | **Companion tools** menu + sidebar |
 | `SheetCompanionSidebar.html` | Sidebar UI (link + PDF) |
 | `MatchQueue.gs` | **Match Queue** sheet + processor |
-| `VolunteersSync.gs` | Optional **Volunteers** tab sync |
+| `VolunteersSync.gs` | **Volunteers** tab sync (AQ = TRUE) |
+| `CompanionsSync.gs` | **Companions** tab sync (AQ ≠ TRUE); uses helpers from VolunteersSync |
 | `API.md` | JSON API reference |
 | `LOVABLE_PROMPT.md` | Lovable product spec |
 | `cors-proxy/worker.js` | Cloudflare Worker for CORS |

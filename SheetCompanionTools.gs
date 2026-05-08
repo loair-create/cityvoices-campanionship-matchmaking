@@ -11,6 +11,8 @@ function sheetCompanionMenuOnOpen() {
     .addItem('Prepare Match Queue sheet', 'ensureMatchQueueSheet')
     .addItem('Process Match Queue', 'processMatchQueueFromSheet')
     .addSeparator()
+    .addItem('Sync Volunteers & Companions tabs', 'syncVolunteersAndCompanionsFromSignUpForm')
+    .addSeparator()
     .addItem('Open matching dashboard…', 'openApp')
     .addToUi();
 }

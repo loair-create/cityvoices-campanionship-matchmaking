@@ -2,8 +2,9 @@
  * Volunteers tab sync (standalone — add this file alongside Code.gs or in a separate Apps Script project
  * bound to the same spreadsheet).
  *
- * When column AQ on "Sign Up Form" is TRUE, that row is listed on the "Volunteers" tab with:
- * Name, Phone, Email (from sheet headers), plus Last Contact Date and Notes from columns D and E.
+ * When column AQ on "Sign Up Form" is TRUE, that row is listed on the "Volunteers" tab:
+ * Col A–D: sign-up row, name, phone, email; Col E: Last Contact Date (from Sign Up Form column AR);
+ * Col F: Notes — left blank for new rows; existing manual notes are kept when re-syncing.
  */
 
 var VOLUNTEERS_SYNC_SOURCE_SHEET = 'Sign Up Form';
@@ -12,9 +13,11 @@ var VOLUNTEERS_SYNC_TARGET_SHEET = 'Volunteers';
 /** Column AQ — volunteer flag (TRUE = volunteer). */
 var VOLUNTEER_COL_INDEX = 43;
 
-/** Fixed columns per your sheet: D = last contact, E = notes. */
-var LAST_CONTACT_FIXED_COL = 4;
-var NOTES_FIXED_COL = 5;
+/** Column AR on Sign Up Form — per-person last contact date (matches staff tracking). */
+var LAST_CONTACT_SIGNUP_COL = 44;
+
+/** Volunteers sheet: column index for Notes (F); manual entry, preserved across syncs when possible. */
+var VOLUNTEERS_NOTES_COL = 6;
 
 var VOLUNTEERS_HEADER_ROW = [
   'Sign-up row',
@@ -83,7 +86,7 @@ function syncVolunteersFromSignUpForm() {
   }
 
   var lastRow = src.getLastRow();
-  var lastCol = Math.max(src.getLastColumn(), VOLUNTEER_COL_INDEX);
+  var lastCol = Math.max(src.getLastColumn(), VOLUNTEER_COL_INDEX, LAST_CONTACT_SIGNUP_COL);
   if (lastRow < 2) {
     var emptyTgt = volunteersSync_ensureTargetSheet_(ss);
     var nc = VOLUNTEERS_HEADER_ROW.length;
@@ -99,6 +102,9 @@ function syncVolunteersFromSignUpForm() {
   var headers = src.getRange(1, 1, 1, lastCol).getValues()[0];
   var map = volunteersSync_buildColumnMap_(headers);
 
+  /** Keep manual Notes already typed on the Volunteers sheet (column F). Key = sign-up row number string. */
+  var preservedNotesBySignupRow = volunteersSync_readPreservedNotes_(ss);
+
   var data = src.getRange(2, 1, lastRow, lastCol).getValues();
   var out = [];
   for (var i = 0; i < data.length; i++) {
@@ -113,10 +119,10 @@ function syncVolunteersFromSignUpForm() {
     var phone = phoneIdx >= 0 && phoneIdx < row.length ? row[phoneIdx] : '';
     var email = emailIdx >= 0 && emailIdx < row.length ? row[emailIdx] : '';
 
-    var lastContactIdx = LAST_CONTACT_FIXED_COL - 1;
-    var notesIdx = NOTES_FIXED_COL - 1;
-    var lastContact = lastContactIdx < row.length ? row[lastContactIdx] : '';
-    var notes = notesIdx < row.length ? row[notesIdx] : '';
+    var lcIdx = LAST_CONTACT_SIGNUP_COL - 1;
+    var lastContact = lcIdx < row.length ? row[lcIdx] : '';
+    var notesManual = preservedNotesBySignupRow[String(sheetRow)];
+    var notesOut = notesManual != null && notesManual !== '' ? notesManual : '';
 
     out.push([
       sheetRow,
@@ -124,7 +130,7 @@ function syncVolunteersFromSignUpForm() {
       phone != null ? String(phone) : '',
       email != null ? String(email) : '',
       volunteersSync_formatCell_(lastContact),
-      notes != null ? String(notes) : ''
+      notesOut
     ]);
   }
 
@@ -152,6 +158,29 @@ function volunteersSync_ensureTargetSheet_(ss) {
 }
 
 /**
+ * Reads column F (Notes) from the current Volunteers sheet keyed by Sign-up row (col A), so re-sync does not wipe manual notes.
+ */
+function volunteersSync_readPreservedNotes_(ss) {
+  var map = {};
+  var sh = ss.getSheetByName(VOLUNTEERS_SYNC_TARGET_SHEET);
+  if (!sh || sh.getLastRow() < 2) return map;
+  var lr = sh.getLastRow();
+  var rng = sh.getRange(2, 1, lr, VOLUNTEERS_NOTES_COL);
+  var rows = rng.getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var signupRow = rows[i][0];
+    var noteVal = rows[i][VOLUNTEERS_NOTES_COL - 1];
+    if (signupRow == null || signupRow === '') continue;
+    var key = String(signupRow).trim();
+    if (!key) continue;
+    if (noteVal != null && String(noteVal).trim() !== '') {
+      map[key] = String(noteVal);
+    }
+  }
+  return map;
+}
+
+/**
  * Sync whenever someone edits the sign-up sheet (manual edits only; Form rows may not fire this—use onChange).
  */
 function onEditVolunteersSync(e) {
@@ -159,6 +188,9 @@ function onEditVolunteersSync(e) {
   var sh = e.range.getSheet();
   if (sh.getName() !== VOLUNTEERS_SYNC_SOURCE_SHEET) return;
   syncVolunteersFromSignUpForm();
+  if (typeof syncCompanionsFromSignUpForm === 'function') {
+    syncCompanionsFromSignUpForm();
+  }
 }
 
 /**
@@ -169,6 +201,9 @@ function onChangeVolunteersSync(e) {
   if (!e) return;
   if (e.changeType === SpreadsheetApp.ChangeType.FORMAT) return;
   syncVolunteersFromSignUpForm();
+  if (typeof syncCompanionsFromSignUpForm === 'function') {
+    syncCompanionsFromSignUpForm();
+  }
 }
 
 /**
@@ -185,4 +220,6 @@ function onChangeVolunteersSync(e) {
  *    - Event source: From spreadsheet
  *    - Event type: On edit
  * 6. Save. First run may prompt authorization.
+ *
+ * If **CompanionsSync.gs** is present, these handlers also refresh the **Companions** tab (non-volunteers).
  */
