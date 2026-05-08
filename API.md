@@ -1,10 +1,8 @@
 # Companionship JSON API (Google Apps Script)
 
-**Step-by-step setup (Sheet, Apps Script, deploy, proxy, Lovable):** see [`IMPLEMENTATION.md`](IMPLEMENTATION.md).
+**Step-by-step setup (Sheet, Apps Script, deploy, proxy):** see [`IMPLEMENTATION.md`](IMPLEMENTATION.md).
 
-**Product / UI spec to paste into Lovable:** see [`LOVABLE_PROMPT.md`](LOVABLE_PROMPT.md) (copy everything below the header there).
-
-External apps (e.g. [Lovable](https://lovable.dev)) call the same backend as the legacy dashboard by **POSTing JSON** to your **Apps Script Web app URL** (Deploy → Manage deployments → Web app).
+External apps (custom dashboards, scripts, or mobile clients) call the same backend as the legacy dashboard by **POSTing JSON** to your **Apps Script Web app URL** (Deploy → Manage deployments → Web app).
 
 ## Setup
 
@@ -16,7 +14,7 @@ External apps (e.g. [Lovable](https://lovable.dev)) call the same backend as the
 
 **GET (URL-encoded `payload` or `api=1`)** and **POST (JSON body)** are supported. Example GET:  
 `{WEBAPP_URL}?api=1&action=getData&token=YOUR_TOKEN`  
-Lovable-style: `{WEBAPP_URL}?payload=encodeURIComponent(JSON.stringify({action,token,...}))`
+URL-encoded payload style: `{WEBAPP_URL}?payload=encodeURIComponent(JSON.stringify({action,token,...}))`
 
 **CORS:** Browsers often cannot call the Google URL directly from JavaScript because of **CORS** (Google’s response may not include `Access-Control-Allow-Origin` for your origin). Use the included [cors-proxy](cors-proxy/) Worker, server-side `fetch`, or call the API from your **server** only. “Sign-in instead of JSON” is a **deployment** issue — see [IMPLEMENTATION.md](IMPLEMENTATION.md#if-the-browser-shows-a-google-sign-in-page-or-a-redirect-instead-of-json).
 
@@ -104,9 +102,5 @@ Failure:
 ## Quick test (optional)
 
 Use any HTTP client (Postman, Insomnia, etc.): **POST** to your Web app URL, `Content-Type: application/json`, body e.g. `{"action":"getData","token":"YOUR_TOKEN"}`.
-
-## Lovable
-
-The **prompt for Lovable** (spreadsheet, pages, privacy, API action list) is in [`LOVABLE_PROMPT.md`](LOVABLE_PROMPT.md). Wire your Lovable app to this API using [`API.md`](API.md).
 
 If the browser cannot call the Apps Script URL directly (**CORS**), use the Worker in [`cors-proxy/`](cors-proxy/) (paste `worker.js` into the Cloudflare dashboard and set `GAS_WEBAPP_URL`, or another proxy you prefer).

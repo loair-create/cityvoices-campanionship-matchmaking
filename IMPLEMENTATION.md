@@ -5,7 +5,7 @@ Follow these phases **in order**. You need a Google account and access to create
 **Two ways to work:**
 
 - **Spreadsheet-first (recommended for many teams):** use the sheet’s **Companion tools** menu, **Match Queue** tab, and optional **Volunteers** sync—no separate web UI required for daily work.
-- **Dashboard / Lovable:** deploy the same script as a **Web app**; optionally connect **Lovable** or use the built-in **App.html** dashboard.
+- **Dashboard:** deploy the same script as a **Web app** and use the built-in **App.html** dashboard (or call the JSON API from another client).
 
 ---
 
@@ -68,12 +68,12 @@ Press **Ctrl/Cmd-S** or click **Save project**.
 
 ## Phase 3 — Script property for API access (optional but common)
 
-Required if you use **Lovable**, **curl**, or any client that calls `action` + `token`.
+Required if you use **curl**, Postman, or any client that calls `action` + `token`.
 
 1. In Apps Script: **Project Settings** (gear) → **Script properties**.
 2. Click **Add script property**.
 3. Property: **`LOVABLE_API_TOKEN`**  
-   Value: a **long random secret** (32+ characters). Store it safely—you will paste it into Lovable or API clients.
+   Value: a **long random secret** (32+ characters). Store it safely—you will send it as `token` in API requests.
 4. Save.
 
 If you **only** use the spreadsheet UI and never call the JSON API, you can skip this—the token is still safe to set if you might use the API later.
@@ -136,19 +136,11 @@ See the comments at the bottom of **`VolunteersSync.gs`** for trigger details.
 
 ## Phase 8 — CORS proxy (only if a browser app calls the API)
 
-Browsers often block direct `fetch()` to `script.google.com`. If **Lovable** or another SPA runs in the browser:
+Browsers often block direct `fetch()` to `script.google.com`. If a browser SPA or another frontend runs on a different origin:
 
 1. Deploy the Worker in **`cors-proxy/worker.js`** (see **`cors-proxy/README.md`**).
 2. Set the Worker secret **`GAS_WEBAPP_URL`** to your **Phase 4** `/exec` URL.
 3. Point your frontend’s API base URL at the **Worker URL**, not the raw Apps Script URL.
-
----
-
-## Phase 9 — Lovable (optional external UI)
-
-1. Open **`LOVABLE_PROMPT.md`** in this repo (single source).
-2. Copy the instructions into your Lovable project as that file describes.
-3. Wire HTTP calls per **`API.md`**, using **`LOVABLE_API_TOKEN`** and your proxy URL if needed.
 
 ---
 
@@ -190,6 +182,5 @@ Browsers often block direct `fetch()` to `script.google.com`. If **Lovable** or 
 | `VolunteersSync.gs` | **Volunteers** tab sync (AQ = TRUE) |
 | `CompanionsSync.gs` | **Companions** tab sync (AQ ≠ TRUE); uses helpers from VolunteersSync |
 | `API.md` | JSON API reference |
-| `LOVABLE_PROMPT.md` | Lovable product spec |
 | `cors-proxy/worker.js` | Cloudflare Worker for CORS |
 | `IMPLEMENTATION.md` | This checklist |

@@ -9,7 +9,7 @@ var FORM_SHEET_NAME = 'Sign Up Form';
 var PRE_SURVEY_SHEET_NAME = 'Pre-Survey Results';
 var POST_SURVEY_SHEET_NAME = 'Post Survey Results';
 
-/** Script property name for the Lovable / external JSON API shared secret. */
+/** Script property name for the external JSON API shared secret (historically named LOVABLE_API_TOKEN). */
 var LOVABLE_API_TOKEN_KEY = 'LOVABLE_API_TOKEN';
 
 function doGet(e) {
@@ -41,7 +41,7 @@ function doGet(e) {
 }
 
 /**
- * JSON API for external apps (e.g. Lovable). POST body: { "action": "getData", "token": "..." }
+ * JSON API for external apps. POST body: { "action": "getData", "token": "..." }
  * or { "action": "...", "token": "...", "payload": { ... } }.
  * Token may also be sent as query ?token= for POST.
  */
@@ -80,7 +80,7 @@ function extractApiParams_(parsed) {
 }
 
 /**
- * Shared Lovable / external JSON API: same routing and token check as doPost and legacy GET.
+ * Shared external JSON API: same routing and token check as doPost and legacy GET.
  * @param {Object} parsed - { action, token?, ... } or { action, token, payload: { ... } } (nested params)
  * @param {string} [queryToken] - optional ?token= from the URL (POST/GET)
  */
