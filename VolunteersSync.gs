@@ -152,7 +152,7 @@ function volunteersSync_ensureTargetSheet_(ss) {
 }
 
 /**
- * Sync whenever someone edits the sign-up sheet (manual edits only; Form rows may not fire this).
+ * Sync whenever someone edits the sign-up sheet (manual edits only; Form rows may not fire this—use onChange).
  */
 function onEditVolunteersSync(e) {
   if (!e || !e.range) return;
@@ -163,7 +163,7 @@ function onEditVolunteersSync(e) {
 
 /**
  * Recommended for Google Form responses: new rows + edits. Skips FORMAT-only changes.
- * Wire this to an installable trigger: Spreadsheet → On change (see file header comment).
+ * Wire this to an installable trigger: Spreadsheet → On change.
  */
 function onChangeVolunteersSync(e) {
   if (!e) return;

@@ -12,13 +12,13 @@ External apps (e.g. [Lovable](https://lovable.dev)) call the same backend as the
 2. **Deploy** the project as a **Web app** (new version after code changes).  
    - *Execute as:* you (owner).  
    - *Who has access:* **Anyone** (anonymous). The **token** is the real auth. If this is stricter, the URL will show a **Google sign-in** page and `fetch` will fail before any JSON is returned.
-3. Copy the **Web app URL** from **Manage deployments** (ends with `/exec`).
+3. Copy the **Web app URL** from **Manage deployments** (ends with `/exec`) — that is your API base URL for POST requests.
 
 **GET (URL-encoded `payload` or `api=1`)** and **POST (JSON body)** are supported. Example GET:  
 `{WEBAPP_URL}?api=1&action=getData&token=YOUR_TOKEN`  
 Lovable-style: `{WEBAPP_URL}?payload=encodeURIComponent(JSON.stringify({action,token,...}))`
 
-**CORS:** Google’s response may not include `Access-Control-Allow-Origin` for your Lovable origin. If the browser blocks the request, use a small proxy (e.g. [cors-proxy](cors-proxy/)) or server-side `fetch`. “Sign-in instead of JSON” is a **deployment** issue — see [IMPLEMENTATION.md](IMPLEMENTATION.md#if-the-browser-shows-a-google-sign-in-page-or-a-redirect-instead-of-json).
+**CORS:** Browsers often cannot call the Google URL directly from JavaScript because of **CORS** (Google’s response may not include `Access-Control-Allow-Origin` for your origin). Use the included [cors-proxy](cors-proxy/) Worker, server-side `fetch`, or call the API from your **server** only. “Sign-in instead of JSON” is a **deployment** issue — see [IMPLEMENTATION.md](IMPLEMENTATION.md#if-the-browser-shows-a-google-sign-in-page-or-a-redirect-instead-of-json).
 
 ---
 
