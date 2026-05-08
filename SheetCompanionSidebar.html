@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top" />
+    <style>
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        padding: 12px;
+        font-size: 13px;
+        color: #111;
+      }
+      label {
+        display: block;
+        margin-bottom: 4px;
+        font-weight: 600;
+      }
+      input[type='number'] {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px;
+        margin-bottom: 12px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+      }
+      button {
+        width: 100%;
+        padding: 10px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        border-radius: 6px;
+        border: none;
+        background: #0d9488;
+        color: #fff;
+        font-weight: 600;
+      }
+      button.secondary {
+        background: #e5e7eb;
+        color: #111;
+      }
+      .hint {
+        color: #555;
+        font-size: 12px;
+        line-height: 1.45;
+        margin-top: 12px;
+      }
+      .err {
+        color: #b91c1c;
+        font-size: 12px;
+        min-height: 1.2em;
+      }
+    </style>
+  </head>
+  <body>
+    <label for="rowNum">Sign-up sheet row #</label>
+    <input type="number" id="rowNum" min="2" step="1" placeholder="e.g. 42" />
+    <button type="button" id="btnCopy">Copy public link</button>
+    <button type="button" id="btnPdf" class="secondary">Download PDF</button>
+    <p id="msg" class="err"></p>
+    <p class="hint">
+      Uses your Display settings from the dashboard. Public link and PDF show first name and selected questions only—no email, phone, last name, or internal notes.
+    </p>
+    <script>
+      function rowId() {
+        var v = document.getElementById('rowNum').value;
+        var n = parseInt(String(v).trim(), 10);
+        return isNaN(n) || n < 2 ? '' : String(n);
+      }
+      function setErr(t) {
+        document.getElementById('msg').textContent = t || '';
+      }
+      document.getElementById('btnCopy').addEventListener('click', function () {
+        var id = rowId();
+        setErr('');
+        if (!id) {
+          setErr('Enter a row number (2 or greater).');
+          return;
+        }
+        google.script.run
+          .withSuccessHandler(function (res) {
+            if (!res || !res.ok || !res.url) {
+              setErr((res && res.message) ? res.message : 'Could not build link.');
+              return;
+            }
+            var url = res.url;
+            if (navigator.clipboard && window.isSecureContext) {
+              navigator.clipboard.writeText(url).then(function () {
+                setErr('');
+                alert('Public link copied.');
+              }).catch(function () {
+                window.prompt('Copy this link:', url);
+              });
+            } else {
+              window.prompt('Copy this link:', url);
+            }
+          })
+          .withFailureHandler(function (e) {
+            setErr(e.message || String(e));
+          })
+          .getPublicShareLink(id);
+      });
+      document.getElementById('btnPdf').addEventListener('click', function () {
+        var id = rowId();
+        setErr('');
+        if (!id) {
+          setErr('Enter a row number (2 or greater).');
+          return;
+        }
+        google.script.run
+          .withSuccessHandler(function (res) {
+            if (!res || !res.base64) {
+              setErr('Could not create PDF.');
+              return;
+            }
+            var a = document.createElement('a');
+            a.href = 'data:application/pdf;base64,' + res.base64;
+            a.download = res.fileName ? res.fileName : 'profile.pdf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          })
+          .withFailureHandler(function (e) {
+            setErr(e.message || String(e));
+          })
+          .getProfilePdfBase64(id);
+      });
+    </script>
+  </body>
+</html>

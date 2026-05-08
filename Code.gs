@@ -193,7 +193,13 @@ function dispatchApiAction_(action, params) {
 }
 
 function onOpen() {
-  // Dashboard is opened via the web app / deployed URL; no spreadsheet menu.
+  try {
+    if (typeof sheetCompanionMenuOnOpen === 'function') {
+      sheetCompanionMenuOnOpen();
+    }
+  } catch (e) {
+    // No UI (e.g. headless) — ignore.
+  }
 }
 
 function openApp() {

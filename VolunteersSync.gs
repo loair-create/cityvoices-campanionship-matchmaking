@@ -90,7 +90,8 @@ function syncVolunteersFromSignUpForm() {
     emptyTgt.getRange(1, 1, 1, nc).setValues([VOLUNTEERS_HEADER_ROW]);
     var lrEmpty = emptyTgt.getLastRow();
     if (lrEmpty > 1) {
-      emptyTgt.getRange(2, 1, lrEmpty, nc).clearContent();
+      /** getRange(row, col, numRows, numCols) — third arg is row COUNT, not last row index. */
+      emptyTgt.getRange(2, 1, lrEmpty - 1, nc).clearContent();
     }
     return;
   }
@@ -131,12 +132,14 @@ function syncVolunteersFromSignUpForm() {
   var numCols = VOLUNTEERS_HEADER_ROW.length;
   tgt.getRange(1, 1, 1, numCols).setValues([VOLUNTEERS_HEADER_ROW]);
   if (out.length) {
-    tgt.getRange(2, 1, out.length + 1, numCols).setValues(out);
+    /** getRange(row, col, numRows, numCols) — use out.length rows starting at row 2. */
+    tgt.getRange(2, 1, out.length, numCols).setValues(out);
   }
   var clearFrom = out.length + 2;
   var prevLast = tgt.getLastRow();
   if (prevLast >= clearFrom) {
-    tgt.getRange(clearFrom, 1, prevLast, numCols).clearContent();
+    var numClearRows = prevLast - clearFrom + 1;
+    tgt.getRange(clearFrom, 1, numClearRows, numCols).clearContent();
   }
 }
 
@@ -149,7 +152,7 @@ function volunteersSync_ensureTargetSheet_(ss) {
 }
 
 /**
- * Sync whenever someone edits the sign-up sheet (add optional throttle if the sheet is huge).
+ * Sync whenever someone edits the sign-up sheet (manual edits only; Form rows may not fire this).
  */
 function onEditVolunteersSync(e) {
   if (!e || !e.range) return;
@@ -159,7 +162,27 @@ function onEditVolunteersSync(e) {
 }
 
 /**
- * Run once from the script editor to wire onEdit: Edit → Current project's triggers → Add trigger
- * — choose onEditVolunteersSync, From spreadsheet, On edit. Or rename onEditVolunteersSync to onEdit
- * if this file is the only script (not recommended if Code.gs already defines onEdit).
+ * Recommended for Google Form responses: new rows + edits. Skips FORMAT-only changes.
+ * Wire this to an installable trigger: Spreadsheet → On change (see file header comment).
+ */
+function onChangeVolunteersSync(e) {
+  if (!e) return;
+  if (e.changeType === SpreadsheetApp.ChangeType.FORMAT) return;
+  syncVolunteersFromSignUpForm();
+}
+
+/**
+ * TRIGGER SETUP (Apps Script UI)
+ * 1. Open the spreadsheet → Extensions → Apps Script.
+ * 2. Left sidebar: clock icon “Triggers”.
+ * 3. “Add Trigger” (bottom right).
+ * 4. Primary flow (new Form rows):
+ *    - Function: onChangeVolunteersSync
+ *    - Event source: From spreadsheet
+ *    - Event type: On change
+ * 5. Optional second trigger (manual cell edits on Sign Up Form only):
+ *    - Function: onEditVolunteersSync
+ *    - Event source: From spreadsheet
+ *    - Event type: On edit
+ * 6. Save. First run may prompt authorization.
  */
