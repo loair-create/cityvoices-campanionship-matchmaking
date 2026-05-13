@@ -3,8 +3,9 @@
  * bound to the same spreadsheet).
  *
  * When column AQ on "Sign Up Form" is TRUE, that row is listed on the "Volunteers" tab:
- * Col A–D: sign-up row, name, phone, email; Col E: Last Contact Date (from Sign Up Form column AR);
- * Col F: Notes — left blank for new rows; existing manual notes are kept when re-syncing.
+ * Col A–D: sign-up row, name, phone, email from Sign Up Form;
+ * Col E: Last Contact Date — staff manual; edits push to Sign Up Form "Last Contact Date" column;
+ * Col F: Internal Notes — staff manual; edits push to Sign Up Form INTERNAL NOTES.
  */
 
 var VOLUNTEERS_SYNC_SOURCE_SHEET = 'Sign Up Form';
@@ -13,10 +14,10 @@ var VOLUNTEERS_SYNC_TARGET_SHEET = 'Volunteers';
 /** Column AQ — volunteer flag (TRUE = volunteer). */
 var VOLUNTEER_COL_INDEX = 43;
 
-/** Column AR on Sign Up Form — per-person last contact date (matches staff tracking). */
-var LAST_CONTACT_SIGNUP_COL = 44;
+/** Volunteers sheet: column E = Last Contact Date (1-based index 5). */
+var VOLUNTEERS_LAST_CONTACT_COL = 5;
 
-/** Volunteers sheet: column index for Notes (F); manual entry, preserved across syncs when possible. */
+/** Volunteers sheet: column F = Internal Notes (1-based index 6). */
 var VOLUNTEERS_NOTES_COL = 6;
 
 var VOLUNTEERS_HEADER_ROW = [
@@ -25,8 +26,24 @@ var VOLUNTEERS_HEADER_ROW = [
   'Phone',
   'Email',
   'Last Contact Date',
-  'Notes'
+  'Internal Notes'
 ];
+
+/** Prevents onEditVolunteersStaffFields from firing while this script is rewriting the Volunteers tab. */
+var VOLUNTEERS_SYNC_CACHE_GUARD_KEY = 'volunteers_sheet_sync_guard';
+
+function volunteersSync_beginSheetWrite_() {
+  CacheService.getScriptCache().put(VOLUNTEERS_SYNC_CACHE_GUARD_KEY, '1', 120);
+}
+
+function volunteersSync_endSheetWrite_() {
+  CacheService.getScriptCache().remove(VOLUNTEERS_SYNC_CACHE_GUARD_KEY);
+}
+
+function volunteersSync_isSheetWriteInProgress_() {
+  var v = CacheService.getScriptCache().get(VOLUNTEERS_SYNC_CACHE_GUARD_KEY);
+  return !!(v && String(v) === '1');
+}
 
 /**
  * Finds column indices from row 1 headers (same idea as the main dashboard parser).
@@ -79,73 +96,86 @@ function volunteersSync_fullName_(row, map) {
  * Safe to run manually (Run → syncVolunteersFromSignUpForm) or from onEdit.
  */
 function syncVolunteersFromSignUpForm() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var src = ss.getSheetByName(VOLUNTEERS_SYNC_SOURCE_SHEET);
-  if (!src) {
-    throw new Error('Sheet "' + VOLUNTEERS_SYNC_SOURCE_SHEET + '" not found.');
-  }
-
-  var lastRow = src.getLastRow();
-  var lastCol = Math.max(src.getLastColumn(), VOLUNTEER_COL_INDEX, LAST_CONTACT_SIGNUP_COL);
-  if (lastRow < 2) {
-    var emptyTgt = volunteersSync_ensureTargetSheet_(ss);
-    var nc = VOLUNTEERS_HEADER_ROW.length;
-    emptyTgt.getRange(1, 1, 1, nc).setValues([VOLUNTEERS_HEADER_ROW]);
-    var lrEmpty = emptyTgt.getLastRow();
-    if (lrEmpty > 1) {
-      /** getRange(row, col, numRows, numCols) — third arg is row COUNT, not last row index. */
-      emptyTgt.getRange(2, 1, lrEmpty - 1, nc).clearContent();
+  volunteersSync_beginSheetWrite_();
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var src = ss.getSheetByName(VOLUNTEERS_SYNC_SOURCE_SHEET);
+    if (!src) {
+      throw new Error('Sheet "' + VOLUNTEERS_SYNC_SOURCE_SHEET + '" not found.');
     }
-    return;
-  }
 
-  var headers = src.getRange(1, 1, 1, lastCol).getValues()[0];
-  var map = volunteersSync_buildColumnMap_(headers);
+    var lastRow = src.getLastRow();
+    var lastCol = Math.max(src.getLastColumn(), VOLUNTEER_COL_INDEX);
+    if (lastRow < 2) {
+      var emptyTgt = volunteersSync_ensureTargetSheet_(ss);
+      var nc = VOLUNTEERS_HEADER_ROW.length;
+      emptyTgt.getRange(1, 1, 1, nc).setValues([VOLUNTEERS_HEADER_ROW]);
+      var lrEmpty = emptyTgt.getLastRow();
+      if (lrEmpty > 1) {
+        emptyTgt.getRange(2, 1, lrEmpty - 1, nc).clearContent();
+      }
+      return;
+    }
 
-  /** Keep manual Notes already typed on the Volunteers sheet (column F). Key = sign-up row number string. */
-  var preservedNotesBySignupRow = volunteersSync_readPreservedNotes_(ss);
+    var headers = src.getRange(1, 1, 1, lastCol).getValues()[0];
+    var map = volunteersSync_buildColumnMap_(headers);
 
-  var data = src.getRange(2, 1, lastRow, lastCol).getValues();
-  var out = [];
-  for (var i = 0; i < data.length; i++) {
-    var row = data[i];
-    var aqIdx = VOLUNTEER_COL_INDEX - 1;
-    if (!volunteersSync_isVolunteerTrue_(row[aqIdx])) continue;
+    var preservedStaff = volunteersSync_readPreservedStaffFields_(ss);
 
-    var sheetRow = i + 2;
-    var name = volunteersSync_fullName_(row, map);
-    var phoneIdx = map.phone;
-    var emailIdx = map.email;
-    var phone = phoneIdx >= 0 && phoneIdx < row.length ? row[phoneIdx] : '';
-    var email = emailIdx >= 0 && emailIdx < row.length ? row[emailIdx] : '';
+    var data = src.getRange(2, 1, lastRow, lastCol).getValues();
+    var out = [];
+    for (var i = 0; i < data.length; i++) {
+      var row = data[i];
+      var aqIdx = VOLUNTEER_COL_INDEX - 1;
+      if (!volunteersSync_isVolunteerTrue_(row[aqIdx])) continue;
 
-    var lcIdx = LAST_CONTACT_SIGNUP_COL - 1;
-    var lastContact = lcIdx < row.length ? row[lcIdx] : '';
-    var notesManual = preservedNotesBySignupRow[String(sheetRow)];
-    var notesOut = notesManual != null && notesManual !== '' ? notesManual : '';
+      var sheetRow = i + 2;
+      var name = volunteersSync_fullName_(row, map);
+      var phoneIdx = map.phone;
+      var emailIdx = map.email;
+      var phone = phoneIdx >= 0 && phoneIdx < row.length ? row[phoneIdx] : '';
+      var email = emailIdx >= 0 && emailIdx < row.length ? row[emailIdx] : '';
 
-    out.push([
-      sheetRow,
-      name,
-      phone != null ? String(phone) : '',
-      email != null ? String(email) : '',
-      volunteersSync_formatCell_(lastContact),
-      notesOut
-    ]);
-  }
+      var key = String(sheetRow);
+      var staff = preservedStaff[key];
+      var lcOut = '';
+      var notesOut = '';
+      if (staff) {
+        if (staff.lastContact != null && staff.lastContact !== '') {
+          lcOut =
+            staff.lastContact instanceof Date
+              ? volunteersSync_formatCell_(staff.lastContact)
+              : String(staff.lastContact);
+        }
+        if (staff.internalNotes != null) {
+          notesOut = String(staff.internalNotes);
+        }
+      }
 
-  var tgt = volunteersSync_ensureTargetSheet_(ss);
-  var numCols = VOLUNTEERS_HEADER_ROW.length;
-  tgt.getRange(1, 1, 1, numCols).setValues([VOLUNTEERS_HEADER_ROW]);
-  if (out.length) {
-    /** getRange(row, col, numRows, numCols) — use out.length rows starting at row 2. */
-    tgt.getRange(2, 1, out.length, numCols).setValues(out);
-  }
-  var clearFrom = out.length + 2;
-  var prevLast = tgt.getLastRow();
-  if (prevLast >= clearFrom) {
-    var numClearRows = prevLast - clearFrom + 1;
-    tgt.getRange(clearFrom, 1, numClearRows, numCols).clearContent();
+      out.push([
+        sheetRow,
+        name,
+        phone != null ? String(phone) : '',
+        email != null ? String(email) : '',
+        lcOut,
+        notesOut
+      ]);
+    }
+
+    var tgt = volunteersSync_ensureTargetSheet_(ss);
+    var numCols = VOLUNTEERS_HEADER_ROW.length;
+    tgt.getRange(1, 1, 1, numCols).setValues([VOLUNTEERS_HEADER_ROW]);
+    if (out.length) {
+      tgt.getRange(2, 1, out.length, numCols).setValues(out);
+    }
+    var clearFrom = out.length + 2;
+    var prevLast = tgt.getLastRow();
+    if (prevLast >= clearFrom) {
+      var numClearRows = prevLast - clearFrom + 1;
+      tgt.getRange(clearFrom, 1, numClearRows, numCols).clearContent();
+    }
+  } finally {
+    volunteersSync_endSheetWrite_();
   }
 }
 
@@ -158,9 +188,9 @@ function volunteersSync_ensureTargetSheet_(ss) {
 }
 
 /**
- * Reads column F (Notes) from the current Volunteers sheet keyed by Sign-up row (col A), so re-sync does not wipe manual notes.
+ * Reads staff columns E (Last Contact) and F (Internal Notes) keyed by Sign-up row (col A).
  */
-function volunteersSync_readPreservedNotes_(ss) {
+function volunteersSync_readPreservedStaffFields_(ss) {
   var map = {};
   var sh = ss.getSheetByName(VOLUNTEERS_SYNC_TARGET_SHEET);
   if (!sh || sh.getLastRow() < 2) return map;
@@ -169,15 +199,54 @@ function volunteersSync_readPreservedNotes_(ss) {
   var rows = rng.getValues();
   for (var i = 0; i < rows.length; i++) {
     var signupRow = rows[i][0];
-    var noteVal = rows[i][VOLUNTEERS_NOTES_COL - 1];
     if (signupRow == null || signupRow === '') continue;
     var key = String(signupRow).trim();
     if (!key) continue;
-    if (noteVal != null && String(noteVal).trim() !== '') {
-      map[key] = String(noteVal);
-    }
+    var lcIdx = VOLUNTEERS_LAST_CONTACT_COL - 1;
+    var notesIdx = VOLUNTEERS_NOTES_COL - 1;
+    map[key] = {
+      lastContact: lcIdx < rows[i].length ? rows[i][lcIdx] : '',
+      internalNotes: notesIdx < rows[i].length && rows[i][notesIdx] != null ? String(rows[i][notesIdx]) : ''
+    };
   }
   return map;
+}
+
+/**
+ * Push Volunteers E/F edits to Sign Up Form (requires Code.gs: updateCompanionLastContactDate, updateCompanionNote).
+ * Wire to installable trigger: From spreadsheet → On edit (all sheets; handler returns unless sheet is Volunteers).
+ */
+function onEditVolunteersStaffFields(e) {
+  if (!e || !e.range) return;
+  if (volunteersSync_isSheetWriteInProgress_()) return;
+  var sh = e.range.getSheet();
+  if (sh.getName() !== VOLUNTEERS_SYNC_TARGET_SHEET) return;
+  var c0 = e.range.getColumn();
+  var cLast = e.range.getLastColumn();
+  if (cLast < VOLUNTEERS_LAST_CONTACT_COL || c0 > VOLUNTEERS_NOTES_COL) return;
+  var r0 = e.range.getRow();
+  var rLast = e.range.getLastRow();
+  if (rLast < 2) return;
+
+  for (var r = Math.max(2, r0); r <= rLast; r++) {
+    var signup = sh.getRange(r, 1).getValue();
+    var rn = parseInt(String(signup != null ? signup : '').trim(), 10);
+    if (isNaN(rn) || rn < 2) continue;
+    var lcCell = sh.getRange(r, VOLUNTEERS_LAST_CONTACT_COL).getValue();
+    var notesCell = sh.getRange(r, VOLUNTEERS_NOTES_COL).getValue();
+    var isoOrEmpty = '';
+    if (lcCell instanceof Date) {
+      isoOrEmpty = Utilities.formatDate(lcCell, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    } else if (lcCell != null && String(lcCell).trim() !== '') {
+      isoOrEmpty = String(lcCell).trim();
+    }
+    if (typeof updateCompanionLastContactDate === 'function') {
+      updateCompanionLastContactDate(String(rn), isoOrEmpty);
+    }
+    if (typeof updateCompanionNote === 'function') {
+      updateCompanionNote(String(rn), notesCell != null ? String(notesCell) : '');
+    }
+  }
 }
 
 /**
@@ -219,7 +288,11 @@ function onChangeVolunteersSync(e) {
  *    - Function: onEditVolunteersSync
  *    - Event source: From spreadsheet
  *    - Event type: On edit
- * 6. Save. First run may prompt authorization.
+ * 6. Volunteers staff fields (Last Contact + Internal Notes) → Sign Up Form:
+ *    - Function: onEditVolunteersStaffFields
+ *    - Event source: From spreadsheet
+ *    - Event type: On edit
+ * 7. Save. First run may prompt authorization.
  *
  * If **CompanionsSync.gs** is present, these handlers also refresh the **Companions** tab (non-volunteers).
  */

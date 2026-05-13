@@ -6,7 +6,7 @@
 function sheetCompanionMenuOnOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Companion tools')
-    .addItem('Open sidebar (link & PDF)', 'showCompanionToolsSidebar')
+    .addItem('Open sidebar', 'showCompanionToolsSidebar')
     .addSeparator()
     .addItem('Prepare Match Queue sheet', 'ensureMatchQueueSheet')
     .addItem('Process Match Queue', 'processMatchQueueFromSheet')
@@ -20,6 +20,6 @@ function sheetCompanionMenuOnOpen() {
 function showCompanionToolsSidebar() {
   var html = HtmlService.createHtmlOutputFromFile('SheetCompanionSidebar')
     .setTitle('Companion tools')
-    .setWidth(320);
+    .setWidth(380);
   SpreadsheetApp.getUi().showSidebar(html);
 }

@@ -100,6 +100,7 @@
       return overlaps;
     };
 
+    /** Keep scoring aligned with sidebarMatch_calculatePercentage_ in Code.gs (spreadsheet sidebar). */
     const calculateMatchPercentage = (c1, c2, config) => {
       let score = 0;
       let maxScore = 0;
@@ -1760,9 +1761,9 @@
                                             {intStatus === '—' ? 'No internal status' : intStatus}
                                          </span>
                                          {hasActiveMatch ? (
-                                            <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">Matched</span>
+                                            <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">In ≥1 match</span>
                                          ) : (
-                                            <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-orange-100 text-orange-900">Needs match</span>
+                                            <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-orange-100 text-orange-900">No matches yet</span>
                                          )}
                                          {contactStale ? (
                                             <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-red-100 text-red-800 border border-red-200" title="Last contact over 2 weeks ago">

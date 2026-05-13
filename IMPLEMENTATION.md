@@ -99,6 +99,7 @@ Steps:
 4. Click **Deploy**.
 5. **Authorize** when Google prompts (spreadsheet access, external requests, etc.).
 6. **Copy the Web app URL** (ends with `/exec`). Save it—this is your deployment URL.
+7. If **Copy public link** in the sidebar builds a bad URL or visitors see errors, set a **Script property** in Apps Script → Project Settings → **Script properties**: name **`WEB_APP_PUBLIC_BASE_URL`**, value = your full Web app URL (same as `/exec`, no trailing `#`). Redeploy after adding it.
 
 **After every code change:** **Deploy → Manage deployments** → pencil icon → **New version** → **Deploy**, or the live URL may keep running old code.
 
@@ -108,15 +109,15 @@ Steps:
 
 1. Close and reopen the spreadsheet **or** refresh the browser tab.
 2. Confirm the menu **Companion tools** appears in the menu bar.
-3. Try **Companion tools → Open sidebar (link & PDF)** and enter a real **Sign Up Form** row number (≥ 2).  
-   - If copy-link fails, open **Manage deployments**, copy the `/exec` URL, and build `?view=public&row=ROW` manually until deployment is correct.
+3. Try **Companion tools → Open sidebar** and use **Public link & PDF** (row #) or **Match suggestions** (dropdown + scored list).  
+   - If copy-link fails, set **`WEB_APP_PUBLIC_BASE_URL`** (Phase 4) or build `?view=public&row=ROW` manually on your `/exec` URL.
 
 ---
 
 ## Phase 6 — Match Queue (spreadsheet matching)
 
 1. **Companion tools → Prepare Match Queue sheet** (creates the **Match Queue** tab).
-2. Each row: **Companion 1 row** and **Companion 2 row** = row numbers on **`Sign Up Form`**. Optional **Status** and **Notes**. Leave **Processed** blank until you run the processor.
+2. Each row: **Companion 1 row** and **Companion 2 row** = row numbers on **`Sign Up Form`**. Optional **Status** and **Notes**. Leave **Processed** blank until you run the processor. Rows with **both** A and B empty are ignored.
 3. **Companion tools → Process Match Queue** appends pairs to the **`Matches`** tab.
 
 ---
@@ -125,10 +126,12 @@ Steps:
 
 If you use **`VolunteersSync.gs`**:
 
-1. On **Sign Up Form**, column **AQ** = volunteer (`TRUE`), column **AR** = last contact date. **Volunteers** (AQ = TRUE) and **Companions** (AQ ≠ TRUE) tabs both use columns **E — Last Contact Date** (from AR) and **F — Notes** (manual; preserved on re-sync). Menu: **Companion tools → Sync Volunteers & Companions tabs** runs both.
-2. Run **`syncVolunteersFromSignUpForm`** once from the Apps Script editor to test, **or** add triggers (**Edit → Triggers**):
+1. On **Sign Up Form**, column **AQ** = volunteer (`TRUE`). The **Volunteers** tab lists those rows: **A–D** sync from the form; **E — Last Contact Date** and **F — Internal Notes** are **staff-only** on the Volunteers sheet. Editing E or F updates the matching columns on **Sign Up Form** (requires an **On edit** trigger on `onEditVolunteersStaffFields` — see `VolunteersSync.gs`).
+2. Menu: **Companion tools → Sync Volunteers & Companions tabs** runs both Volunteers and Companions sync.
+3. Triggers (Apps Script → clock → **Add trigger**):
    - **On change** → `onChangeVolunteersSync` (good for new Form rows)
-   - Optional **On edit** → `onEditVolunteersSync`
+   - Optional **On edit** (Sign Up Form) → `onEditVolunteersSync`
+   - **On edit** (all sheets; handler only acts on **Volunteers**) → `onEditVolunteersStaffFields` — pushes E/F to Sign Up Form
 
 See the comments at the bottom of **`VolunteersSync.gs`** for trigger details.
 
@@ -162,7 +165,7 @@ Browsers often block direct `fetch()` to `script.google.com`. If a browser SPA o
 |---------|----------------|
 | No **Companion tools** menu | All `.gs` files saved; refresh sheet; **Code** contains `onOpen` → `sheetCompanionMenuOnOpen` |
 | API returns Unauthorized | **`LOVABLE_API_TOKEN`** matches the client |
-| Sign-in instead of JSON/HTML | Web app **Who has access**; correct **`/exec`** URL |
+| Public link wrong or “unable to open” | **`WEB_APP_PUBLIC_BASE_URL`** script property; **Anyone** access; **`/exec`** URL; new deployment version |
 | CORS in browser | Use **Phase 8** proxy as API base |
 | Empty directory | Tab **`Sign Up Form`** exact name; data from row 2 |
 | Old behavior after edit | **New version** deployment (**Phase 4**) |
@@ -177,7 +180,7 @@ Browsers often block direct `fetch()` to `script.google.com`. If a browser SPA o
 | `App.html` | Legacy dashboard (Web app root) |
 | `PublicProfile.html` | Public share page template |
 | `SheetCompanionTools.gs` | **Companion tools** menu + sidebar |
-| `SheetCompanionSidebar.html` | Sidebar UI (link + PDF) |
+| `SheetCompanionSidebar.html` | Sidebar UI (public link, PDF, match suggestions) |
 | `MatchQueue.gs` | **Match Queue** sheet + processor |
 | `VolunteersSync.gs` | **Volunteers** tab sync (AQ = TRUE) |
 | `CompanionsSync.gs` | **Companions** tab sync (AQ ≠ TRUE); uses helpers from VolunteersSync |

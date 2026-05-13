@@ -65,8 +65,13 @@ function processMatchQueueFromSheet() {
       continue;
     }
 
-    var r1 = parseInt(String(row[0]).trim(), 10);
-    var r2 = parseInt(String(row[1]).trim(), 10);
+    var s1 = String(row[0] != null ? row[0] : '').trim();
+    var s2 = String(row[1] != null ? row[1] : '').trim();
+    if (s1 === '' && s2 === '') {
+      continue;
+    }
+    var r1 = parseInt(s1, 10);
+    var r2 = parseInt(s2, 10);
     if (isNaN(r1) || isNaN(r2)) {
       errors.push('Queue row ' + sheetRow + ': Enter numbers in columns A and B.');
       continue;

@@ -12,6 +12,12 @@ var POST_SURVEY_SHEET_NAME = 'Post Survey Results';
 /** Script property name for the external JSON API shared secret (historically named LOVABLE_API_TOKEN). */
 var LOVABLE_API_TOKEN_KEY = 'LOVABLE_API_TOKEN';
 
+/**
+ * Optional override for public links / PDFs when ScriptApp.getService().getUrl() is empty or wrong.
+ * Set in Project Settings → Script properties: WEB_APP_PUBLIC_BASE_URL = your Web app URL (…/exec, no trailing #).
+ */
+var WEB_APP_PUBLIC_BASE_URL_KEY = 'WEB_APP_PUBLIC_BASE_URL';
+
 function doGet(e) {
   var p = e && e.parameter ? e.parameter : {};
   if (String(p.view || '') === 'public' && p.row != null && String(p.row).length > 0) {
@@ -228,6 +234,21 @@ function isContactOrSensitiveHeader_(header) {
   return false;
 }
 
+/** Public profile / PDF only — extra staff or system columns not shown on public link or PDF. */
+function isPublicProfileExcludedQuestionHeader_(header) {
+  var s = String(header || '').toLowerCase();
+  if (s.indexOf('timestamp') >= 0) return true;
+  if (s.indexOf('waiver') >= 0) return true;
+  if (s.indexOf('signature') >= 0) return true;
+  if (s.indexOf('last contact') >= 0) return true;
+  if (s.indexOf('volunteer status') >= 0) return true;
+  if (s.indexOf('staff status') >= 0) return true;
+  if (s.indexOf('companion status') >= 0) return true;
+  if (s.indexOf('program status') >= 0) return true;
+  if (s.indexOf('column') >= 0) return true;
+  return false;
+}
+
 /** Display dates as MM/dd/yyyy (script time zone). */
 function formatDateMMDD_(value) {
   if (value == null || value === '') return '';
@@ -366,6 +387,7 @@ function filterPublicQuestions_(allQuestions) {
   if (!allQuestions || !allQuestions.length) return [];
   return allQuestions.filter(function (item) {
     if (isContactOrSensitiveHeader_(item.question)) return false;
+    if (isPublicProfileExcludedQuestionHeader_(item.question)) return false;
     var h = String(item.question || '')
       .trim()
       .toLowerCase();
@@ -426,6 +448,10 @@ function servePublicProfile_(rowParam) {
 }
 
 function getWebAppBaseUrl_() {
+  var prop = PropertiesService.getScriptProperties().getProperty(WEB_APP_PUBLIC_BASE_URL_KEY);
+  if (prop != null && String(prop).trim()) {
+    return String(prop).trim().replace(/#$/, '');
+  }
   try {
     var url = ScriptApp.getService().getUrl();
     return url ? String(url).replace(/#$/, '') : '';
@@ -444,12 +470,208 @@ function getPublicShareLink(rowId) {
       ok: false,
       url: '',
       message:
-        'Could not detect the web app URL automatically. In Apps Script: Deploy → Manage deployments → copy the Web app URL, then add this to the end: ?view=public&row=' +
+        'Could not detect the web app URL. Set Script property WEB_APP_PUBLIC_BASE_URL to your Web app URL (Deploy → Manage deployments → …/exec), or redeploy. Then append: ?view=public&row=' +
         encodeURIComponent(String(rowId))
     };
   }
   var sep = base.indexOf('?') >= 0 ? '&' : '?';
   return { ok: true, url: base + sep + 'view=public&row=' + encodeURIComponent(String(rowId)), message: '' };
+}
+
+/**
+ * Default matching criteria — keep in sync with DEFAULT_CRITERIA_CONFIG in App.html.
+ * @return {Array<Object>}
+ */
+function sidebarMatch_defaultCriteria_() {
+  return [
+    { key: 'borough', label: 'Borough', weight: 15, category: 'Logistics', enabled: true },
+    { key: 'willingToTravel', label: 'Willing to Travel', weight: 5, category: 'Logistics', enabled: true },
+    { key: 'availability', label: 'Availability', weight: 25, category: 'Logistics', enabled: true },
+    { key: 'age', label: 'Age Group', weight: 5, category: 'Identity', enabled: true },
+    { key: 'pronouns', label: 'Pronouns', weight: 5, category: 'Identity', enabled: true },
+    { key: 'raceEthnicity', label: 'Race/Ethnicity', weight: 5, category: 'Identity', enabled: true },
+    { key: 'gender', label: 'Gender', weight: 5, category: 'Identity', enabled: true },
+    { key: 'lgbtq', label: 'LGBTQ+ Status', weight: 10, category: 'Identity', enabled: true },
+    { key: 'hasExperiencedDV', label: 'DV Survivor', weight: 5, category: 'Lived Experience', enabled: true },
+    { key: 'hasBeenIncarcerated', label: 'Incarceration History', weight: 5, category: 'Lived Experience', enabled: true },
+    { key: 'hasExperiencedHomelessness', label: 'Homelessness History', weight: 5, category: 'Lived Experience', enabled: true },
+    { key: 'receivingMentalHealthServices', label: 'Mental Health Svcs', weight: 5, category: 'Lived Experience', enabled: true },
+    { key: 'isVeteran', label: 'Veteran', weight: 5, category: 'Lived Experience', enabled: true }
+  ];
+}
+
+/** @return {Array<Object>} */
+function sidebarMatch_getCriteriaArray_() {
+  var raw = PropertiesService.getScriptProperties().getProperty('MATCHING_CRITERIA');
+  if (raw) {
+    try {
+      var arr = JSON.parse(raw);
+      if (arr && arr.length) return arr;
+    } catch (e) {}
+  }
+  return sidebarMatch_defaultCriteria_();
+}
+
+/** @return {Array<string>} */
+function sidebarMatch_getOverlappingAvailability_(c1, c2) {
+  var days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  var overlaps = [];
+  for (var i = 0; i < days.length; i++) {
+    var day = days[i];
+    var s1 = c1.availability && c1.availability[day] ? String(c1.availability[day]) : '';
+    var s2 = c2.availability && c2.availability[day] ? String(c2.availability[day]) : '';
+    if (s1 && s2 && s1 !== 'Unavailable' && s2 !== 'Unavailable') {
+      overlaps.push(day.charAt(0).toUpperCase() + day.slice(1));
+    }
+  }
+  return overlaps;
+}
+
+/**
+ * Match score for sidebar — keep logic aligned with calculateMatchPercentage in App.html.
+ * @return {{ percent: number, reasons: Array<string> }}
+ */
+function sidebarMatch_calculatePercentage_(c1, c2, config) {
+  var score = 0;
+  var maxScore = 0;
+  var reasons = [];
+  var configMap = {};
+  for (var ci = 0; ci < config.length; ci++) {
+    var entry = config[ci];
+    if (entry && entry.key) configMap[entry.key] = entry;
+  }
+
+  function addScore(key, points, reason) {
+    var c = configMap[key];
+    if (c && c.enabled) {
+      score += points;
+      reasons.push(reason);
+    }
+  }
+
+  for (var j = 0; j < config.length; j++) {
+    if (config[j] && config[j].enabled) maxScore += config[j].weight || 0;
+  }
+  if (maxScore === 0) return { percent: 0, reasons: [] };
+
+  if (String(c1.borough || '') === String(c2.borough || '')) {
+    addScore('borough', configMap['borough'] ? configMap['borough'].weight || 15 : 15, 'Same Borough (' + String(c1.borough || '') + ')');
+  } else if (String(c1.willingToTravel || '') === 'Yes' || String(c2.willingToTravel || '') === 'Yes') {
+    addScore('willingToTravel', configMap['willingToTravel'] ? configMap['willingToTravel'].weight || 5 : 5, 'Willing to travel');
+  }
+
+  if (String(c1.age || '') === String(c2.age || '')) addScore('age', configMap['age'] ? configMap['age'].weight || 5 : 5, 'Same age group');
+  if (String(c1.pronouns || '') === String(c2.pronouns || '') && String(c1.pronouns || '').trim()) {
+    addScore('pronouns', configMap['pronouns'] ? configMap['pronouns'].weight || 3 : 3, 'Same Pronouns');
+  }
+  if (String(c1.raceEthnicity || '') === String(c2.raceEthnicity || '') && String(c1.raceEthnicity || '').trim()) {
+    addScore('raceEthnicity', configMap['raceEthnicity'] ? configMap['raceEthnicity'].weight || 5 : 5, 'Same Race/Ethnicity');
+  }
+  if (String(c1.gender || '') === String(c2.gender || '')) addScore('gender', configMap['gender'] ? configMap['gender'].weight || 5 : 5, 'Gender Match');
+  if (String(c1.lgbtq || '') === 'Yes' && String(c2.lgbtq || '') === 'Yes') {
+    addScore('lgbtq', configMap['lgbtq'] ? configMap['lgbtq'].weight || 10 : 10, 'Both LGBTQ+');
+  }
+
+  var experiences = [
+    'hasExperiencedDV',
+    'hasBeenIncarcerated',
+    'hasExperiencedHomelessness',
+    'receivingMentalHealthServices',
+    'isVeteran'
+  ];
+  for (var k = 0; k < experiences.length; k++) {
+    var key = experiences[k];
+    if (String(c1[key] || '') === 'Yes' && String(c2[key] || '') === 'Yes') {
+      var w = configMap[key] ? configMap[key].weight || 8 : 8;
+      var lbl = configMap[key] && configMap[key].label ? configMap[key].label : key;
+      addScore(key, w, 'Shared: ' + lbl);
+    }
+  }
+
+  if (configMap['availability'] && configMap['availability'].enabled) {
+    var overlaps = sidebarMatch_getOverlappingAvailability_(c1, c2);
+    if (overlaps.length > 0) {
+      var weight = configMap['availability'].weight || 25;
+      var fraction = overlaps.length / 3;
+      if (fraction > 1) fraction = 1;
+      score += weight * fraction;
+      reasons.push(overlaps.length + ' overlapping days');
+    }
+  }
+
+  var percent = Math.round((score / maxScore) * 100);
+  return { percent: percent, reasons: reasons };
+}
+
+/** @return {Array<Object>} Parsed companions (no allQuestions) for scoring. */
+function sidebarMatch_loadCompanionsParsed_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var formSheet = ss.getSheetByName(FORM_SHEET_NAME);
+  if (!formSheet) return [];
+  var lastFormRow = formSheet.getLastRow();
+  var lastFormCol = formSheet.getLastColumn();
+  if (lastFormRow < 2 || lastFormCol < 1) return [];
+  var formData = formSheet.getRange(1, 1, lastFormRow, lastFormCol).getValues();
+  var headers = formData[0];
+  var rows = formData.slice(1);
+  var colIdx = buildCompanionColumnIndices(headers);
+  var companions = [];
+  for (var i = 0; i < rows.length; i++) {
+    companions.push(parseCompanionRow(rows[i], colIdx, i + 2));
+  }
+  return companions;
+}
+
+/**
+ * Sign-up people for spreadsheet sidebar dropdown.
+ * @return {Array<{ rowId: string, displayName: string }>}
+ */
+function getSignupPeopleForSidebar() {
+  var companions = sidebarMatch_loadCompanionsParsed_();
+  return companions.map(function (p) {
+    var name = (String(p.firstName || '').trim() + ' ' + String(p.lastName || '').trim()).trim() || 'Row ' + p.id;
+    return {
+      rowId: String(p.id),
+      listName: name,
+      displayName: name + ' (row ' + p.id + ')'
+    };
+  });
+}
+
+/**
+ * Ranked match suggestions for Companion tools sidebar (same scoring as dashboard).
+ * @param {string} rowId Sign-up sheet row number
+ * @return {Array<{ rowId: string, displayName: string, percent: number, reasons: Array<string> }>}
+ */
+function getMatchSuggestionsForSidebarRow(rowId) {
+  var criteria = sidebarMatch_getCriteriaArray_();
+  var companions = sidebarMatch_loadCompanionsParsed_();
+  var id = String(rowId != null ? rowId : '').trim();
+  var c1 = null;
+  for (var i = 0; i < companions.length; i++) {
+    if (String(companions[i].id) === id) {
+      c1 = companions[i];
+      break;
+    }
+  }
+  if (!c1) return [];
+  var out = [];
+  for (var j = 0; j < companions.length; j++) {
+    var c2 = companions[j];
+    if (String(c2.id) === id) continue;
+    var scored = sidebarMatch_calculatePercentage_(c1, c2, criteria);
+    var dn = (String(c2.firstName || '').trim() + ' ' + String(c2.lastName || '').trim()).trim() || 'Row ' + c2.id;
+    out.push({
+      rowId: String(c2.id),
+      displayName: dn,
+      percent: scored.percent,
+      reasons: scored.reasons
+    });
+  }
+  out.sort(function (a, b) {
+    return b.percent - a.percent;
+  });
+  return out.slice(0, 50);
 }
 
 /**
