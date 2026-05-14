@@ -754,264 +754,6 @@
       );
     };
 
-    const MATCH_STATUS_OPTIONS = [
-      'Just Matched',
-      'Introduction Sent',
-      'First Meeting Set',
-      'Active',
-      'Canceled'
-    ];
-
-    const ActiveMatches = ({ matches, companions, onUpdateStatus, onDeleteMatch, onUpdateNotes, onUpdateMatchLastContact, onBulkDeleteComplete, onBulkStatusComplete, config }) => {
-      const [viewMatch, setViewMatch] = useState(null);
-      const [selectedIds, setSelectedIds] = useState([]);
-      const [bulkStatus, setBulkStatus] = useState('Active');
-      const [bulkBusy, setBulkBusy] = useState(false);
-
-      const selectedSet = useMemo(() => new Set(selectedIds.map(String)), [selectedIds]);
-
-      const toggleSelected = (id) => {
-        const s = String(id);
-        setSelectedIds((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
-      };
-
-      if (matches.length === 0) return <div className="p-8 text-center text-gray-500">No active matches yet.</div>;
-
-      const listable = matches.filter((match) => {
-        const c1 = companions.find((c) => String(c.id) === String(match.companion1Id));
-        const c2 = companions.find((c) => String(c.id) === String(match.companion2Id));
-        return !!(c1 && c2);
-      });
-      const listableIds = listable.map((m) => String(m.id));
-
-      const allListableSelected = listableIds.length > 0 && listableIds.every((id) => selectedSet.has(id));
-
-      const selectAllListable = () => {
-        if (allListableSelected) setSelectedIds([]);
-        else setSelectedIds([...listableIds]);
-      };
-
-      const runBulkDelete = () => {
-        if (selectedIds.length === 0) return;
-        if (!window.confirm(`Delete ${selectedIds.length} match(es)? This cannot be undone.`)) return;
-        setBulkBusy(true);
-        const ids = [...selectedIds];
-        google.script.run
-          .withSuccessHandler(() => {
-            setBulkBusy(false);
-            onBulkDeleteComplete && onBulkDeleteComplete(ids);
-            setSelectedIds([]);
-            setViewMatch((vm) => {
-              if (!vm || !vm.matchId) return vm;
-              return ids.includes(String(vm.matchId)) ? null : vm;
-            });
-          })
-          .withFailureHandler((e) => {
-            setBulkBusy(false);
-            alert(e.message || String(e));
-          })
-          .deleteMatchesBatch(ids);
-      };
-
-      const runBulkStatus = () => {
-        if (selectedIds.length === 0) return;
-        if (!window.confirm(`Set status to “${bulkStatus}” for ${selectedIds.length} match(es)?`)) return;
-        setBulkBusy(true);
-        const ids = [...selectedIds];
-        const st = bulkStatus;
-        google.script.run
-          .withSuccessHandler(() => {
-            setBulkBusy(false);
-            onBulkStatusComplete && onBulkStatusComplete(ids, st);
-          })
-          .withFailureHandler((e) => {
-            setBulkBusy(false);
-            alert(e.message || String(e));
-          })
-          .updateMatchesStatusBatch(ids, st);
-      };
-
-      return (
-        <div className="p-8">
-           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-6 min-w-0">
-              <h1 className="text-2xl font-bold text-gray-900 break-words">Active Companions</h1>
-              <div className="flex flex-wrap items-center gap-2 min-w-0">
-                 <button
-                    type="button"
-                    disabled={bulkBusy || listableIds.length === 0}
-                    onClick={selectAllListable}
-                    className="text-sm px-3 py-2 rounded-md border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50"
-                 >{allListableSelected ? 'Clear selection' : 'Select all'}</button>
-                 <span className="text-sm text-gray-600 px-2">{selectedIds.length} selected</span>
-                 <select
-                    value={bulkStatus}
-                    onChange={(e) => setBulkStatus(e.target.value)}
-                    disabled={bulkBusy}
-                    className="text-sm border border-gray-300 rounded-md px-2 py-2 bg-white disabled:opacity-50"
-                 >
-                    {MATCH_STATUS_OPTIONS.map((opt) => (
-                       <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                 </select>
-                 <button
-                    type="button"
-                    disabled={bulkBusy || selectedIds.length === 0}
-                    onClick={runBulkStatus}
-                    className="text-sm px-4 py-2 rounded-md bg-brand-600 text-white font-medium hover:bg-brand-700 disabled:opacity-50 disabled:pointer-events-none"
-                 >Apply status</button>
-                 <button
-                    type="button"
-                    disabled={bulkBusy || selectedIds.length === 0}
-                    onClick={runBulkDelete}
-                    className="text-sm px-4 py-2 rounded-md bg-red-600 text-white font-medium hover:bg-red-700 disabled:opacity-50 disabled:pointer-events-none"
-                 >Delete selected</button>
-              </div>
-           </div>
-           <div className="grid grid-cols-1 gap-6">
-             {matches.map(match => {
-                const c1 = companions.find(c => String(c.id) === String(match.companion1Id));
-                const c2 = companions.find(c => String(c.id) === String(match.companion2Id));
-                if (!c1 || !c2) return null;
-
-                const { percent, reasons } = calculateMatchPercentage(c1, c2, config);
-                const isSel = selectedSet.has(String(match.id));
-
-                return (
-                   <div key={match.id} className={`bg-white rounded-lg shadow-sm border overflow-hidden hover:shadow-md transition ${isSel ? 'border-brand-400 ring-1 ring-brand-200' : 'border-gray-200'}`}>
-                      {/* Match Header */}
-                      <div 
-                         onClick={() => setViewMatch({ c1, c2, matchId: match.id, lastContactDate: match.lastContactDate || '' })}
-                         className="p-6 cursor-pointer border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-white to-gray-50 group"
-                      >
-                         <div className="flex items-center space-x-6">
-                            <div className="flex items-center -space-x-3">
-                               <div className="h-12 w-12 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold text-lg ring-4 ring-white z-10">{(c1.firstName && c1.firstName[0]) ? c1.firstName[0] : '?'}</div>
-                               <div className="h-12 w-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-lg ring-4 ring-white z-0">{(c2.firstName && c2.firstName[0]) ? c2.firstName[0] : '?'}</div>
-                            </div>
-                            <div>
-                               <h3 className="text-lg font-bold text-gray-900 group-hover:text-brand-600 transition">{c1.firstName} & {c2.firstName}</h3>
-                               <div className="flex flex-wrap gap-2 mt-1">
-                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${percent > 75 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                                     {percent}% Match
-                                  </span>
-                                  {reasons.slice(0, 2).map((r, i) => (
-                                     <span key={i} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">{r}</span>
-                                  ))}
-                               </div>
-                               {(volunteerBadgeOnly(c1.volunteer) || volunteerBadgeOnly(c2.volunteer)) && (
-                                  <div className="flex flex-wrap gap-1.5 mt-2">
-                                     {volunteerBadgeOnly(c1.volunteer) && <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-teal-100 text-teal-800 border border-teal-200">{c1.firstName}: Volunteer</span>}
-                                     {volunteerBadgeOnly(c2.volunteer) && <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-teal-100 text-teal-800 border border-teal-200">{c2.firstName}: Volunteer</span>}
-                                  </div>
-                               )}
-                            </div>
-                         </div>
-                         <div className="text-gray-300 group-hover:text-brand-500 transition-colors">
-                            <ICONS.BookOpen className="w-6 h-6" />
-                         </div>
-                      </div>
-
-                      {/* Match Actions */}
-                      <div className="bg-gray-50 px-6 py-4 flex flex-col gap-3 min-w-0">
-                          <div className="flex items-center justify-between gap-3 min-w-0">
-                             <div className="flex items-center space-x-3 w-full min-w-0 mr-2 flex-wrap sm:flex-nowrap">
-                                <input
-                                   type="checkbox"
-                                   className="h-5 w-5 rounded border-gray-300 text-brand-600 focus:ring-brand-500 flex-shrink-0"
-                                   checked={isSel}
-                                   onChange={() => toggleSelected(match.id)}
-                                   aria-label={`Select match ${c1.firstName} and ${c2.firstName}`}
-                                />
-                                <div className="relative inline-block text-left">
-                                   <select 
-                                      value={match.status || 'Just Matched'} 
-                                      onChange={(e) => {
-                                         const next = e.target.value;
-                                         if (String(next).trim() === String(match.status || '').trim()) return;
-                                         onUpdateStatus(match.id, next);
-                                      }}
-                                      className={`appearance-none pl-3 pr-8 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-brand-500 border-0 shadow-sm
-                                        ${match.status === 'Active' ? 'bg-green-100 text-green-800' : 
-                                          match.status === 'Canceled' ? 'bg-red-100 text-red-800' : 
-                                          'bg-blue-100 text-blue-800'}`}
-                                   >
-                                      {MATCH_STATUS_OPTIONS.map((opt) => (
-                                         <option key={opt} value={opt}>{opt}</option>
-                                      ))}
-                                   </select>
-                                </div>
-                                
-                                <div className="flex-1 relative min-w-[8rem]">
-                                   <ICONS.Edit className="w-3 h-3 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                                   <input 
-                                      type="text" 
-                                      className="w-full text-sm border-gray-300 rounded-md pl-8 focus:ring-brand-500 focus:border-brand-500 placeholder-gray-400 bg-white"
-                                      placeholder="Internal notes..."
-                                      value={match.notes || ""}
-                                      onChange={(e) => onUpdateNotes(match.id, e.target.value)}
-                                   />
-                                </div>
-                             </div>
-                             
-                             <button type="button" onClick={() => onDeleteMatch(match.id)} className="text-gray-400 hover:text-red-500 transition p-2 hover:bg-red-50 rounded-full flex-shrink-0 self-start sm:self-center">
-                                <ICONS.Delete className="w-4 h-4" />
-                             </button>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 pl-0 sm:pl-11 border-t border-gray-200/80 pt-3">
-                             <span className="text-xs font-bold text-gray-500 uppercase tracking-wide whitespace-nowrap">Last contact</span>
-                             <input
-                                type="date"
-                                className="text-sm border border-gray-300 rounded-md px-2 py-1.5 bg-white focus:ring-brand-500 focus:border-brand-500"
-                                key={`match-lc-${match.id}-${match.lastContactDate || ''}`}
-                                defaultValue={lastContactRawToDateInput(match.lastContactDate)}
-                                onChange={(e) => onUpdateMatchLastContact && onUpdateMatchLastContact(match.id, e.target.value)}
-                                aria-label={`Last contact date for ${c1.firstName} and ${c2.firstName}`}
-                             />
-                             <button
-                                type="button"
-                                className="text-xs font-medium text-gray-600 hover:text-brand-700 px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50"
-                                onClick={() => onUpdateMatchLastContact && onUpdateMatchLastContact(match.id, '')}
-                             >
-                                Clear
-                             </button>
-                             {!match.lastContactDate ? (
-                                <span className="text-xs text-gray-500">Not set</span>
-                             ) : null}
-                          </div>
-                      </div>
-                   </div>
-                );
-             })}
-           </div>
-
-           {/* Match Detail Modal */}
-           {viewMatch && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                  <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setViewMatch(null)}></div>
-                  <div className="bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all w-full max-w-6xl h-[90vh] flex flex-col relative z-10">
-                     <div className="bg-white px-6 py-4 flex justify-between items-center border-b border-gray-200">
-                        <h3 className="text-xl font-bold text-gray-900">Match Comparison</h3>
-                        <button 
-                           onClick={() => setViewMatch(null)} 
-                           className="bg-red-500 hover:bg-red-600 text-white rounded-md p-2 transition shadow-sm"
-                        >
-                           <ICONS.Close className="w-5 h-5"/>
-                        </button>
-                     </div>
-                     <div className="px-6 py-2 bg-gray-100 border-b border-gray-200 text-sm text-gray-700">
-                        <span className="font-semibold text-gray-800">Last contact (this pair):</span>{' '}
-                        {viewMatch.lastContactDate ? formatDateMMDD(viewMatch.lastContactDate) : '—'}
-                     </div>
-                     <div className="p-6 overflow-y-auto flex-1 bg-gray-50">
-                        <MatchComparison c1={viewMatch.c1} c2={viewMatch.c2} config={config} />
-                     </div>
-                  </div>
-              </div>
-           )}
-        </div>
-      );
-    };
-
     const InsightsPanel = () => {
       const [page, setPage] = useState(null);
       const [busy, setBusy] = useState(true);
@@ -1454,11 +1196,13 @@
                setPendingMatchTargetIds([]);
                setIsMatchMode(false);
                setSelectedCompanion(null);
-               setActiveTab('matches');
+               setActiveTab('dashboard');
                if (skipped > 0) {
                   alert(
                      `${created.length} match(es) created. ${skipped} skipped (duplicate or invalid).`
                   );
+               } else {
+                  alert(`${created.length} match(es) created. View or edit them in the Google Sheet "Matches" tab.`);
                }
             })
             .withFailureHandler((err) => {
@@ -1586,10 +1330,6 @@
                    <ICONS.Users className="w-5 h-5 mr-3" /> Directory
                    {companions.length > 0 && <span className="ml-auto bg-brand-600 text-xs py-0.5 px-2 rounded-full">{companions.length}</span>}
                 </button>
-                <button type="button" onClick={() => setActiveTab('matches')} className={`w-full flex items-center px-4 py-3 rounded-md transition ${activeTab === 'matches' ? 'bg-brand-800 shadow-md' : 'hover:bg-brand-800 hover:bg-opacity-50 text-brand-100'}`}>
-                   <ICONS.Match className="w-5 h-5 mr-3" /> Matches 
-                   {matches.length > 0 && <span className="ml-auto bg-brand-600 text-xs py-0.5 px-2 rounded-full">{matches.length}</span>}
-                </button>
                 <button type="button" onClick={() => setActiveTab('insights')} className={`w-full flex items-center px-4 py-3 rounded-md transition ${activeTab === 'insights' ? 'bg-brand-800 shadow-md' : 'hover:bg-brand-800 hover:bg-opacity-50 text-brand-100'}`}>
                    <ICONS.BarChart className="w-5 h-5 mr-3" /> Insights
                 </button>
@@ -1640,45 +1380,6 @@
                    />
                 </div>
              )}
-             {activeTab === 'matches' && (
-                <div className="overflow-auto h-full">
-                    <ActiveMatches 
-                       matches={matches} 
-                       companions={companions} 
-                       config={config}
-                       onUpdateStatus={(id, s) => {
-                          setMatches(m => m.map(x => x.id === id ? {...x, status: s} : x));
-                          google.script.run.updateMatchData(id, 'status', s);
-                       }}
-                       onUpdateNotes={(id, n) => {
-                          setMatches(m => m.map(x => x.id === id ? {...x, notes: n} : x));
-                          google.script.run.updateMatchData(id, 'notes', n);
-                       }}
-                       onDeleteMatch={(id) => {
-                          if(confirm('Delete match?')) {
-                             setMatches(m => m.filter(x => x.id !== id));
-                             google.script.run.deleteMatch(id);
-                          }
-                       }}
-                       onBulkDeleteComplete={(ids) => {
-                          const idSet = new Set(ids.map(String));
-                          setMatches((m) => m.filter((x) => !idSet.has(String(x.id))));
-                       }}
-                       onBulkStatusComplete={(ids, status) => {
-                          const idSet = new Set(ids.map(String));
-                          setMatches((m) => m.map((x) => (idSet.has(String(x.id)) ? { ...x, status } : x)));
-                       }}
-                       onUpdateMatchLastContact={(id, iso) => {
-                          const display = iso ? dateInputToMMDD(iso) : '';
-                          setMatches((m) =>
-                             m.map((x) => (String(x.id) === String(id) ? { ...x, lastContactDate: display } : x))
-                          );
-                          google.script.run.updateMatchLastContactDate(String(id), iso || '');
-                       }}
-                    />
-                </div>
-             )}
-
              {activeTab === 'dashboard' && (
                 <div className="flex flex-col h-full">
                     <div className="bg-white border-b border-gray-200 px-8 py-4 flex justify-between items-center shadow-sm z-10">

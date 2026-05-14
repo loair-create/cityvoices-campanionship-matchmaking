@@ -14,9 +14,104 @@ var LOVABLE_API_TOKEN_KEY = 'LOVABLE_API_TOKEN';
 
 /**
  * Optional override for public links / PDFs when ScriptApp.getService().getUrl() is empty or wrong.
- * Set in Project Settings → Script properties: WEB_APP_PUBLIC_BASE_URL = your Web app URL (…/exec, no trailing #).
+ * 1) Script property WEB_APP_PUBLIC_BASE_URL (Apps Script → Project Settings → Script properties), or
+ * 2) Same key on this spreadsheet (DocumentProperties) — use "Save" in the Companion sidebar, or
+ * 3) Automatic URL from the active Web app deployment.
  */
 var WEB_APP_PUBLIC_BASE_URL_KEY = 'WEB_APP_PUBLIC_BASE_URL';
+
+/** Strip query/hash and trailing slash so ?view=public is appended cleanly. */
+function normalizeWebAppBaseUrl_(raw) {
+  if (raw == null) return '';
+  var u = String(raw).trim().replace(/#$/, '');
+  var q = u.indexOf('?');
+  if (q >= 0) u = u.substring(0, q);
+  return u.replace(/\/$/, '');
+}
+
+/**
+ * Resolve Web app base URL: script property → spreadsheet document property → deployment URL.
+ * DocumentProperties work in container-bound scripts (typical spreadsheet project).
+ */
+function resolveWebAppBaseUrl_() {
+  var sp = PropertiesService.getScriptProperties().getProperty(WEB_APP_PUBLIC_BASE_URL_KEY);
+  if (sp != null && String(sp).trim()) return normalizeWebAppBaseUrl_(sp);
+  try {
+    var dp = PropertiesService.getDocumentProperties().getProperty(WEB_APP_PUBLIC_BASE_URL_KEY);
+    if (dp != null && String(dp).trim()) return normalizeWebAppBaseUrl_(dp);
+  } catch (ignore) {}
+  try {
+    var svc = ScriptApp.getService().getUrl();
+    if (svc && String(svc).trim()) return normalizeWebAppBaseUrl_(svc);
+  } catch (e) {}
+  return '';
+}
+
+/**
+ * For Companion sidebar: whether a base URL is available and how it was resolved.
+ * @return {{ ok: boolean, baseUrl: string, source: string, message: string }}
+ */
+function getWebAppBaseUrlStatus() {
+  var sp = PropertiesService.getScriptProperties().getProperty(WEB_APP_PUBLIC_BASE_URL_KEY);
+  if (sp != null && String(sp).trim()) {
+    return { ok: true, baseUrl: normalizeWebAppBaseUrl_(sp), source: 'script_property', message: '' };
+  }
+  try {
+    var dp = PropertiesService.getDocumentProperties().getProperty(WEB_APP_PUBLIC_BASE_URL_KEY);
+    if (dp != null && String(dp).trim()) {
+      return { ok: true, baseUrl: normalizeWebAppBaseUrl_(dp), source: 'spreadsheet_saved', message: '' };
+    }
+  } catch (ignore) {}
+  try {
+    var svc = ScriptApp.getService().getUrl();
+    if (svc && String(svc).trim()) {
+      return { ok: true, baseUrl: normalizeWebAppBaseUrl_(svc), source: 'deployment', message: '' };
+    }
+  } catch (e) {}
+  return {
+    ok: false,
+    baseUrl: '',
+    source: '',
+    message:
+      'Could not detect the Web app URL from the sidebar. Paste your /exec URL below and click Save, or set Script property WEB_APP_PUBLIC_BASE_URL.'
+  };
+}
+
+/**
+ * Saves Web app base URL for this spreadsheet (DocumentProperties). Use when Copy public link fails from the sidebar.
+ * Pass '' to clear. @return {{ ok: boolean, message: string }}
+ */
+function saveWebAppPublicBaseUrlFromSidebar(url) {
+  var raw = String(url != null ? url : '').trim();
+  if (!raw) {
+    try {
+      PropertiesService.getDocumentProperties().deleteProperty(WEB_APP_PUBLIC_BASE_URL_KEY);
+      return { ok: true, message: 'Removed saved URL for this spreadsheet.' };
+    } catch (e) {
+      return { ok: false, message: String(e.message || e) };
+    }
+  }
+  if (raw.indexOf('https://') !== 0 && raw.indexOf('http://') !== 0) {
+    return { ok: false, message: 'URL must start with https://' };
+  }
+  var u = normalizeWebAppBaseUrl_(raw);
+  if (u.indexOf('script.google.com') < 0) {
+    return { ok: false, message: 'Use the Web app URL from Deploy → Manage deployments (contains script.google.com).' };
+  }
+  if (u.indexOf('/exec') < 0 && u.indexOf('/dev') < 0) {
+    return { ok: false, message: 'URL should end with /exec or /dev.' };
+  }
+  try {
+    PropertiesService.getDocumentProperties().setProperty(WEB_APP_PUBLIC_BASE_URL_KEY, u);
+    return { ok: true, message: 'Saved for this spreadsheet. Try Copy public link again.' };
+  } catch (e) {
+    return {
+      ok: false,
+      message:
+        'Could not save here. Set Script property WEB_APP_PUBLIC_BASE_URL in Apps Script → Project Settings.'
+    };
+  }
+}
 
 function doGet(e) {
   var p = e && e.parameter ? e.parameter : {};
@@ -448,29 +543,20 @@ function servePublicProfile_(rowParam) {
 }
 
 function getWebAppBaseUrl_() {
-  var prop = PropertiesService.getScriptProperties().getProperty(WEB_APP_PUBLIC_BASE_URL_KEY);
-  if (prop != null && String(prop).trim()) {
-    return String(prop).trim().replace(/#$/, '');
-  }
-  try {
-    var url = ScriptApp.getService().getUrl();
-    return url ? String(url).replace(/#$/, '') : '';
-  } catch (e) {
-    return '';
-  }
+  return resolveWebAppBaseUrl_();
 }
 
 /**
  * @return {{ ok: boolean, url: string, message: string }}
  */
 function getPublicShareLink(rowId) {
-  var base = getWebAppBaseUrl_();
+  var base = resolveWebAppBaseUrl_();
   if (!base) {
     return {
       ok: false,
       url: '',
       message:
-        'Could not detect the web app URL. Set Script property WEB_APP_PUBLIC_BASE_URL to your Web app URL (Deploy → Manage deployments → …/exec), or redeploy. Then append: ?view=public&row=' +
+        'No Web app URL available. In this sidebar, paste your /exec URL under “Web app URL” and click Save, or set Script property WEB_APP_PUBLIC_BASE_URL. Example suffix: ?view=public&row=' +
         encodeURIComponent(String(rowId))
     };
   }

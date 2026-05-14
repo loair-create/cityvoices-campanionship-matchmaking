@@ -292,7 +292,11 @@ function onChangeVolunteersSync(e) {
  *    - Function: onEditVolunteersStaffFields
  *    - Event source: From spreadsheet
  *    - Event type: On edit
- * 7. Save. First run may prompt authorization.
+ * 7. Companions staff fields (same columns E/F) → Sign Up Form:
+ *    - Function: onEditCompanionsStaffFields (in CompanionsSync.gs)
+ *    - Event source: From spreadsheet
+ *    - Event type: On edit
+ * 8. Save. First run may prompt authorization.
  *
  * If **CompanionsSync.gs** is present, these handlers also refresh the **Companions** tab (non-volunteers).
  */

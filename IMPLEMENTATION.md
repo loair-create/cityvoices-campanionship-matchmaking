@@ -99,7 +99,7 @@ Steps:
 4. Click **Deploy**.
 5. **Authorize** when Google prompts (spreadsheet access, external requests, etc.).
 6. **Copy the Web app URL** (ends with `/exec`). Save it—this is your deployment URL.
-7. If **Copy public link** in the sidebar builds a bad URL or visitors see errors, set a **Script property** in Apps Script → Project Settings → **Script properties**: name **`WEB_APP_PUBLIC_BASE_URL`**, value = your full Web app URL (same as `/exec`, no trailing `#`). Redeploy after adding it.
+7. If **Copy public link** in the Companion sidebar fails: open the sidebar, paste your **`/exec`** URL under **Web app URL**, and click **Save URL on this spreadsheet** (no Apps Script settings needed). Alternatively set Script property **`WEB_APP_PUBLIC_BASE_URL`** in Project Settings → Script properties (applies everywhere). Redeploy after code changes.
 
 **After every code change:** **Deploy → Manage deployments** → pencil icon → **New version** → **Deploy**, or the live URL may keep running old code.
 
@@ -110,7 +110,7 @@ Steps:
 1. Close and reopen the spreadsheet **or** refresh the browser tab.
 2. Confirm the menu **Companion tools** appears in the menu bar.
 3. Try **Companion tools → Open sidebar** and use **Public link & PDF** (row #) or **Match suggestions** (dropdown + scored list).  
-   - If copy-link fails, set **`WEB_APP_PUBLIC_BASE_URL`** (Phase 4) or build `?view=public&row=ROW` manually on your `/exec` URL.
+   - If copy-link fails, use **Save URL on this spreadsheet** in the sidebar (Phase 4), set **`WEB_APP_PUBLIC_BASE_URL`**, or build `?view=public&row=ROW` manually on your `/exec` URL.
 
 ---
 
@@ -122,18 +122,19 @@ Steps:
 
 ---
 
-## Phase 7 — Volunteers tab (optional)
+## Phase 7 — Volunteers & Companions tabs (optional)
 
-If you use **`VolunteersSync.gs`**:
+If you use **`VolunteersSync.gs`** and **`CompanionsSync.gs`**:
 
-1. On **Sign Up Form**, column **AQ** = volunteer (`TRUE`). The **Volunteers** tab lists those rows: **A–D** sync from the form; **E — Last Contact Date** and **F — Internal Notes** are **staff-only** on the Volunteers sheet. Editing E or F updates the matching columns on **Sign Up Form** (requires an **On edit** trigger on `onEditVolunteersStaffFields` — see `VolunteersSync.gs`).
-2. Menu: **Companion tools → Sync Volunteers & Companions tabs** runs both Volunteers and Companions sync.
+1. On **Sign Up Form**, column **AQ** = volunteer (`TRUE`). **Volunteers** lists AQ = TRUE rows; **Companions** lists everyone else. For **both** tabs: **A–D** sync from the form; **E — Last Contact Date** and **F — Internal Notes** are **staff-only** on the sheet. Editing E or F updates **Sign Up Form** (requires **On edit** triggers — one per tab).
+2. Menu: **Companion tools → Sync Volunteers & Companions tabs** runs both syncs.
 3. Triggers (Apps Script → clock → **Add trigger**):
    - **On change** → `onChangeVolunteersSync` (good for new Form rows)
    - Optional **On edit** (Sign Up Form) → `onEditVolunteersSync`
-   - **On edit** (all sheets; handler only acts on **Volunteers**) → `onEditVolunteersStaffFields` — pushes E/F to Sign Up Form
+   - **On edit** (all sheets; only **Volunteers** sheet) → `onEditVolunteersStaffFields` — pushes Volunteers E/F to Sign Up Form
+   - **On edit** (all sheets; only **Companions** sheet) → `onEditCompanionsStaffFields` — pushes Companions E/F to Sign Up Form
 
-See the comments at the bottom of **`VolunteersSync.gs`** for trigger details.
+See the comments at the bottom of **`VolunteersSync.gs`** and **`CompanionsSync.gs`** for trigger details.
 
 ---
 

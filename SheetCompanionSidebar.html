@@ -14,13 +14,28 @@
         margin-bottom: 4px;
         font-weight: 600;
       }
-      input[type='number'] {
+      input[type='number'],
+      input[type='text'] {
         width: 100%;
         box-sizing: border-box;
         padding: 8px;
         margin-bottom: 12px;
         border: 1px solid #ccc;
         border-radius: 6px;
+      }
+      input[type='text'] {
+        font-size: 12px;
+      }
+      .url-status {
+        font-size: 11px;
+        line-height: 1.4;
+        margin: 0 0 10px 0;
+      }
+      .url-status.ok {
+        color: #047857;
+      }
+      .url-status.warn {
+        color: #b45309;
       }
       select {
         width: 100%;
@@ -115,9 +130,20 @@
     <button type="button" id="btnCopy">Copy public link</button>
     <button type="button" id="btnPdf" class="secondary">Download PDF</button>
     <p id="msg" class="err"></p>
+    <p id="webAppUrlStatus" class="url-status warn"></p>
+    <label for="webAppUrlInput">Web app URL (if copy link fails)</label>
+    <input
+      type="text"
+      id="webAppUrlInput"
+      placeholder="https://script.google.com/macros/s/…/exec"
+      autocomplete="off"
+    />
+    <button type="button" id="btnSaveWebAppUrl" class="secondary">Save URL on this spreadsheet</button>
+    <button type="button" id="btnClearWebAppUrl" class="secondary">Clear saved URL</button>
     <p class="hint">
-      Uses your Display settings from the dashboard. If links fail to open, set Script property
-      <strong>WEB_APP_PUBLIC_BASE_URL</strong> to your Web app URL (…/exec) in Apps Script → Project Settings.
+      From <strong>Deploy → Manage deployments</strong>, copy the Web app URL ending in <strong>/exec</strong>, paste above,
+      and click Save. (The sidebar often cannot auto-detect the URL; saving here fixes that.) Script property
+      <strong>WEB_APP_PUBLIC_BASE_URL</strong> still overrides for everyone if set in Apps Script → Project Settings.
     </p>
 
     <hr class="sep" />
@@ -152,6 +178,65 @@
         document.getElementById('matchMsg').textContent = t || '';
       }
 
+      function refreshWebAppUrlStatus() {
+        google.script.run
+          .withSuccessHandler(function (st) {
+            var el = document.getElementById('webAppUrlStatus');
+            if (!el) return;
+            if (st && st.ok && st.baseUrl) {
+              var src =
+                st.source === 'script_property'
+                  ? 'Script property'
+                  : st.source === 'spreadsheet_saved'
+                    ? 'Saved on this spreadsheet'
+                    : 'Deployment';
+              el.textContent = 'Public link base: ' + src + '.';
+              el.className = 'url-status ok';
+              document.getElementById('webAppUrlInput').value = st.baseUrl;
+            } else {
+              el.textContent = (st && st.message) || 'Paste your /exec URL below and click Save.';
+              el.className = 'url-status warn';
+            }
+          })
+          .withFailureHandler(function () {
+            var el = document.getElementById('webAppUrlStatus');
+            if (el) {
+              el.textContent = 'Could not load URL status.';
+              el.className = 'url-status warn';
+            }
+          })
+          .getWebAppBaseUrlStatus();
+      }
+
+      document.getElementById('btnSaveWebAppUrl').addEventListener('click', function () {
+        var v = document.getElementById('webAppUrlInput').value;
+        google.script.run
+          .withSuccessHandler(function (res) {
+            if (!res || !res.ok) {
+              alert((res && res.message) || 'Save failed.');
+              return;
+            }
+            alert(res.message);
+            refreshWebAppUrlStatus();
+          })
+          .withFailureHandler(function (e) {
+            alert(e.message || String(e));
+          })
+          .saveWebAppPublicBaseUrlFromSidebar(v);
+      });
+      document.getElementById('btnClearWebAppUrl').addEventListener('click', function () {
+        document.getElementById('webAppUrlInput').value = '';
+        google.script.run
+          .withSuccessHandler(function (res) {
+            alert((res && res.message) || 'Done.');
+            refreshWebAppUrlStatus();
+          })
+          .withFailureHandler(function (e) {
+            alert(e.message || String(e));
+          })
+          .saveWebAppPublicBaseUrlFromSidebar('');
+      });
+
       document.getElementById('btnCopy').addEventListener('click', function () {
         var id = rowId();
         setErr('');
@@ -182,6 +267,7 @@
           })
           .getPublicShareLink(id);
       });
+
       document.getElementById('btnPdf').addEventListener('click', function () {
         var id = rowId();
         setErr('');
@@ -357,6 +443,7 @@
           .createMatchesBatch(matchObjs);
       });
 
+      refreshWebAppUrlStatus();
       loadPeopleDropdown();
     </script>
   </body>
