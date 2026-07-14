@@ -714,7 +714,7 @@ function sidebarMatch_loadCompanionsParsed_() {
  */
 function getSignupPeopleForSidebar() {
   var companions = sidebarMatch_loadCompanionsParsed_();
-  return companions.map(function (p) {
+  var out = companions.map(function (p) {
     var name = (String(p.firstName || '').trim() + ' ' + String(p.lastName || '').trim()).trim() || 'Row ' + p.id;
     return {
       rowId: String(p.id),
@@ -722,6 +722,10 @@ function getSignupPeopleForSidebar() {
       displayName: name + ' (row ' + p.id + ')'
     };
   });
+  out.sort(function (a, b) {
+    return String(a.listName).localeCompare(String(b.listName), undefined, { sensitivity: 'base' });
+  });
+  return out;
 }
 
 /**
@@ -757,7 +761,7 @@ function getMatchSuggestionsForSidebarRow(rowId) {
   out.sort(function (a, b) {
     return b.percent - a.percent;
   });
-  return out.slice(0, 50);
+  return out;
 }
 
 /**
