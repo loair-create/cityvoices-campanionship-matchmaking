@@ -121,6 +121,68 @@
         font-size: 11px;
         margin-top: 2px;
       }
+      .combo-wrap {
+        position: relative;
+        margin-bottom: 12px;
+      }
+      .combo-wrap input.combo-search {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px 10px;
+        margin-bottom: 0;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        font-size: 13px;
+      }
+      .combo-wrap input.combo-search:focus {
+        outline: none;
+        border-color: #0d9488;
+        box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.15);
+      }
+      .combo-list {
+        display: none;
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: calc(100% + 2px);
+        max-height: 220px;
+        overflow-y: auto;
+        background: #fff;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+        z-index: 20;
+      }
+      .combo-list.open {
+        display: block;
+      }
+      .combo-option {
+        padding: 8px 10px;
+        cursor: pointer;
+        font-size: 12px;
+        border-bottom: 1px solid #f3f4f6;
+      }
+      .combo-option:last-child {
+        border-bottom: none;
+      }
+      .combo-option:hover,
+      .combo-option.active {
+        background: #f0fdfa;
+      }
+      .combo-empty {
+        padding: 10px;
+        color: #6b7280;
+        font-size: 12px;
+      }
+      .match-score-hint {
+        font-size: 12px;
+        color: #0f766e;
+        margin: 0 0 10px 0;
+        min-height: 1.2em;
+      }
+      .combo-section-hidden {
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -148,23 +210,36 @@
 
     <hr class="sep" />
 
-    <h2 class="section">Match suggestions</h2>
-    <label for="selPerson">Person (Sign Up Form)</label>
-    <select id="selPerson">
-      <option value="">Loading…</option>
-    </select>
+    <h2 class="section">Manual match</h2>
+    <label for="comboPerson1Input">Person 1 (Sign Up Form)</label>
+    <div class="combo-wrap" id="comboPerson1">
+      <input type="text" id="comboPerson1Input" class="combo-search" placeholder="Search by name…" autocomplete="off" />
+      <div class="combo-list" id="comboPerson1List"></div>
+    </div>
+
+    <div id="comboPerson2Section" class="combo-section-hidden">
+      <label for="comboPerson2Input">Person 2 (match with)</label>
+      <div class="combo-wrap" id="comboPerson2">
+        <input type="text" id="comboPerson2Input" class="combo-search" placeholder="Search by name…" autocomplete="off" />
+        <div class="combo-list" id="comboPerson2List"></div>
+      </div>
+    </div>
+
+    <p id="matchScoreHint" class="match-score-hint"></p>
     <p id="matchMsg" class="err"></p>
-    <div id="matchList" class="match-scroll" style="display: none"></div>
-    <button type="button" id="btnCreateMatches" disabled>Create match(es)</button>
+    <button type="button" id="btnCreateMatch" disabled>Create match</button>
     <p class="hint">
-      Percentages follow your <strong>Criteria</strong> tab in the dashboard (same logic as Find Match). You can select
-      <strong>several</strong> people and create multiple matches at once; duplicate pairs are skipped.
+      Search and pick <strong>Person 1</strong>, then choose anyone else as <strong>Person 2</strong> (alphabetical list).
+      Match % uses your dashboard <strong>Criteria</strong> settings. Duplicate pairs are skipped.
     </p>
 
     <script>
       var sidebarPeople = [];
-      var sidebarSuggestions = [];
-      var selectedPartnerIds = {};
+      var sidebarScoreMap = {};
+      var selectedPerson1Id = '';
+      var selectedPerson2Id = '';
+      var person1Combo = null;
+      var person2Combo = null;
 
       function rowId() {
         var v = document.getElementById('rowNum').value;
@@ -294,19 +369,207 @@
           .getProfilePdfBase64(id);
       });
 
+      function escapeHtml(s) {
+        var d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+      }
+
+      function sortPeopleAlpha(list) {
+        return (list || []).slice().sort(function (a, b) {
+          return String(a.listName).localeCompare(String(b.listName), undefined, { sensitivity: 'base' });
+        });
+      }
+
+      function createSearchableCombo(config) {
+        var input = document.getElementById(config.inputId);
+        var listEl = document.getElementById(config.listId);
+        var selectedId = '';
+        var options = [];
+
+        function filteredOptions() {
+          var q = String(input.value || '').trim().toLowerCase();
+          if (!q) return options;
+          return options.filter(function (p) {
+            return (
+              String(p.listName || '').toLowerCase().indexOf(q) >= 0 ||
+              String(p.displayName || '').toLowerCase().indexOf(q) >= 0 ||
+              String(p.rowId || '').indexOf(q) >= 0
+            );
+          });
+        }
+
+        function renderList() {
+          var items = filteredOptions();
+          if (!items.length) {
+            listEl.innerHTML = '<div class="combo-empty">No matches</div>';
+            listEl.classList.add('open');
+            return;
+          }
+          var html = '';
+          for (var i = 0; i < items.length; i++) {
+            var p = items[i];
+            html +=
+              '<div class="combo-option" data-row-id="' +
+              escapeHtml(String(p.rowId)) +
+              '" data-label="' +
+              escapeHtml(p.displayName) +
+              '">' +
+              escapeHtml(p.displayName) +
+              '</div>';
+          }
+          listEl.innerHTML = html;
+          listEl.classList.add('open');
+        }
+
+        function closeList() {
+          listEl.classList.remove('open');
+        }
+
+        function setOptions(nextOptions, keepSelection) {
+          options = nextOptions || [];
+          if (!keepSelection) {
+            selectedId = '';
+            input.value = '';
+          } else if (selectedId) {
+            var still = null;
+            for (var i = 0; i < options.length; i++) {
+              if (String(options[i].rowId) === String(selectedId)) {
+                still = options[i];
+                break;
+              }
+            }
+            if (!still) {
+              selectedId = '';
+              input.value = '';
+            }
+          }
+          closeList();
+        }
+
+        function selectOption(rowId, label) {
+          selectedId = String(rowId);
+          input.value = label || '';
+          closeList();
+          if (typeof config.onSelect === 'function') {
+            config.onSelect(selectedId);
+          }
+        }
+
+        input.addEventListener('focus', function () {
+          renderList();
+        });
+        input.addEventListener('input', function () {
+          selectedId = '';
+          renderList();
+          if (typeof config.onClear === 'function') {
+            config.onClear();
+          }
+        });
+        listEl.addEventListener('mousedown', function (e) {
+          var opt = e.target.closest('.combo-option');
+          if (!opt) return;
+          e.preventDefault();
+          selectOption(opt.getAttribute('data-row-id'), opt.getAttribute('data-label'));
+        });
+        document.addEventListener('click', function (e) {
+          if (!input.contains(e.target) && !listEl.contains(e.target)) {
+            closeList();
+          }
+        });
+
+        return {
+          setOptions: setOptions,
+          getSelectedId: function () {
+            return selectedId;
+          },
+          clear: function () {
+            selectedId = '';
+            input.value = '';
+            closeList();
+          },
+          setSelectedById: function (rowId) {
+            selectedId = String(rowId || '');
+            input.value = '';
+            for (var i = 0; i < options.length; i++) {
+              if (String(options[i].rowId) === selectedId) {
+                input.value = options[i].displayName;
+                break;
+              }
+            }
+          }
+        };
+      }
+
+      function updateCreateMatchButton() {
+        document.getElementById('btnCreateMatch').disabled = !(selectedPerson1Id && selectedPerson2Id);
+      }
+
+      function updateMatchScoreHint() {
+        var el = document.getElementById('matchScoreHint');
+        if (!selectedPerson1Id || !selectedPerson2Id) {
+          el.textContent = '';
+          return;
+        }
+        var scored = sidebarScoreMap[String(selectedPerson2Id)];
+        if (scored && scored.percent != null) {
+          el.textContent = 'Match score: ' + scored.percent + '%';
+        } else {
+          el.textContent = '';
+        }
+      }
+
+      function onPerson1Selected(id) {
+        selectedPerson1Id = id || '';
+        selectedPerson2Id = '';
+        setMatchErr('');
+        document.getElementById('matchScoreHint').textContent = '';
+        sidebarScoreMap = {};
+
+        if (!selectedPerson1Id) {
+          document.getElementById('comboPerson2Section').classList.add('combo-section-hidden');
+          person2Combo.clear();
+          person2Combo.setOptions([], false);
+          updateCreateMatchButton();
+          return;
+        }
+
+        var others = sortPeopleAlpha(
+          sidebarPeople.filter(function (p) {
+            return String(p.rowId) !== String(selectedPerson1Id);
+          })
+        );
+        document.getElementById('comboPerson2Section').classList.remove('combo-section-hidden');
+        person2Combo.setOptions(others, false);
+
+        google.script.run
+          .withSuccessHandler(function (list) {
+            sidebarScoreMap = {};
+            for (var i = 0; i < (list || []).length; i++) {
+              var s = list[i];
+              sidebarScoreMap[String(s.rowId)] = s;
+            }
+            updateMatchScoreHint();
+          })
+          .withFailureHandler(function () {
+            sidebarScoreMap = {};
+          })
+          .getMatchSuggestionsForSidebarRow(selectedPerson1Id);
+
+        updateCreateMatchButton();
+      }
+
+      function onPerson2Selected(id) {
+        selectedPerson2Id = id || '';
+        updateMatchScoreHint();
+        updateCreateMatchButton();
+      }
+
       function loadPeopleDropdown() {
         google.script.run
           .withSuccessHandler(function (rows) {
-            sidebarPeople = rows || [];
-            var sel = document.getElementById('selPerson');
-            sel.innerHTML = '<option value="">— Select a person —</option>';
-            for (var i = 0; i < sidebarPeople.length; i++) {
-              var p = sidebarPeople[i];
-              var opt = document.createElement('option');
-              opt.value = p.rowId;
-              opt.textContent = p.displayName;
-              sel.appendChild(opt);
-            }
+            sidebarPeople = sortPeopleAlpha(rows || []);
+            person1Combo.setOptions(sidebarPeople, false);
           })
           .withFailureHandler(function (e) {
             setMatchErr(e.message || String(e));
@@ -314,133 +577,75 @@
           .getSignupPeopleForSidebar();
       }
 
-      function renderSuggestions(list) {
-        sidebarSuggestions = list || [];
-        selectedPartnerIds = {};
-        var wrap = document.getElementById('matchList');
-        var btn = document.getElementById('btnCreateMatches');
-        if (!sidebarSuggestions.length) {
-          wrap.style.display = 'none';
-          wrap.innerHTML = '';
-          btn.disabled = true;
-          return;
-        }
-        wrap.style.display = 'block';
-        var html = '';
-        for (var i = 0; i < sidebarSuggestions.length; i++) {
-          var s = sidebarSuggestions[i];
-          var id = String(s.rowId);
-          var reasons = (s.reasons || []).slice(0, 3).join(' · ');
-          html +=
-            '<div class="match-row">' +
-            '<input type="checkbox" data-pid="' +
-            id.replace(/"/g, '') +
-            '" />' +
-            '<div class="match-meta">' +
-            '<div><strong>' +
-            escapeHtml(s.displayName) +
-            '</strong> <span class="pct">' +
-            (s.percent != null ? s.percent : 0) +
-            '%</span></div>' +
-            (reasons ? '<div class="reasons">' + escapeHtml(reasons) + '</div>' : '') +
-            '</div></div>';
-        }
-        wrap.innerHTML = html;
-        var cbs = wrap.querySelectorAll('input[type=checkbox]');
-        for (var c = 0; c < cbs.length; c++) {
-          (function (cb) {
-            cb.addEventListener('change', function () {
-              var pid = cb.getAttribute('data-pid');
-              if (cb.checked) selectedPartnerIds[pid] = true;
-              else delete selectedPartnerIds[pid];
-              btn.disabled = Object.keys(selectedPartnerIds).length === 0;
-            });
-          })(cbs[c]);
-        }
-        btn.disabled = true;
-      }
-
-      function escapeHtml(s) {
-        var d = document.createElement('div');
-        d.textContent = s;
-        return d.innerHTML;
-      }
-
-      document.getElementById('selPerson').addEventListener('change', function () {
-        var id = document.getElementById('selPerson').value;
-        setMatchErr('');
-        document.getElementById('btnCreateMatches').disabled = true;
-        if (!id) {
-          renderSuggestions([]);
-          return;
-        }
-        google.script.run
-          .withSuccessHandler(function (list) {
-            renderSuggestions(list);
-          })
-          .withFailureHandler(function (e) {
-            setMatchErr(e.message || String(e));
-            renderSuggestions([]);
-          })
-          .getMatchSuggestionsForSidebarRow(id);
-      });
-
-      document.getElementById('btnCreateMatches').addEventListener('click', function () {
-        var baseId = document.getElementById('selPerson').value;
-        if (!baseId) return;
-        var ids = Object.keys(selectedPartnerIds);
-        if (!ids.length) return;
+      document.getElementById('btnCreateMatch').addEventListener('click', function () {
+        if (!selectedPerson1Id || !selectedPerson2Id) return;
+        var baseId = selectedPerson1Id;
+        var partnerId = selectedPerson2Id;
         var basePerson = null;
+        var partnerPerson = null;
         for (var i = 0; i < sidebarPeople.length; i++) {
-          if (String(sidebarPeople[i].rowId) === String(baseId)) {
-            basePerson = sidebarPeople[i];
-            break;
-          }
+          if (String(sidebarPeople[i].rowId) === String(baseId)) basePerson = sidebarPeople[i];
+          if (String(sidebarPeople[i].rowId) === String(partnerId)) partnerPerson = sidebarPeople[i];
         }
         var baseName = basePerson && basePerson.listName ? basePerson.listName : 'Companion ' + baseId;
+        var partnerName = partnerPerson && partnerPerson.listName ? partnerPerson.listName : 'Companion ' + partnerId;
         var now = new Date().toISOString();
         var t0 = Date.now().toString(36);
-        var matchObjs = [];
-        var sub = 0;
-        for (var j = 0; j < ids.length; j++) {
-          var pid = ids[j];
-          var pname = '';
-          for (var k = 0; k < sidebarSuggestions.length; k++) {
-            if (String(sidebarSuggestions[k].rowId) === String(pid)) {
-              pname = sidebarSuggestions[k].displayName || '';
-              break;
-            }
-          }
-          matchObjs.push({
-            id: 'm-' + t0 + '-' + sub++ + '-' + baseId + '-' + pid,
-            companion1Id: String(baseId),
-            companion2Id: String(pid),
-            c1Name: baseName,
-            c2Name: pname,
-            status: 'Just Matched',
-            notes: '',
-            createdAt: now
-          });
-        }
-        var btn = document.getElementById('btnCreateMatches');
+        var matchObj = {
+          id: 'm-' + t0 + '-0-' + baseId + '-' + partnerId,
+          companion1Id: String(baseId),
+          companion2Id: String(partnerId),
+          c1Name: baseName,
+          c2Name: partnerName,
+          status: 'Just Matched',
+          notes: '',
+          createdAt: now
+        };
+        var btn = document.getElementById('btnCreateMatch');
         btn.disabled = true;
         google.script.run
           .withSuccessHandler(function (res) {
             var n = res && res.created ? res.created.length : 0;
             var sk = res && res.skipped != null ? res.skipped : 0;
-            alert('Created ' + n + ' match(es).' + (sk ? ' Skipped (duplicate or invalid): ' + sk + '.' : ''));
+            if (n) {
+              alert('Match created.');
+            } else if (sk) {
+              alert('This pair already exists or is invalid — skipped.');
+            } else {
+              alert('Could not create match.');
+            }
             setMatchErr('');
-            selectedPartnerIds = {};
-            var wrap = document.getElementById('matchList');
-            var boxes = wrap.querySelectorAll('input[type=checkbox]');
-            for (var i = 0; i < boxes.length; i++) boxes[i].checked = false;
-            btn.disabled = true;
+            person2Combo.clear();
+            selectedPerson2Id = '';
+            document.getElementById('matchScoreHint').textContent = '';
+            onPerson1Selected(selectedPerson1Id);
+            btn.disabled = false;
           })
           .withFailureHandler(function (e) {
             btn.disabled = false;
             setMatchErr(e.message || String(e));
+            updateCreateMatchButton();
           })
-          .createMatchesBatch(matchObjs);
+          .createMatchesBatch([matchObj]);
+      });
+
+      person1Combo = createSearchableCombo({
+        inputId: 'comboPerson1Input',
+        listId: 'comboPerson1List',
+        onSelect: onPerson1Selected,
+        onClear: function () {
+          onPerson1Selected('');
+        }
+      });
+      person2Combo = createSearchableCombo({
+        inputId: 'comboPerson2Input',
+        listId: 'comboPerson2List',
+        onSelect: onPerson2Selected,
+        onClear: function () {
+          selectedPerson2Id = '';
+          document.getElementById('matchScoreHint').textContent = '';
+          updateCreateMatchButton();
+        }
       });
 
       refreshWebAppUrlStatus();
