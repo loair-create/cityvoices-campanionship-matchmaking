@@ -3,9 +3,9 @@
  * bound to the same spreadsheet).
  *
  * When column AQ on "Sign Up Form" is TRUE, that row is listed on the "Volunteers" tab:
- * Col A–D: sign-up row, name, phone, email from Sign Up Form;
- * Col E: Last Contact Date — staff manual; edits push to Sign Up Form "Last Contact Date" column;
- * Col F: Internal Notes — staff manual; edits push to Sign Up Form INTERNAL NOTES.
+ * Col A: Timestamp from Sign Up Form; Col B: sign-up row; Col C–E: name, phone, email;
+ * Col F: Last Contact Date — staff manual; edits push to Sign Up Form "Last Contact Date" column;
+ * Col G: Internal Notes — staff manual; edits push to Sign Up Form INTERNAL NOTES.
  */
 
 var VOLUNTEERS_SYNC_SOURCE_SHEET = 'Sign Up Form';
@@ -14,13 +14,17 @@ var VOLUNTEERS_SYNC_TARGET_SHEET = 'Volunteers';
 /** Column AQ — volunteer flag (TRUE = volunteer). */
 var VOLUNTEER_COL_INDEX = 43;
 
-/** Volunteers sheet: column E = Last Contact Date (1-based index 5). */
-var VOLUNTEERS_LAST_CONTACT_COL = 5;
+/** Volunteers sheet: column B = Sign-up row (1-based index 2). */
+var VOLUNTEERS_SIGNUP_ROW_COL = 2;
 
-/** Volunteers sheet: column F = Internal Notes (1-based index 6). */
-var VOLUNTEERS_NOTES_COL = 6;
+/** Volunteers sheet: column F = Last Contact Date (1-based index 6). */
+var VOLUNTEERS_LAST_CONTACT_COL = 6;
+
+/** Volunteers sheet: column G = Internal Notes (1-based index 7). */
+var VOLUNTEERS_NOTES_COL = 7;
 
 var VOLUNTEERS_HEADER_ROW = [
+  'Timestamp',
   'Sign-up row',
   'Name',
   'Phone',
@@ -60,11 +64,19 @@ function volunteersSync_buildColumnMap_(headers) {
     }
     return -1;
   }
+  function colFirst(needles) {
+    for (var k = 0; k < needles.length; k++) {
+      var idx = col(needles[k]);
+      if (idx >= 0) return idx;
+    }
+    return -1;
+  }
   return {
     firstName: col('first name'),
     lastName: col('last name'),
     email: col('email'),
-    phone: col('phone number')
+    phone: col('phone number'),
+    timestamp: colFirst(['timestamp', 'enrollment date', 'date enrolled', 'sign up date'])
   };
 }
 
@@ -152,7 +164,10 @@ function syncVolunteersFromSignUpForm() {
         }
       }
 
+      var tsIdx = map.timestamp;
+      var ts = tsIdx >= 0 && tsIdx < row.length ? row[tsIdx] : '';
       out.push([
+        volunteersSync_formatCell_(ts),
         sheetRow,
         name,
         phone != null ? String(phone) : '',
@@ -188,7 +203,7 @@ function volunteersSync_ensureTargetSheet_(ss) {
 }
 
 /**
- * Reads staff columns E (Last Contact) and F (Internal Notes) keyed by Sign-up row (col A).
+ * Reads staff columns F (Last Contact) and G (Internal Notes) keyed by Sign-up row (col B).
  */
 function volunteersSync_readPreservedStaffFields_(ss) {
   var map = {};
@@ -198,7 +213,7 @@ function volunteersSync_readPreservedStaffFields_(ss) {
   var rng = sh.getRange(2, 1, lr, VOLUNTEERS_NOTES_COL);
   var rows = rng.getValues();
   for (var i = 0; i < rows.length; i++) {
-    var signupRow = rows[i][0];
+    var signupRow = rows[i][VOLUNTEERS_SIGNUP_ROW_COL - 1];
     if (signupRow == null || signupRow === '') continue;
     var key = String(signupRow).trim();
     if (!key) continue;
@@ -229,7 +244,7 @@ function onEditVolunteersStaffFields(e) {
   if (rLast < 2) return;
 
   for (var r = Math.max(2, r0); r <= rLast; r++) {
-    var signup = sh.getRange(r, 1).getValue();
+    var signup = sh.getRange(r, VOLUNTEERS_SIGNUP_ROW_COL).getValue();
     var rn = parseInt(String(signup != null ? signup : '').trim(), 10);
     if (isNaN(rn) || rn < 2) continue;
     var lcCell = sh.getRange(r, VOLUNTEERS_LAST_CONTACT_COL).getValue();
@@ -269,6 +284,9 @@ function onEditVolunteersSync(e) {
 function onChangeVolunteersSync(e) {
   if (!e) return;
   if (e.changeType === SpreadsheetApp.ChangeType.FORMAT) return;
+  if (typeof processNewSignUpFormNotifications_ === 'function') {
+    processNewSignUpFormNotifications_();
+  }
   syncVolunteersFromSignUpForm();
   if (typeof syncCompanionsFromSignUpForm === 'function') {
     syncCompanionsFromSignUpForm();
@@ -288,15 +306,18 @@ function onChangeVolunteersSync(e) {
  *    - Function: onEditVolunteersSync
  *    - Event source: From spreadsheet
  *    - Event type: On edit
- * 6. Volunteers staff fields (Last Contact + Internal Notes) → Sign Up Form:
+ * 6. Volunteers staff fields (Last Contact + Internal Notes, columns F & G) → Sign Up Form:
  *    - Function: onEditVolunteersStaffFields
  *    - Event source: From spreadsheet
  *    - Event type: On edit
- * 7. Companions staff fields (same columns E/F) → Sign Up Form:
+ * 7. Companions staff fields (Last Contact + Internal Notes, columns F & G) → Sign Up Form:
  *    - Function: onEditCompanionsStaffFields (in CompanionsSync.gs)
  *    - Event source: From spreadsheet
  *    - Event type: On edit
  * 8. Save. First run may prompt authorization.
+ *
+ * **Sign-up email alerts:** When SignUpFormNotify.gs is in the project, the same On change trigger
+ * emails danfrey176@gmail.com (or SIGNUP_NOTIFY_TO_EMAIL script property) for each new form row.
  *
  * If **CompanionsSync.gs** is present, these handlers also refresh the **Companions** tab (non-volunteers).
  */
