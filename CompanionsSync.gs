@@ -1,8 +1,8 @@
 /**
  * Companions tab sync — mirrors VolunteersSync but lists Sign Up Form rows where column AQ is NOT TRUE (participants / non-volunteers).
- * Col A–D: sign-up row, name, phone, email from Sign Up Form;
- * Col E: Last Contact Date — staff manual on Companions; edits push to Sign Up Form;
- * Col F: Internal Notes — staff manual; edits push to Sign Up Form INTERNAL NOTES.
+ * Col A: Timestamp from Sign Up Form; Col B: sign-up row; Col C–E: name, phone, email;
+ * Col F: Last Contact Date — staff manual on Companions; edits push to Sign Up Form;
+ * Col G: Internal Notes — staff manual; edits push to Sign Up Form INTERNAL NOTES.
  */
 
 var COMPANIONS_SYNC_SOURCE_SHEET = 'Sign Up Form';
@@ -11,13 +11,17 @@ var COMPANIONS_SYNC_TARGET_SHEET = 'Companions';
 /** Same as VolunteersSync: AQ = volunteer flag; we INCLUDE rows where this is not TRUE. */
 var COMPANIONS_VOLUNTEER_COL_INDEX = 43;
 
-/** Companions sheet: column E = Last Contact Date (1-based index 5). */
-var COMPANIONS_LAST_CONTACT_COL = 5;
+/** Companions sheet: column B = Sign-up row (1-based index 2). */
+var COMPANIONS_SIGNUP_ROW_COL = 2;
 
-/** Companions sheet: column F = Internal Notes (1-based index 6). */
-var COMPANIONS_NOTES_COL = 6;
+/** Companions sheet: column F = Last Contact Date (1-based index 6). */
+var COMPANIONS_LAST_CONTACT_COL = 6;
+
+/** Companions sheet: column G = Internal Notes (1-based index 7). */
+var COMPANIONS_NOTES_COL = 7;
 
 var COMPANIONS_HEADER_ROW = [
+  'Timestamp',
   'Sign-up row',
   'Name',
   'Phone',
@@ -102,7 +106,10 @@ function syncCompanionsFromSignUpForm() {
         }
       }
 
+      var tsIdx = map.timestamp;
+      var ts = tsIdx >= 0 && tsIdx < row.length ? row[tsIdx] : '';
       out.push([
+        volunteersSync_formatCell_(ts),
         sheetRow,
         name,
         phone != null ? String(phone) : '',
@@ -138,7 +145,7 @@ function companionsSync_ensureTargetSheet_(ss) {
 }
 
 /**
- * Reads staff columns E and F from Companions, keyed by Sign-up row (col A).
+ * Reads staff columns F and G from Companions, keyed by Sign-up row (col B).
  */
 function companionsSync_readPreservedStaffFields_(ss) {
   var map = {};
@@ -148,7 +155,7 @@ function companionsSync_readPreservedStaffFields_(ss) {
   var rng = sh.getRange(2, 1, lr, COMPANIONS_NOTES_COL);
   var rows = rng.getValues();
   for (var i = 0; i < rows.length; i++) {
-    var signupRow = rows[i][0];
+    var signupRow = rows[i][COMPANIONS_SIGNUP_ROW_COL - 1];
     if (signupRow == null || signupRow === '') continue;
     var key = String(signupRow).trim();
     if (!key) continue;
@@ -179,7 +186,7 @@ function onEditCompanionsStaffFields(e) {
   if (rLast < 2) return;
 
   for (var r = Math.max(2, r0); r <= rLast; r++) {
-    var signup = sh.getRange(r, 1).getValue();
+    var signup = sh.getRange(r, COMPANIONS_SIGNUP_ROW_COL).getValue();
     var rn = parseInt(String(signup != null ? signup : '').trim(), 10);
     if (isNaN(rn) || rn < 2) continue;
     var lcCell = sh.getRange(r, COMPANIONS_LAST_CONTACT_COL).getValue();
@@ -209,5 +216,5 @@ function syncVolunteersAndCompanionsFromSignUpForm() {
 
 /**
  * TRIGGER: On edit → onEditCompanionsStaffFields (same pattern as onEditVolunteersStaffFields in VolunteersSync.gs).
- * Pushes Companions columns E (Last Contact Date) and F (Internal Notes) to the Sign Up Form row in column A.
+ * Pushes Companions columns F (Last Contact Date) and G (Internal Notes) to the Sign Up Form row in column B.
  */
