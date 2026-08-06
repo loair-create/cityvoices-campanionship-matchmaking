@@ -5,6 +5,13 @@
 
 /** Name of the sheet tab with companion sign-ups (row 1 = headers, then one row per person). */
 var FORM_SHEET_NAME = 'Sign Up Form';
+
+/**
+ * Sign-up column holding each person's permanent ID. Matches, links and PDFs are keyed to this
+ * value, not to the row number, because sorting or deleting sign-up rows renumbers everyone.
+ */
+var COMPANION_ID_HEADER = 'Companion ID';
+var COMPANION_ID_PREFIX = 'C-';
 /** Optional tabs for Insights — column frequency summaries. */
 var PRE_SURVEY_SHEET_NAME = 'Pre-Survey Results';
 var POST_SURVEY_SHEET_NAME = 'Post Survey Results';
@@ -115,8 +122,10 @@ function saveWebAppPublicBaseUrlFromSidebar(url) {
 
 function doGet(e) {
   var p = e && e.parameter ? e.parameter : {};
-  if (String(p.view || '') === 'public' && p.row != null && String(p.row).length > 0) {
-    return servePublicProfile_(p.row);
+  if (String(p.view || '') === 'public') {
+    // cid = Companion ID (current links); row = sign-up row number (links shared before stable IDs).
+    if (p.cid != null && String(p.cid).length > 0) return servePublicProfile_(p.cid);
+    if (p.row != null && String(p.row).length > 0) return servePublicProfile_(p.row);
   }
   /**
    * JSON API over GET: ?payload=encodeURIComponent(JSON.stringify({ action, token, ... })).
@@ -264,12 +273,18 @@ function dispatchApiAction_(action, params) {
     case 'updateMatchesStatusBatch':
       return updateMatchesStatusBatch(params.matchIds, String(params.status));
     case 'updateCompanionNote':
-      return updateCompanionNote(params.rowNumber, params.note != null ? String(params.note) : '');
+      return updateCompanionNote(
+        params.companionId != null ? params.companionId : params.rowNumber,
+        params.note != null ? String(params.note) : ''
+      );
     case 'updateCompanionInternalStatus':
-      return updateCompanionInternalStatus(params.rowNumber, params.value != null ? String(params.value) : '');
+      return updateCompanionInternalStatus(
+        params.companionId != null ? params.companionId : params.rowNumber,
+        params.value != null ? String(params.value) : ''
+      );
     case 'updateCompanionLastContactDate':
       return updateCompanionLastContactDate(
-        params.rowNumber,
+        params.companionId != null ? params.companionId : params.rowNumber,
         params.isoDateOrEmpty != null ? String(params.isoDateOrEmpty) : ''
       );
     case 'getPublicShareLink':
@@ -333,6 +348,7 @@ function isContactOrSensitiveHeader_(header) {
 function isPublicProfileExcludedQuestionHeader_(header) {
   var s = String(header || '').toLowerCase();
   if (s.indexOf('timestamp') >= 0) return true;
+  if (s === COMPANION_ID_HEADER.toLowerCase()) return true;
   if (s.indexOf('waiver') >= 0) return true;
   if (s.indexOf('signature') >= 0) return true;
   if (s.indexOf('last contact') >= 0) return true;
@@ -504,26 +520,150 @@ function buildPublicTemplateData_(companion, visibility) {
   return { firstName: first, displayName: displayName, rows: rows };
 }
 
-function getCompanionByRow_(rowNum) {
-  var r = parseInt(String(rowNum), 10);
-  if (isNaN(r) || r < 2) throw new Error('Invalid profile row.');
+/** 0-based index of the Companion ID column in a header row, or -1. */
+function companionIdColumnIndex_(headers) {
+  if (!headers) return -1;
+  var want = COMPANION_ID_HEADER.toLowerCase();
+  for (var i = 0; i < headers.length; i++) {
+    if (String(headers[i] != null ? headers[i] : '').trim().toLowerCase() === want) return i;
+  }
+  return -1;
+}
+
+function formatCompanionId_(seq) {
+  var s = String(seq);
+  while (s.length < 4) s = '0' + s;
+  return COMPANION_ID_PREFIX + s;
+}
+
+/**
+ * Gives every sign-up row a permanent Companion ID, creating the column if it does not exist.
+ * Cheap to call on read paths: it only takes the script lock when IDs are actually missing.
+ * @return {{ colIndex: number, assigned: number }} colIndex is 0-based, -1 when unavailable.
+ */
+function ensureCompanionIds_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(FORM_SHEET_NAME);
+  if (!sheet) return { colIndex: -1, assigned: 0 };
+
+  var lastCol = sheet.getLastColumn();
+  var headers = lastCol >= 1 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  var idx = companionIdColumnIndex_(headers);
+  var lastRow = sheet.getLastRow();
+
+  if (idx >= 0) {
+    if (lastRow < 2) return { colIndex: idx, assigned: 0 };
+    var existing = sheet.getRange(2, idx + 1, lastRow - 1, 1).getValues();
+    var missing = false;
+    for (var i = 0; i < existing.length; i++) {
+      if (!String(existing[i][0] != null ? existing[i][0] : '').trim()) {
+        missing = true;
+        break;
+      }
+    }
+    if (!missing) return { colIndex: idx, assigned: 0 };
+  }
+
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+  } catch (e) {
+    return { colIndex: idx, assigned: 0 };
+  }
+  try {
+    // Re-read inside the lock: another execution may have added the column or filled the gaps.
+    lastCol = sheet.getLastColumn();
+    headers = lastCol >= 1 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+    idx = companionIdColumnIndex_(headers);
+    if (idx < 0) {
+      // Append at the end; every existing column keeps its position, which VolunteersSync relies on
+      // because it pins the volunteer flag to column AQ.
+      idx = lastCol;
+      sheet.getRange(1, idx + 1).setValue(COMPANION_ID_HEADER);
+    }
+    lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { colIndex: idx, assigned: 0 };
+
+    var range = sheet.getRange(2, idx + 1, lastRow - 1, 1);
+    var values = range.getValues();
+    var maxSeq = 0;
+    for (var r = 0; r < values.length; r++) {
+      var m = /^C-(\d+)$/i.exec(String(values[r][0] != null ? values[r][0] : '').trim());
+      if (m) {
+        var n = parseInt(m[1], 10);
+        if (!isNaN(n) && n > maxSeq) maxSeq = n;
+      }
+    }
+    var assigned = 0;
+    for (var k = 0; k < values.length; k++) {
+      if (String(values[k][0] != null ? values[k][0] : '').trim()) continue;
+      maxSeq++;
+      values[k][0] = formatCompanionId_(maxSeq);
+      assigned++;
+    }
+    if (assigned) range.setValues(values);
+    return { colIndex: idx, assigned: assigned };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Current sign-up row for a Companion ID. Plain row numbers are still accepted so links,
+ * queue entries and menu actions created before stable IDs keep working.
+ * @param {string|number} idOrRow
+ * @return {number} 1-based sheet row
+ */
+function resolveCompanionRow_(idOrRow) {
+  var key = String(idOrRow != null ? idOrRow : '').trim();
+  if (!key) throw new Error('Invalid profile reference.');
+
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(FORM_SHEET_NAME);
   if (!sheet) throw new Error('Form sheet not found.');
-  if (r > sheet.getLastRow()) throw new Error('Row not found.');
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) throw new Error('No sign-up rows found.');
+
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var idx = companionIdColumnIndex_(headers);
+  if (idx >= 0) {
+    var ids = sheet.getRange(2, idx + 1, lastRow - 1, 1).getValues();
+    var want = key.toLowerCase();
+    for (var i = 0; i < ids.length; i++) {
+      if (String(ids[i][0] != null ? ids[i][0] : '').trim().toLowerCase() === want) return i + 2;
+    }
+  }
+  if (/^\d+$/.test(key)) {
+    var r = parseInt(key, 10);
+    if (r >= 2 && r <= lastRow) return r;
+  }
+  throw new Error('No sign-up row found for "' + key + '".');
+}
+
+/**
+ * Full companion record by Companion ID or sign-up row number.
+ * @param {string|number} idOrRow
+ */
+function getCompanionByRef_(idOrRow) {
+  ensureCompanionIds_();
+  var r = resolveCompanionRow_(idOrRow);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(FORM_SHEET_NAME);
+  if (!sheet) throw new Error('Form sheet not found.');
   var lastCol = sheet.getLastColumn();
   if (lastCol < 1) throw new Error('No data.');
   var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  var row = sheet.getRange(r, 1, r, lastCol).getValues()[0];
+  var row = sheet.getRange(r, 1, 1, lastCol).getValues()[0];
   var colIdx = buildCompanionColumnIndices(headers);
   var p = parseCompanionRow(row, colIdx, r);
   p.allQuestions = buildAllFormQandA_(headers, row);
   return p;
 }
 
-function servePublicProfile_(rowParam) {
+function servePublicProfile_(profileRef) {
   try {
-    var c = getCompanionByRow_(rowParam);
+    var c = getCompanionByRef_(profileRef);
     var visibility = getVisibilitySettings_();
     var data = buildPublicTemplateData_(c, visibility);
     var t = HtmlService.createTemplateFromFile('PublicProfile');
@@ -550,18 +690,25 @@ function getWebAppBaseUrl_() {
  * @return {{ ok: boolean, url: string, message: string }}
  */
 function getPublicShareLink(rowId) {
+  // Link by Companion ID so a shared link keeps pointing at the same person after the sheet is sorted.
+  var cid;
+  try {
+    cid = getCompanionByRef_(rowId).id;
+  } catch (e) {
+    return { ok: false, url: '', message: String(e.message || e) };
+  }
   var base = resolveWebAppBaseUrl_();
   if (!base) {
     return {
       ok: false,
       url: '',
       message:
-        'No Web app URL available. In this sidebar, paste your /exec URL under “Web app URL” and click Save, or set Script property WEB_APP_PUBLIC_BASE_URL. Example suffix: ?view=public&row=' +
-        encodeURIComponent(String(rowId))
+        'No Web app URL available. In this sidebar, paste your /exec URL under “Web app URL” and click Save, or set Script property WEB_APP_PUBLIC_BASE_URL. Example suffix: ?view=public&cid=' +
+        encodeURIComponent(String(cid))
     };
   }
   var sep = base.indexOf('?') >= 0 ? '&' : '?';
-  return { ok: true, url: base + sep + 'view=public&row=' + encodeURIComponent(String(rowId)), message: '' };
+  return { ok: true, url: base + sep + 'view=public&cid=' + encodeURIComponent(String(cid)), message: '' };
 }
 
 /**
@@ -691,6 +838,7 @@ function sidebarMatch_calculatePercentage_(c1, c2, config) {
 
 /** @return {Array<Object>} Parsed companions (no allQuestions) for scoring. */
 function sidebarMatch_loadCompanionsParsed_() {
+  ensureCompanionIds_();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var formSheet = ss.getSheetByName(FORM_SHEET_NAME);
   if (!formSheet) return [];
@@ -715,11 +863,12 @@ function sidebarMatch_loadCompanionsParsed_() {
 function getSignupPeopleForSidebar() {
   var companions = sidebarMatch_loadCompanionsParsed_();
   var out = companions.map(function (p) {
-    var name = (String(p.firstName || '').trim() + ' ' + String(p.lastName || '').trim()).trim() || 'Row ' + p.id;
+    var name =
+      (String(p.firstName || '').trim() + ' ' + String(p.lastName || '').trim()).trim() || 'Sign-up ' + p.id;
     return {
       rowId: String(p.id),
       listName: name,
-      displayName: name + ' (row ' + p.id + ')'
+      displayName: name + ' (' + p.id + ', row ' + p.row + ')'
     };
   });
   out.sort(function (a, b) {
@@ -750,7 +899,8 @@ function getMatchSuggestionsForSidebarRow(rowId) {
     var c2 = companions[j];
     if (String(c2.id) === id) continue;
     var scored = sidebarMatch_calculatePercentage_(c1, c2, criteria);
-    var dn = (String(c2.firstName || '').trim() + ' ' + String(c2.lastName || '').trim()).trim() || 'Row ' + c2.id;
+    var dn =
+      (String(c2.firstName || '').trim() + ' ' + String(c2.lastName || '').trim()).trim() || 'Sign-up ' + c2.id;
     out.push({
       rowId: String(c2.id),
       displayName: dn,
@@ -769,7 +919,7 @@ function getMatchSuggestionsForSidebarRow(rowId) {
  * @return {{ base64: string, fileName: string }}
  */
 function getProfilePdfBase64(rowId) {
-  var c = getCompanionByRow_(rowId);
+  var c = getCompanionByRef_(rowId);
   var visibility = getVisibilitySettings_();
   var data = buildPublicTemplateData_(c, visibility);
   var t = HtmlService.createTemplateFromFile('PublicProfile');
@@ -788,6 +938,7 @@ function getProfilePdfBase64(rowId) {
  * FETCH DATA
  */
 function getData() {
+  ensureCompanionIds_();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
   // 1. Get Companions
@@ -926,16 +1077,28 @@ function createMatch(matchObj) {
 /**
  * Save multiple new matches in one lock (duplicate checks + within-batch dedupe).
  * @param {Array<Object>} matchObjs
- * @return {{ created: Array<Object>, skipped: number }}
+ * @return {{ created: Array<Object>, skipped: number, reason: string,
+ *           skippedDetails: Array<{ companion1Id: string, companion2Id: string, reason: string }> }}
  */
 function createMatchesBatch(matchObjs) {
-  if (!matchObjs || !matchObjs.length) return { created: [], skipped: 0 };
+  if (!matchObjs || !matchObjs.length) return { created: [], skipped: 0, reason: '', skippedDetails: [] };
 
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(30000);
   } catch (e) {
-    return { created: [], skipped: matchObjs.length };
+    return {
+      created: [],
+      skipped: matchObjs.length,
+      reason: 'busy',
+      skippedDetails: [
+        {
+          companion1Id: '',
+          companion2Id: '',
+          reason: 'The spreadsheet was busy with another script. Nothing was saved — try again.'
+        }
+      ]
+    };
   }
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -950,10 +1113,17 @@ function createMatchesBatch(matchObjs) {
     for (let i = 1; i < data.length; i++) {
       const x = String(data[i][1] != null ? data[i][1] : '').trim();
       const y = String(data[i][2] != null ? data[i][2] : '').trim();
-      if (x && y) existingKeys[pairKey(x, y)] = true;
+      if (!x || !y) continue;
+      const names = [String(data[i][6] != null ? data[i][6] : '').trim(), String(data[i][7] != null ? data[i][7] : '').trim()]
+        .filter(function (s) {
+          return s;
+        })
+        .join(' + ');
+      existingKeys[pairKey(x, y)] = { row: i + 1, names: names, status: String(data[i][3] != null ? data[i][3] : '').trim() };
     }
 
     const created = [];
+    const skippedDetails = [];
     let skipped = 0;
     for (let i = 0; i < matchObjs.length; i++) {
       const matchObj = matchObjs[i];
@@ -961,14 +1131,30 @@ function createMatchesBatch(matchObjs) {
       const b = String(matchObj.companion2Id != null ? matchObj.companion2Id : '').trim();
       if (!a || !b || a === b) {
         skipped++;
+        skippedDetails.push({
+          companion1Id: a,
+          companion2Id: b,
+          reason: a && a === b ? 'Both sides are the same person.' : 'One of the two people is missing an ID.'
+        });
         continue;
       }
       const k = pairKey(a, b);
       if (existingKeys[k]) {
+        const hit = existingKeys[k];
         skipped++;
+        skippedDetails.push({
+          companion1Id: a,
+          companion2Id: b,
+          reason:
+            'Already on the Matches tab at row ' +
+            hit.row +
+            (hit.names ? ' (' + hit.names + ')' : '') +
+            (hit.status ? ', status "' + hit.status + '"' : '') +
+            '.'
+        });
         continue;
       }
-      existingKeys[k] = true;
+      existingKeys[k] = { row: 0, names: '', status: '' };
       ensureMatchesLastContactColumn_(sheet);
       sheet.appendRow([
         matchObj.id,
@@ -991,7 +1177,7 @@ function createMatchesBatch(matchObjs) {
         lastContactDate: ''
       });
     }
-    return { created: created, skipped: skipped };
+    return { created: created, skipped: skipped, reason: skipped ? 'skipped' : '', skippedDetails: skippedDetails };
   } finally {
     lock.releaseLock();
   }
@@ -1132,19 +1318,25 @@ function updateMatchesStatusBatch(matchIds, status) {
   return { updated: n };
 }
 
-function updateCompanionNote(rowNumber, note) {
+function updateCompanionNote(companionRef, note) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(FORM_SHEET_NAME);
   if (!sheet) return false;
+  let r;
+  try {
+    r = resolveCompanionRow_(companionRef);
+  } catch (e) {
+    return false;
+  }
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  let noteCol = headers.findIndex(h => h.toUpperCase().includes("INTERNAL NOTES"));
+  let noteCol = headers.findIndex(h => String(h).toUpperCase().includes("INTERNAL NOTES"));
   
   if (noteCol === -1) {
     noteCol = headers.length;
     sheet.getRange(1, noteCol + 1).setValue("INTERNAL NOTES");
   }
   
-  sheet.getRange(rowNumber, noteCol + 1).setValue(note);
+  sheet.getRange(r, noteCol + 1).setValue(note);
   return true;
 }
 
@@ -1155,7 +1347,7 @@ var INTERNAL_STATUS_ALLOWED_ = { Active: true, Quit: true, Unresponsive: true };
  * Update internal status. Only Active, Quit, Unresponsive, or blank are written.
  * @return {boolean}
  */
-function updateCompanionInternalStatus(rowNumber, value) {
+function updateCompanionInternalStatus(companionRef, value) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(FORM_SHEET_NAME);
   if (!sheet) return false;
@@ -1165,8 +1357,12 @@ function updateCompanionInternalStatus(rowNumber, value) {
   const c = buildCompanionColumnIndices(headers);
   const colIdx = c.internalStatus;
   if (colIdx == null || colIdx < 0) return false;
-  const r = parseInt(String(rowNumber), 10);
-  if (isNaN(r) || r < 2) return false;
+  let r;
+  try {
+    r = resolveCompanionRow_(companionRef);
+  } catch (e) {
+    return false;
+  }
   var v = String(value != null ? value : '').trim();
   if (v && !INTERNAL_STATUS_ALLOWED_[v]) return false;
   sheet.getRange(r, colIdx + 1).setValue(v);
@@ -1178,7 +1374,7 @@ function updateCompanionInternalStatus(rowNumber, value) {
  * Creates a "Last Contact Date" column if none matches.
  * @return {boolean}
  */
-function updateCompanionLastContactDate(rowNumber, isoDateOrEmpty) {
+function updateCompanionLastContactDate(companionRef, isoDateOrEmpty) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(FORM_SHEET_NAME);
   if (!sheet) return false;
@@ -1191,8 +1387,12 @@ function updateCompanionLastContactDate(rowNumber, isoDateOrEmpty) {
     colIdx = Math.max(headers.length, 0);
     sheet.getRange(1, colIdx + 1).setValue('Last Contact Date');
   }
-  const r = parseInt(String(rowNumber), 10);
-  if (isNaN(r) || r < 2) return false;
+  let r;
+  try {
+    r = resolveCompanionRow_(companionRef);
+  } catch (e) {
+    return false;
+  }
   var t = String(isoDateOrEmpty != null ? isoDateOrEmpty : '').trim();
   if (!t) {
     sheet.getRange(r, colIdx + 1).setValue('');
@@ -1242,6 +1442,7 @@ function buildCompanionColumnIndices(headers) {
     return -1;
   }
   return {
+    companionId: col('companion id'),
     firstName: col('First Name'),
     lastName: col('Last Name'),
     email: col('Email'),
@@ -1338,8 +1539,10 @@ function parseCompanionRow(row, c, rowNum) {
     var s = cellAt(row, c[key]);
     return s ? s : 'Unavailable';
   }
+  var stableId = cellAt(row, c.companionId).trim();
   return {
-    id: String(rowNum),
+    id: stableId || String(rowNum),
+    row: String(rowNum),
     firstName: cellAt(row, c.firstName),
     lastName: cellAt(row, c.lastName),
     email: cellAt(row, c.email),
