@@ -1184,10 +1184,14 @@
                setSavingMatch(false);
                const created = result && result.created ? result.created : [];
                const skipped = result && typeof result.skipped === 'number' ? result.skipped : 0;
+               const details = (result && result.skippedDetails) || [];
+               const reasonList = details
+                  .map((d) => '• ' + d.reason)
+                  .join('\n');
                if (created.length === 0) {
                   alert(
                      skipped
-                        ? 'No new matches were saved (those pairs may already exist).'
+                        ? 'No new matches were saved.\n\n' + (reasonList || 'Those pairs were skipped.')
                         : 'No matches were saved.'
                   );
                   return;
@@ -1199,7 +1203,8 @@
                setActiveTab('dashboard');
                if (skipped > 0) {
                   alert(
-                     `${created.length} match(es) created. ${skipped} skipped (duplicate or invalid).`
+                     `${created.length} match(es) created. ${skipped} skipped:\n\n` +
+                        (reasonList || 'Duplicate or invalid pairs.')
                   );
                } else {
                   alert(`${created.length} match(es) created. View or edit them in the Google Sheet "Matches" tab.`);
