@@ -6,7 +6,7 @@
  * Col A: Timestamp from Sign Up Form; Col B: sign-up row; Col C–E: name, phone, email;
  * Col F: Last Contact Date — staff manual; edits push to Sign Up Form "Last Contact Date" column;
  * Col G: Internal Notes — staff manual; edits push to Sign Up Form INTERNAL NOTES;
- * Col H: Internal Status — copied from Sign Up Form (used for Quit highlighting);
+ * Col H: Internal Status — editable (Active / Quit / Unresponsive); edits push to Sign Up Form; Quit rows highlight light brown;
  * Col I: Companion ID — stable person key (list order is preserved; new people append at the bottom).
  */
 
@@ -152,7 +152,12 @@ function rosterSync_buildPersonRow_(row, map, sheetRow, staff) {
     notesOut = String(staff.internalNotes);
   }
 
-  var statusOut = statusFromForm != null ? String(statusFromForm).trim() : '';
+  var statusOut = '';
+  if (statusFromForm != null && String(statusFromForm).trim() !== '') {
+    statusOut = String(statusFromForm).trim();
+  } else if (staff && staff.internalStatus != null && String(staff.internalStatus).trim() !== '') {
+    statusOut = String(staff.internalStatus).trim();
+  }
   var tsIdx = map.timestamp;
   var ts = tsIdx >= 0 && tsIdx < row.length ? row[tsIdx] : '';
 
@@ -210,6 +215,10 @@ function rosterSync_readExistingOrder_(sheetName, signupRowCol, notesCol, compan
       internalNotes:
         notesCol - 1 < rows[i].length && rows[i][notesCol - 1] != null
           ? String(rows[i][notesCol - 1])
+          : '',
+      internalStatus:
+        VOLUNTEERS_INTERNAL_STATUS_COL - 1 < rows[i].length && rows[i][VOLUNTEERS_INTERNAL_STATUS_COL - 1] != null
+          ? String(rows[i][VOLUNTEERS_INTERNAL_STATUS_COL - 1]).trim()
           : ''
     };
   }
@@ -263,6 +272,27 @@ function rosterSync_mergeStableOrder_(existingEntries, eligibleByKey, formOrder)
   return out;
 }
 
+/** Allowed values for Volunteers / Companions Internal Status (column H). */
+var ROSTER_INTERNAL_STATUS_OPTIONS = ['Active', 'Quit', 'Unresponsive'];
+
+/**
+ * Dropdown on Internal Status (column H): Active / Quit / Unresponsive.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} [statusCol] 1-based column (default H = 8)
+ */
+function applyRosterInternalStatusDropdown_(sheet, statusCol) {
+  if (!sheet) return;
+  var col = statusCol != null ? statusCol : VOLUNTEERS_INTERNAL_STATUS_COL;
+  var maxRows = Math.max(sheet.getMaxRows(), 2);
+  var range = sheet.getRange(2, col, maxRows - 1, 1);
+  var rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(ROSTER_INTERNAL_STATUS_OPTIONS, true)
+    .setAllowInvalid(true)
+    .setHelpText('Choose Active, Quit, or Unresponsive (or leave blank).')
+    .build();
+  range.setDataValidation(rule);
+}
+
 /**
  * Entire-row light brown when Internal Status is Quit.
  * These roster tabs are script-managed, so rules are replaced on each sync.
@@ -283,6 +313,7 @@ function applyRosterQuitConditionalFormatting_(sheet, statusCol, numCols) {
     .setRanges([range])
     .build();
   sheet.setConditionalFormatRules([quitRule]);
+  applyRosterInternalStatusDropdown_(sheet, col);
 }
 
 function volunteersSync_isVolunteerTrue_(cellValue) {
@@ -418,7 +449,8 @@ function volunteersSync_readPreservedStaffFields_(ss) {
 }
 
 /**
- * Push Volunteers E/F edits to Sign Up Form (requires Code.gs: updateCompanionLastContactDate, updateCompanionNote).
+ * Push Volunteers F/G/H edits to Sign Up Form
+ * (Last Contact, Internal Notes, Internal Status — needs Code.gs helpers).
  * Wire to installable trigger: From spreadsheet → On edit (all sheets; handler returns unless sheet is Volunteers).
  */
 function onEditVolunteersStaffFields(e) {
@@ -428,7 +460,7 @@ function onEditVolunteersStaffFields(e) {
   if (sh.getName() !== VOLUNTEERS_SYNC_TARGET_SHEET) return;
   var c0 = e.range.getColumn();
   var cLast = e.range.getLastColumn();
-  if (cLast < VOLUNTEERS_LAST_CONTACT_COL || c0 > VOLUNTEERS_NOTES_COL) return;
+  if (cLast < VOLUNTEERS_LAST_CONTACT_COL || c0 > VOLUNTEERS_INTERNAL_STATUS_COL) return;
   var r0 = e.range.getRow();
   var rLast = e.range.getLastRow();
   if (rLast < 2) return;
@@ -440,6 +472,7 @@ function onEditVolunteersStaffFields(e) {
     if (!ref) continue;
     var lcCell = sh.getRange(r, VOLUNTEERS_LAST_CONTACT_COL).getValue();
     var notesCell = sh.getRange(r, VOLUNTEERS_NOTES_COL).getValue();
+    var statusCell = sh.getRange(r, VOLUNTEERS_INTERNAL_STATUS_COL).getValue();
     var isoOrEmpty = '';
     if (lcCell instanceof Date) {
       isoOrEmpty = Utilities.formatDate(lcCell, Session.getScriptTimeZone(), 'yyyy-MM-dd');
@@ -451,6 +484,9 @@ function onEditVolunteersStaffFields(e) {
     }
     if (typeof updateCompanionNote === 'function') {
       updateCompanionNote(ref, notesCell != null ? String(notesCell) : '');
+    }
+    if (typeof updateCompanionInternalStatus === 'function') {
+      updateCompanionInternalStatus(ref, statusCell != null ? String(statusCell).trim() : '');
     }
   }
 }
@@ -498,12 +534,12 @@ function onChangeVolunteersSync(e) {
  *    - Function: onEditVolunteersSync
  *    - Event source: From spreadsheet
  *    - Event type: On edit
- * 6. Volunteers staff fields (Last Contact + Internal Notes, columns F & G) → Sign Up Form
- *    (column H Internal Status is synced from Sign Up Form; Quit rows are light brown):
+ * 6. Volunteers staff fields (F Last Contact, G Internal Notes, H Internal Status) → Sign Up Form
+ *    (Quit in H highlights the row light brown):
  *    - Function: onEditVolunteersStaffFields
  *    - Event source: From spreadsheet
  *    - Event type: On edit
- * 7. Companions staff fields (Last Contact + Internal Notes, columns F & G) → Sign Up Form:
+ * 7. Companions staff fields (F / G / H same as Volunteers) → Sign Up Form:
  *    - Function: onEditCompanionsStaffFields (in CompanionsSync.gs)
  *    - Event source: From spreadsheet
  *    - Event type: On edit
