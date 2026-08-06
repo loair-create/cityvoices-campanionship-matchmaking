@@ -11,14 +11,16 @@ function ensureMatchQueueSheet() {
   if (!sh) {
     sh = ss.insertSheet(MATCH_QUEUE_SHEET_NAME);
   }
-  var headers = ['Companion 1 row', 'Companion 2 row', 'Status', 'Notes', 'Processed'];
+  var headers = ['Companion 1 (ID or row)', 'Companion 2 (ID or row)', 'Status', 'Notes', 'Processed'];
   sh.getRange(1, 1, 1, headers.length).setValues([headers]);
   sh.setFrozenRows(1);
   SpreadsheetApp.getUi().alert(
     'Match Queue is ready.\n\n' +
-      'Enter each person’s row number from the "' +
+      'In columns A and B, enter each person’s ' +
+      COMPANION_ID_HEADER +
+      ' from the "' +
       FORM_SHEET_NAME +
-      '" tab (columns A and B). Optional: Status (defaults to Just Matched) and Notes. ' +
+      '" tab (a row number also works). Optional: Status (defaults to Just Matched) and Notes. ' +
       'Leave Processed blank until you run Companion tools → Process Match Queue.'
   );
 }
@@ -41,7 +43,6 @@ function processMatchQueueFromSheet() {
     return;
   }
 
-  var maxFormRow = formSheet.getLastRow();
   var lr = q.getLastRow();
   if (lr < 2) {
     ui.alert('No data rows in Match Queue.');
@@ -70,28 +71,23 @@ function processMatchQueueFromSheet() {
     if (s1 === '' && s2 === '') {
       continue;
     }
-    var r1 = parseInt(s1, 10);
-    var r2 = parseInt(s2, 10);
-    if (isNaN(r1) || isNaN(r2)) {
-      errors.push('Queue row ' + sheetRow + ': Enter numbers in columns A and B.');
-      continue;
-    }
-    if (r1 < 2 || r2 < 2 || r1 === r2) {
-      errors.push('Queue row ' + sheetRow + ': A and B must be different rows ≥ 2.');
-      continue;
-    }
-    if (r1 > maxFormRow || r2 > maxFormRow) {
-      errors.push('Queue row ' + sheetRow + ': Row number is past the last sign-up row.');
+    if (s1 === '' || s2 === '') {
+      errors.push('Queue row ' + sheetRow + ': Fill in both columns A and B.');
       continue;
     }
 
+    // Each cell may hold a sign-up row number or a Companion ID; both resolve to one person.
     var c1;
     var c2;
     try {
-      c1 = getCompanionByRow_(r1);
-      c2 = getCompanionByRow_(r2);
+      c1 = getCompanionByRef_(s1);
+      c2 = getCompanionByRef_(s2);
     } catch (err) {
       errors.push('Queue row ' + sheetRow + ': ' + String(err.message || err));
+      continue;
+    }
+    if (String(c1.id) === String(c2.id)) {
+      errors.push('Queue row ' + sheetRow + ': A and B are the same person.');
       continue;
     }
 
