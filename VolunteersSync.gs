@@ -284,8 +284,9 @@ function onEditVolunteersSync(e) {
 function onChangeVolunteersSync(e) {
   if (!e) return;
   if (e.changeType === SpreadsheetApp.ChangeType.FORMAT) return;
-  if (typeof processNewSignUpFormNotifications_ === 'function') {
-    processNewSignUpFormNotifications_();
+  // New form rows need a Companion ID before anything keyed to it (matches, links) is created.
+  if (typeof ensureCompanionIds_ === 'function') {
+    ensureCompanionIds_();
   }
   syncVolunteersFromSignUpForm();
   if (typeof syncCompanionsFromSignUpForm === 'function') {
@@ -316,8 +317,8 @@ function onChangeVolunteersSync(e) {
  *    - Event type: On edit
  * 8. Save. First run may prompt authorization.
  *
- * **Sign-up email alerts:** When SignUpFormNotify.gs is in the project, the same On change trigger
- * emails danfrey176@gmail.com (or SIGNUP_NOTIFY_TO_EMAIL script property) for each new form row.
+ * **Sign-up email alerts:** SignUpFormNotify.gs uses its own dedicated On form submit trigger.
+ * Install it from Companion tools → Install new-signup email alert.
  *
  * If **CompanionsSync.gs** is present, these handlers also refresh the **Companions** tab (non-volunteers).
  */
