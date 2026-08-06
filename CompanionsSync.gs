@@ -3,7 +3,7 @@
  * Col A: Timestamp from Sign Up Form; Col B: sign-up row; Col C–E: name, phone, email;
  * Col F: Last Contact Date — staff manual on Companions; edits push to Sign Up Form;
  * Col G: Internal Notes — staff manual; edits push to Sign Up Form INTERNAL NOTES;
- * Col H: Internal Status — copied from Sign Up Form (used for Quit highlighting);
+ * Col H: Internal Status — editable (Active / Quit / Unresponsive); edits push to Sign Up Form; Quit rows highlight light brown;
  * Col I: Companion ID — stable person key (list order is preserved; new people append at the bottom).
  */
 
@@ -170,7 +170,8 @@ function companionsSync_readPreservedStaffFields_(ss) {
 }
 
 /**
- * Push Companions E/F edits to Sign Up Form (requires Code.gs: updateCompanionLastContactDate, updateCompanionNote).
+ * Push Companions F/G/H edits to Sign Up Form
+ * (Last Contact, Internal Notes, Internal Status — needs Code.gs helpers).
  * Add installable trigger: From spreadsheet → On edit → function onEditCompanionsStaffFields.
  */
 function onEditCompanionsStaffFields(e) {
@@ -180,7 +181,7 @@ function onEditCompanionsStaffFields(e) {
   if (sh.getName() !== COMPANIONS_SYNC_TARGET_SHEET) return;
   var c0 = e.range.getColumn();
   var cLast = e.range.getLastColumn();
-  if (cLast < COMPANIONS_LAST_CONTACT_COL || c0 > COMPANIONS_NOTES_COL) return;
+  if (cLast < COMPANIONS_LAST_CONTACT_COL || c0 > COMPANIONS_INTERNAL_STATUS_COL) return;
   var r0 = e.range.getRow();
   var rLast = e.range.getLastRow();
   if (rLast < 2) return;
@@ -192,6 +193,7 @@ function onEditCompanionsStaffFields(e) {
     if (!ref) continue;
     var lcCell = sh.getRange(r, COMPANIONS_LAST_CONTACT_COL).getValue();
     var notesCell = sh.getRange(r, COMPANIONS_NOTES_COL).getValue();
+    var statusCell = sh.getRange(r, COMPANIONS_INTERNAL_STATUS_COL).getValue();
     var isoOrEmpty = '';
     if (lcCell instanceof Date) {
       isoOrEmpty = Utilities.formatDate(lcCell, Session.getScriptTimeZone(), 'yyyy-MM-dd');
@@ -203,6 +205,9 @@ function onEditCompanionsStaffFields(e) {
     }
     if (typeof updateCompanionNote === 'function') {
       updateCompanionNote(ref, notesCell != null ? String(notesCell) : '');
+    }
+    if (typeof updateCompanionInternalStatus === 'function') {
+      updateCompanionInternalStatus(ref, statusCell != null ? String(statusCell).trim() : '');
     }
   }
 }
@@ -217,6 +222,6 @@ function syncVolunteersAndCompanionsFromSignUpForm() {
 
 /**
  * TRIGGER: On edit → onEditCompanionsStaffFields (same pattern as onEditVolunteersStaffFields in VolunteersSync.gs).
- * Pushes Companions columns F (Last Contact Date) and G (Internal Notes) to the Sign Up Form row in column B.
- * Column H (Internal Status) is synced from Sign Up Form; Quit rows are highlighted light brown.
+ * Pushes Companions columns F (Last Contact Date), G (Internal Notes), and H (Internal Status)
+ * to the Sign Up Form. Quit in H highlights the row light brown.
  */
