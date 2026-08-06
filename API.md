@@ -80,17 +80,20 @@ Failure:
 | `saveVisibilitySettings` | `settingsJson` (string) | `boolean` | Stored as `UI_VISIBILITY_SETTINGS` |
 | `saveReminderEmailSettings` | `ccEmail`, `subject`, `body`, `toEmail` | `boolean` | Same as legacy Reminders UI |
 | `createMatch` | `matchObj` | `boolean` | Single match row |
-| `createMatchesBatch` | `matchObjs` (array) | `{ created, skipped }` | Batch create |
+| `createMatchesBatch` | `matchObjs` (array) | `{ created, skipped, reason, skippedDetails }` | Batch create; `skippedDetails[].reason` explains each skip |
 | `updateMatchData` | `matchId`, `field` (`status`\|`notes`), `value` | `boolean` | |
 | `updateMatchLastContactDate` | `matchId`, `isoDateOrEmpty` | `boolean` | Pair-level; YYYY-MM-DD or `""` |
 | `deleteMatch` | `matchId` | `boolean` | |
 | `deleteMatchesBatch` | `matchIds` | `{ deleted }` | |
 | `updateMatchesStatusBatch` | `matchIds`, `status` | `{ updated }` | |
-| `updateCompanionNote` | `rowNumber`, `note` | `boolean` | INTERNAL NOTES column |
-| `updateCompanionInternalStatus` | `rowNumber`, `value` | `boolean` | Active / Quit / Unresponsive / blank |
-| `updateCompanionLastContactDate` | `rowNumber`, `isoDateOrEmpty` | `boolean` | Per-person on sign-up sheet |
-| `getPublicShareLink` | `rowId` | `{ ok, url, message }` | |
-| `getProfilePdfBase64` | `rowId` | `{ base64, fileName }` | Public-safe PDF |
+| `updateCompanionNote` | `companionId` (or legacy `rowNumber`), `note` | `boolean` | INTERNAL NOTES column |
+| `updateCompanionInternalStatus` | `companionId` (or legacy `rowNumber`), `value` | `boolean` | Active / Quit / Unresponsive / blank |
+| `updateCompanionLastContactDate` | `companionId` (or legacy `rowNumber`), `isoDateOrEmpty` | `boolean` | Per-person on sign-up sheet |
+| `getPublicShareLink` | `rowId` (Companion ID or row number) | `{ ok, url, message }` | Returns a `?view=public&cid=…` link |
+| `getProfilePdfBase64` | `rowId` (Companion ID or row number) | `{ base64, fileName }` | Public-safe PDF |
+
+Companion IDs (`C-0001`, …) live in the **Companion ID** column on **Sign Up Form** and never change.
+Sign-up row numbers are still accepted everywhere an ID is, so older integrations keep working.
 | `previewSixMonthReminders` | — | array of preview rows | |
 | `runSixMonthReminderJob` | — | `{ sent, skipped, errors }` | Sends staff emails |
 | `sendSixMonthReminderTestEmail` | `testToEmail` | `{ ok, message?, error? }` | |
