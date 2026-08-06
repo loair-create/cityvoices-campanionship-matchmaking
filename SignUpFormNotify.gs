@@ -1,15 +1,19 @@
 /**
- * Email notification when a new row is added to "Sign Up Form" (Google Form response).
- * Wired from onChangeVolunteersSync in VolunteersSync.gs (same installable On change trigger).
+ * Emails staff for each Google Form submission written to "Sign Up Form".
  *
- * Override recipient via Script property SIGNUP_NOTIFY_TO_EMAIL (default: danfrey176@gmail.com).
+ * Install once from Companion tools → Install new-signup email alert. A dedicated
+ * spreadsheet On form submit trigger is more reliable than inferring submissions from
+ * the sheet's row count (which breaks after sorting, inserting or deleting rows).
+ *
+ * Override the recipient with Script property SIGNUP_NOTIFY_TO_EMAIL.
  * Disable with Script property SIGNUP_NOTIFY_ENABLED = false.
  */
 
-var SIGNUP_NOTIFY_TO_EMAIL_DEFAULT = 'danfrey176@gmail.com';
+var SIGNUP_NOTIFY_TO_EMAIL_DEFAULT = 'danfrey76@gmail.com';
 var SIGNUP_NOTIFY_TO_EMAIL_KEY = 'SIGNUP_NOTIFY_TO_EMAIL';
 var SIGNUP_NOTIFY_ENABLED_KEY = 'SIGNUP_NOTIFY_ENABLED';
-var SIGNUP_NOTIFY_LAST_ROW_KEY = 'SIGNUP_NOTIFY_LAST_PROCESSED_ROW';
+var SIGNUP_NOTIFY_SENT_PREFIX = 'SIGNUP_NOTIFY_SENT_';
+var SIGNUP_NOTIFY_TRIGGER_HANDLER = 'onNewSignUpFormSubmit';
 
 function signUpNotify_isEnabled_() {
   var raw = PropertiesService.getScriptProperties().getProperty(SIGNUP_NOTIFY_ENABLED_KEY);
@@ -26,68 +30,70 @@ function signUpNotify_getRecipient_() {
   return SIGNUP_NOTIFY_TO_EMAIL_DEFAULT;
 }
 
+function signUpNotify_escapeHtml_(value) {
+  return String(value != null ? value : '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 /**
- * Detects new Sign Up Form rows since last run and sends one email per row.
- * Safe to call from onChange; skips historical rows on first run.
+ * Dedicated installable spreadsheet form-submit handler.
+ * @param {GoogleAppsScript.Events.SheetsOnFormSubmit} e
  */
-function processNewSignUpFormNotifications_() {
-  if (!signUpNotify_isEnabled_()) return;
+function onNewSignUpFormSubmit(e) {
+  if (!signUpNotify_isEnabled_() || !e || !e.range) return;
+  var sheet = e.range.getSheet();
+  if (sheet.getName() !== FORM_SHEET_NAME || e.range.getRow() < 2) return;
 
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(FORM_SHEET_NAME);
-  if (!sheet) return;
-
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return;
-
-  var props = PropertiesService.getScriptProperties();
-  var rawLast = props.getProperty(SIGNUP_NOTIFY_LAST_ROW_KEY);
-
-  // First run: start tracking from current last row (do not email existing sign-ups).
-  if (rawLast === null || String(rawLast).trim() === '') {
-    props.setProperty(SIGNUP_NOTIFY_LAST_ROW_KEY, String(lastRow));
-    return;
-  }
-
-  var lastProcessed = parseInt(String(rawLast).trim(), 10);
-  if (isNaN(lastProcessed) || lastProcessed < 1) lastProcessed = 1;
-  if (lastProcessed >= lastRow) return;
-
-  var lastCol = sheet.getLastColumn();
-  if (lastCol < 1) return;
-  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  var colIdx = buildCompanionColumnIndices(headers);
-  var spreadsheetUrl = ss.getUrl();
-  var toEmail = signUpNotify_getRecipient_();
-
-  for (var r = lastProcessed + 1; r <= lastRow; r++) {
-    try {
-      signUpNotify_sendForRow_(sheet, r, lastCol, colIdx, spreadsheetUrl, toEmail);
-    } catch (err) {
-      Logger.log('Sign-up notify failed for row ' + r + ': ' + (err.message || err));
-    }
-  }
-
-  props.setProperty(SIGNUP_NOTIFY_LAST_ROW_KEY, String(lastRow));
+  // The public application URL must use the permanent Companion ID.
+  ensureCompanionIds_();
+  signUpNotify_sendForRow_(sheet, e.range.getRow(), false);
 }
 
 /**
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @param {number} rowNum
- * @param {number} lastCol
- * @param {Object} colIdx
- * @param {string} spreadsheetUrl
- * @param {string} toEmail
+ * @param {boolean} isTest
+ * @return {{ sent: boolean, message: string }}
  */
-function signUpNotify_sendForRow_(sheet, rowNum, lastCol, colIdx, spreadsheetUrl, toEmail) {
-  var row = sheet.getRange(rowNum, 1, rowNum, lastCol).getValues()[0];
+function signUpNotify_sendForRow_(sheet, rowNum, isTest) {
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) throw new Error('The sign-up sheet has no columns.');
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var colIdx = buildCompanionColumnIndices(headers);
+  var row = sheet.getRange(rowNum, 1, 1, lastCol).getValues()[0];
   var companion = parseCompanionRow(row, colIdx, rowNum);
   var fullName =
     (String(companion.firstName || '').trim() + ' ' + String(companion.lastName || '').trim()).trim() ||
     'New sign-up (row ' + rowNum + ')';
   var personEmail = String(companion.email || '').trim() || '(not provided)';
+  var personPhone = String(companion.phone || '').trim() || '(not provided)';
+  var companionRef = String(companion.id || '').trim() || String(rowNum);
 
-  var subject = 'New companionship sign-up: ' + fullName;
+  var props = PropertiesService.getScriptProperties();
+  var sentKey = SIGNUP_NOTIFY_SENT_PREFIX + companionRef.replace(/[^A-Za-z0-9_-]/g, '_');
+  if (!isTest && props.getProperty(sentKey)) {
+    return { sent: false, message: 'An email was already sent for ' + companionRef + '.' };
+  }
+
+  // A missing Web app URL must not swallow the whole alert — send it with a note instead.
+  var publicUrl = '';
+  var linkProblem = '';
+  try {
+    var linkResult = getPublicShareLink(companionRef);
+    if (linkResult && linkResult.ok && linkResult.url) {
+      publicUrl = String(linkResult.url);
+    } else {
+      linkProblem = (linkResult && linkResult.message) || 'The public link could not be built.';
+    }
+  } catch (err) {
+    linkProblem = String(err.message || err);
+  }
+
+  var subject = (isTest ? '[TEST] ' : '') + 'New companionship sign-up: ' + fullName;
   var body =
     'Someone just submitted the sign-up form.\n\n' +
     'Full name: ' +
@@ -95,22 +101,81 @@ function signUpNotify_sendForRow_(sheet, rowNum, lastCol, colIdx, spreadsheetUrl
     '\n' +
     'Email: ' +
     personEmail +
+    '\n' +
+    'Phone number: ' +
+    personPhone +
     '\n\n' +
-    'Open the spreadsheet:\n' +
-    spreadsheetUrl +
-    '\n\n' +
-    'Sign-up sheet row: ' +
-    rowNum;
+    (publicUrl
+      ? 'View the public application:\n' + publicUrl
+      : 'Public application link unavailable (' +
+        linkProblem +
+        ')\nOpen the spreadsheet and look up ' +
+        companionRef +
+        '.');
+
+  var htmlBody =
+    '<p>Someone just submitted the companionship sign-up form.</p>' +
+    '<p><strong>Full name:</strong> ' +
+    signUpNotify_escapeHtml_(fullName) +
+    '<br><strong>Email:</strong> ' +
+    signUpNotify_escapeHtml_(personEmail) +
+    '<br><strong>Phone number:</strong> ' +
+    signUpNotify_escapeHtml_(personPhone) +
+    '</p>' +
+    (publicUrl
+      ? '<p><a href="' +
+        signUpNotify_escapeHtml_(publicUrl) +
+        '">View ' +
+        signUpNotify_escapeHtml_(fullName) +
+        '&#39;s public application</a></p>'
+      : '<p><em>Public application link unavailable (' +
+        signUpNotify_escapeHtml_(linkProblem) +
+        '). Open the spreadsheet and look up ' +
+        signUpNotify_escapeHtml_(companionRef) +
+        '.</em></p>');
 
   MailApp.sendEmail({
-    to: toEmail,
+    to: signUpNotify_getRecipient_(),
     subject: subject,
-    body: body
+    body: body,
+    htmlBody: htmlBody,
+    name: 'City Voices Companionship'
   });
+
+  if (!isTest) props.setProperty(sentKey, new Date().toISOString());
+  return { sent: true, message: 'Email sent to ' + signUpNotify_getRecipient_() + '.' };
 }
 
 /**
- * Manual test: Run → sendSignUpNotificationTestForLastRow (emails about the latest sign-up row).
+ * Installs exactly one dedicated "On form submit" trigger for this spreadsheet.
+ * Safe to run again: old copies of this trigger are removed first.
+ */
+function installSignUpNotificationTrigger() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var removed = 0;
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === SIGNUP_NOTIFY_TRIGGER_HANDLER) {
+      ScriptApp.deleteTrigger(triggers[i]);
+      removed++;
+    }
+  }
+  ScriptApp.newTrigger(SIGNUP_NOTIFY_TRIGGER_HANDLER).forSpreadsheet(ss).onFormSubmit().create();
+  PropertiesService.getScriptProperties().setProperty(SIGNUP_NOTIFY_ENABLED_KEY, 'true');
+
+  var message =
+    'New-signup email alert installed.\n\n' +
+    'Every new response on "' +
+    FORM_SHEET_NAME +
+    '" will email ' +
+    signUpNotify_getRecipient_() +
+    '.';
+  if (removed) message += '\n\nReplaced ' + removed + ' older copy/copies of this trigger.';
+  SpreadsheetApp.getUi().alert(message);
+}
+
+/**
+ * Sends a clearly marked test for the most recently submitted row without changing dedupe state.
  */
 function sendSignUpNotificationTestForLastRow() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -118,9 +183,7 @@ function sendSignUpNotificationTestForLastRow() {
   if (!sheet || sheet.getLastRow() < 2) {
     throw new Error('No sign-up rows found on "' + FORM_SHEET_NAME + '".');
   }
-  var rowNum = sheet.getLastRow();
-  var lastCol = sheet.getLastColumn();
-  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  var colIdx = buildCompanionColumnIndices(headers);
-  signUpNotify_sendForRow_(sheet, rowNum, lastCol, colIdx, ss.getUrl(), signUpNotify_getRecipient_());
+  ensureCompanionIds_();
+  var result = signUpNotify_sendForRow_(sheet, sheet.getLastRow(), true);
+  SpreadsheetApp.getUi().alert(result.message);
 }
