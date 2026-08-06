@@ -16,7 +16,7 @@ Do this in **Google Sheets** (browser).
 1. Create a new spreadsheet **or** open the one your Google Form writes to.
 2. Rename or add a tab named **`Sign Up Form`** (exact spelling and spacing).
 3. **Row 1** = column headers (from your Form or typed manually). **Row 2+** = one person per row.
-4. Know this rule: each person’s **`id`** in the app is their **sheet row number** (row 2 → `"2"`). Do not delete rows in the middle if you rely on stable IDs.
+4. Each person’s **`id`** is their **Companion ID** (`C-0001`, `C-0002`, …) from the **Companion ID** column, which the script adds to the right of your sign-up columns and fills in automatically. The ID stays with the person, so sorting the tab or deleting a row never re-points an existing match, link, or PDF at someone else. Never edit or reuse an ID by hand.
 5. (Optional) Add tabs **`Pre-Survey Results`** and **`Post Survey Results`** with headers in row 1 if you want Insights charts later.
 6. You do **not** need to create **`Matches`** or **`Volunteers`** tabs manually—the script can create them when needed.
 
@@ -84,7 +84,7 @@ If you **only** use the spreadsheet UI and never call the JSON API, you can skip
 
 Required for:
 
-- Public profile links (`?view=public&row=…`)
+- Public profile links (`?view=public&cid=…`; older `?view=public&row=…` links still resolve)
 - PDF generation from the sidebar
 - **App.html** dashboard URL
 - JSON API (`POST` / `GET` with token)
@@ -109,15 +109,15 @@ Steps:
 
 1. Close and reopen the spreadsheet **or** refresh the browser tab.
 2. Confirm the menu **Companion tools** appears in the menu bar.
-3. Try **Companion tools → Open sidebar** and use **Public link & PDF** (row #) or **Match suggestions** (dropdown + scored list).  
-   - If copy-link fails, use **Save URL on this spreadsheet** in the sidebar (Phase 4), set **`WEB_APP_PUBLIC_BASE_URL`**, or build `?view=public&row=ROW` manually on your `/exec` URL.
+3. Try **Companion tools → Open sidebar** and use **Public link & PDF** (Companion ID or row #) or **Match suggestions** (dropdown + scored list).  
+   - If copy-link fails, use **Save URL on this spreadsheet** in the sidebar (Phase 4), set **`WEB_APP_PUBLIC_BASE_URL`**, or build `?view=public&cid=C-0042` manually on your `/exec` URL.
 
 ---
 
 ## Phase 6 — Match Queue (spreadsheet matching)
 
 1. **Companion tools → Prepare Match Queue sheet** (creates the **Match Queue** tab).
-2. Each row: **Companion 1 row** and **Companion 2 row** = row numbers on **`Sign Up Form`**. Optional **Status** and **Notes**. Leave **Processed** blank until you run the processor. Rows with **both** A and B empty are ignored.
+2. Each row: **Companion 1** and **Companion 2** = Companion IDs from **`Sign Up Form`** (a row number also works). Optional **Status** and **Notes**. Leave **Processed** blank until you run the processor. Rows with **both** A and B empty are ignored.
 3. **Companion tools → Process Match Queue** appends pairs to the **`Matches`** tab.
 
 ---
@@ -136,6 +136,14 @@ If you use **`VolunteersSync.gs`** and **`CompanionsSync.gs`**:
 
 See the comments at the bottom of **`VolunteersSync.gs`** and **`CompanionsSync.gs`** for trigger details.
 
+### New sign-up email alert
+
+1. Refresh the spreadsheet so the latest **Companion tools** menu loads.
+2. Choose **Companion tools → Install new-signup email alert** and approve the requested permissions. This installs one dedicated spreadsheet **On form submit** trigger.
+3. Choose **Companion tools → Send test new-signup email**. The test uses the latest sign-up and is marked `[TEST]`.
+
+Each new form response emails **danfrey76@gmail.com** with the person's full name, email, phone number, and a clickable public-application link. Set Script property `SIGNUP_NOTIFY_TO_EMAIL` to override the recipient or `SIGNUP_NOTIFY_ENABLED=false` to pause alerts.
+
 ---
 
 ## Phase 8 — CORS proxy (only if a browser app calls the API)
@@ -153,8 +161,8 @@ Browsers often block direct `fetch()` to `script.google.com`. If a browser SPA o
 | Step | What you do | Success |
 |------|-------------|---------|
 | 1 | Open Web app URL with no query string | Dashboard (**App.html**) loads |
-| 2 | Open `YOUR_WEBAPP_URL?view=public&row=2` (real row) | Public profile; no contact fields |
-| 3 | Companion sidebar → copy link for row 2 | Link uses your deployment URL |
+| 2 | Open `YOUR_WEBAPP_URL?view=public&cid=C-0001` (real Companion ID) | Public profile; no contact fields |
+| 3 | Companion sidebar → copy link for that person | Link uses your deployment URL |
 | 4 | POST `health` + token (Postman/curl) | `{ "ok": true, ... }` |
 | 5 | Match Queue → process one pair | New row on **Matches** |
 
