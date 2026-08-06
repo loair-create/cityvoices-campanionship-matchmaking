@@ -11,7 +11,13 @@ function sheetCompanionMenuOnOpen() {
     .addItem('Prepare Match Queue sheet', 'ensureMatchQueueSheet')
     .addItem('Process Match Queue', 'processMatchQueueFromSheet')
     .addSeparator()
+    .addItem('Check match IDs (report only)', 'previewMatchIdMigration')
+    .addItem('Repair match IDs…', 'migrateMatchesToStableIds')
+    .addSeparator()
     .addItem('Sync Volunteers & Companions tabs', 'syncVolunteersAndCompanionsFromSignUpForm')
+    .addSeparator()
+    .addItem('Install new-signup email alert', 'installSignUpNotificationTrigger')
+    .addItem('Send test new-signup email', 'sendSignUpNotificationTestForLastRow')
     .addSeparator()
     .addItem('Open matching dashboard…', 'openApp')
     .addToUi();
