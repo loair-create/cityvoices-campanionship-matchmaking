@@ -5,7 +5,9 @@
  * When column AQ on "Sign Up Form" is TRUE, that row is listed on the "Volunteers" tab:
  * Col A: Timestamp from Sign Up Form; Col B: sign-up row; Col C–E: name, phone, email;
  * Col F: Last Contact Date — staff manual; edits push to Sign Up Form "Last Contact Date" column;
- * Col G: Internal Notes — staff manual; edits push to Sign Up Form INTERNAL NOTES.
+ * Col G: Internal Notes — staff manual; edits push to Sign Up Form INTERNAL NOTES;
+ * Col H: Internal Status — copied from Sign Up Form (used for Quit highlighting);
+ * Col I: Companion ID — stable person key (list order is preserved; new people append at the bottom).
  */
 
 var VOLUNTEERS_SYNC_SOURCE_SHEET = 'Sign Up Form';
@@ -23,6 +25,15 @@ var VOLUNTEERS_LAST_CONTACT_COL = 6;
 /** Volunteers sheet: column G = Internal Notes (1-based index 7). */
 var VOLUNTEERS_NOTES_COL = 7;
 
+/** Volunteers sheet: column H = Internal Status (1-based index 8). */
+var VOLUNTEERS_INTERNAL_STATUS_COL = 8;
+
+/** Volunteers sheet: column I = Companion ID (1-based index 9). */
+var VOLUNTEERS_COMPANION_ID_COL = 9;
+
+/** Light brown row highlight when Internal Status is Quit. */
+var ROSTER_QUIT_HIGHLIGHT_COLOR = '#E8D4C4';
+
 var VOLUNTEERS_HEADER_ROW = [
   'Timestamp',
   'Sign-up row',
@@ -30,7 +41,9 @@ var VOLUNTEERS_HEADER_ROW = [
   'Phone',
   'Email',
   'Last Contact Date',
-  'Internal Notes'
+  'Internal Notes',
+  'Internal Status',
+  'Companion ID'
 ];
 
 /** Prevents onEditVolunteersStaffFields from firing while this script is rewriting the Volunteers tab. */
@@ -76,8 +89,200 @@ function volunteersSync_buildColumnMap_(headers) {
     lastName: col('last name'),
     email: col('email'),
     phone: col('phone number'),
-    timestamp: colFirst(['timestamp', 'enrollment date', 'date enrolled', 'sign up date'])
+    timestamp: colFirst(['timestamp', 'enrollment date', 'date enrolled', 'sign up date']),
+    lastContactDate: colFirst([
+      'last contact date',
+      'last contact',
+      'contact date',
+      'date of last contact'
+    ]),
+    internalNotes: col('internal notes'),
+    internalStatus: colFirst([
+      'internal status',
+      'staff status',
+      'companion status',
+      'program status'
+    ]),
+    companionId: colFirst(['companion id'])
   };
+}
+
+/**
+ * One roster row array (A–I) from a Sign Up Form data row.
+ * @param {Array} row
+ * @param {Object} map
+ * @param {number} sheetRow
+ * @param {Object|null} staff preserved F/G from the roster tab
+ * @return {Array}
+ */
+function rosterSync_buildPersonRow_(row, map, sheetRow, staff) {
+  var name = volunteersSync_fullName_(row, map);
+  var phoneIdx = map.phone;
+  var emailIdx = map.email;
+  var phone = phoneIdx >= 0 && phoneIdx < row.length ? row[phoneIdx] : '';
+  var email = emailIdx >= 0 && emailIdx < row.length ? row[emailIdx] : '';
+
+  var lcFromForm =
+    map.lastContactDate >= 0 && map.lastContactDate < row.length ? row[map.lastContactDate] : '';
+  var notesFromForm =
+    map.internalNotes >= 0 && map.internalNotes < row.length ? row[map.internalNotes] : '';
+  var statusFromForm =
+    map.internalStatus >= 0 && map.internalStatus < row.length ? row[map.internalStatus] : '';
+  var cidFromForm =
+    map.companionId >= 0 && map.companionId < row.length
+      ? String(row[map.companionId] != null ? row[map.companionId] : '').trim()
+      : '';
+  // Fall back to sign-up row only when Companion ID is missing (should be rare after ensureCompanionIds_).
+  var personKey = cidFromForm || String(sheetRow);
+
+  var lcOut = '';
+  if (lcFromForm != null && lcFromForm !== '') {
+    lcOut = volunteersSync_formatCell_(lcFromForm);
+  } else if (staff && staff.lastContact != null && staff.lastContact !== '') {
+    lcOut =
+      staff.lastContact instanceof Date
+        ? volunteersSync_formatCell_(staff.lastContact)
+        : String(staff.lastContact);
+  }
+
+  var notesOut = '';
+  if (notesFromForm != null && String(notesFromForm).trim() !== '') {
+    notesOut = String(notesFromForm);
+  } else if (staff && staff.internalNotes != null) {
+    notesOut = String(staff.internalNotes);
+  }
+
+  var statusOut = statusFromForm != null ? String(statusFromForm).trim() : '';
+  var tsIdx = map.timestamp;
+  var ts = tsIdx >= 0 && tsIdx < row.length ? row[tsIdx] : '';
+
+  return {
+    key: personKey,
+    values: [
+      volunteersSync_formatCell_(ts),
+      sheetRow,
+      name,
+      phone != null ? String(phone) : '',
+      email != null ? String(email) : '',
+      lcOut,
+      notesOut,
+      statusOut,
+      personKey
+    ]
+  };
+}
+
+/**
+ * Existing roster order + staff F/G.
+ * Each entry keeps the sheet's row identity so first upgrades can rematch by email/name.
+ * @return {{ entries: Array<{key:string, email:string, name:string}>, staffByKey: Object }}
+ */
+function rosterSync_readExistingOrder_(sheetName, signupRowCol, notesCol, companionIdCol) {
+  var entries = [];
+  var staffByKey = {};
+  var seen = {};
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(sheetName);
+  if (!sh || sh.getLastRow() < 2) return { entries: entries, staffByKey: staffByKey };
+
+  var lr = sh.getLastRow();
+  var width = Math.max(sh.getLastColumn(), companionIdCol || notesCol, 5);
+  var rows = sh.getRange(2, 1, lr - 1, width).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var cid =
+      companionIdCol && companionIdCol - 1 < rows[i].length
+        ? String(rows[i][companionIdCol - 1] != null ? rows[i][companionIdCol - 1] : '').trim()
+        : '';
+    var signup = String(rows[i][signupRowCol - 1] != null ? rows[i][signupRowCol - 1] : '').trim();
+    var key = cid || signup;
+    if (!key || seen[key]) continue;
+    seen[key] = true;
+    var email = String(rows[i][4] != null ? rows[i][4] : '')
+      .trim()
+      .toLowerCase();
+    var name = String(rows[i][2] != null ? rows[i][2] : '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+    entries.push({ key: key, email: email, name: name });
+    staffByKey[key] = {
+      lastContact: VOLUNTEERS_LAST_CONTACT_COL - 1 < rows[i].length ? rows[i][VOLUNTEERS_LAST_CONTACT_COL - 1] : '',
+      internalNotes:
+        notesCol - 1 < rows[i].length && rows[i][notesCol - 1] != null
+          ? String(rows[i][notesCol - 1])
+          : ''
+    };
+  }
+  return { entries: entries, staffByKey: staffByKey };
+}
+
+/**
+ * Keep existing people in their current order; append anyone newly eligible at the bottom.
+ * Matches prior rows by Companion ID, then email, then name (so upgrades do not reshuffle).
+ * @param {Array<{key:string, email:string, name:string}>} existingEntries
+ * @param {Object} eligibleByKey map key → row values array
+ * @param {string[]} formOrder keys in Sign Up Form scan order (for newcomers only)
+ * @return {Array<Array>}
+ */
+function rosterSync_mergeStableOrder_(existingEntries, eligibleByKey, formOrder) {
+  var out = [];
+  var placed = {};
+  var byEmail = {};
+  var byName = {};
+  for (var k = 0; k < formOrder.length; k++) {
+    var id = formOrder[k];
+    var vals = eligibleByKey[id];
+    if (!vals) continue;
+    var em = String(vals[4] || '')
+      .trim()
+      .toLowerCase();
+    var nm = String(vals[2] || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+    if (em && !byEmail[em]) byEmail[em] = id;
+    if (nm && !byName[nm]) byName[nm] = id;
+  }
+
+  for (var i = 0; i < existingEntries.length; i++) {
+    var entry = existingEntries[i];
+    var matchKey = '';
+    if (eligibleByKey[entry.key]) matchKey = entry.key;
+    else if (entry.email && byEmail[entry.email]) matchKey = byEmail[entry.email];
+    else if (entry.name && byName[entry.name]) matchKey = byName[entry.name];
+    if (!matchKey || placed[matchKey]) continue;
+    out.push(eligibleByKey[matchKey]);
+    placed[matchKey] = true;
+  }
+  for (var j = 0; j < formOrder.length; j++) {
+    var nk = formOrder[j];
+    if (placed[nk] || !eligibleByKey[nk]) continue;
+    out.push(eligibleByKey[nk]);
+    placed[nk] = true;
+  }
+  return out;
+}
+
+/**
+ * Entire-row light brown when Internal Status is Quit.
+ * These roster tabs are script-managed, so rules are replaced on each sync.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} [statusCol] 1-based Internal Status column (default H = 8)
+ * @param {number} [numCols] columns to paint across the row
+ */
+function applyRosterQuitConditionalFormatting_(sheet, statusCol, numCols) {
+  if (!sheet) return;
+  var col = statusCol != null ? statusCol : VOLUNTEERS_INTERNAL_STATUS_COL;
+  var width = numCols != null ? numCols : Math.max(sheet.getLastColumn(), col, VOLUNTEERS_HEADER_ROW.length);
+  var maxRows = Math.max(sheet.getMaxRows(), 2);
+  var range = sheet.getRange(2, 1, maxRows - 1, width);
+  var colLetter = sheet.getRange(1, col).getA1Notation().replace(/\d/g, '');
+  var quitRule = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=$' + colLetter + '2="Quit"')
+    .setBackground(ROSTER_QUIT_HIGHLIGHT_COLOR)
+    .setRanges([range])
+    .build();
+  sheet.setConditionalFormatRules([quitRule]);
 }
 
 function volunteersSync_isVolunteerTrue_(cellValue) {
@@ -104,12 +309,14 @@ function volunteersSync_fullName_(row, map) {
 }
 
 /**
- * Rebuilds the entire "Volunteers" tab from "Sign Up Form".
- * Safe to run manually (Run → syncVolunteersFromSignUpForm) or from onEdit.
+ * Syncs the Volunteers tab from Sign Up Form without reshuffling.
+ * Existing people keep their current order; newly eligible people are appended at the bottom.
  */
 function syncVolunteersFromSignUpForm() {
   volunteersSync_beginSheetWrite_();
   try {
+    if (typeof ensureCompanionIds_ === 'function') ensureCompanionIds_();
+
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var src = ss.getSheetByName(VOLUNTEERS_SYNC_SOURCE_SHEET);
     if (!src) {
@@ -118,77 +325,60 @@ function syncVolunteersFromSignUpForm() {
 
     var lastRow = src.getLastRow();
     var lastCol = Math.max(src.getLastColumn(), VOLUNTEER_COL_INDEX);
-    if (lastRow < 2) {
-      var emptyTgt = volunteersSync_ensureTargetSheet_(ss);
-      var nc = VOLUNTEERS_HEADER_ROW.length;
-      emptyTgt.getRange(1, 1, 1, nc).setValues([VOLUNTEERS_HEADER_ROW]);
-      var lrEmpty = emptyTgt.getLastRow();
-      if (lrEmpty > 1) {
-        emptyTgt.getRange(2, 1, lrEmpty - 1, nc).clearContent();
-      }
-      return;
-    }
-
-    var headers = src.getRange(1, 1, 1, lastCol).getValues()[0];
-    var map = volunteersSync_buildColumnMap_(headers);
-
-    var preservedStaff = volunteersSync_readPreservedStaffFields_(ss);
-
-    var data = src.getRange(2, 1, lastRow, lastCol).getValues();
-    var out = [];
-    for (var i = 0; i < data.length; i++) {
-      var row = data[i];
-      var aqIdx = VOLUNTEER_COL_INDEX - 1;
-      if (!volunteersSync_isVolunteerTrue_(row[aqIdx])) continue;
-
-      var sheetRow = i + 2;
-      var name = volunteersSync_fullName_(row, map);
-      var phoneIdx = map.phone;
-      var emailIdx = map.email;
-      var phone = phoneIdx >= 0 && phoneIdx < row.length ? row[phoneIdx] : '';
-      var email = emailIdx >= 0 && emailIdx < row.length ? row[emailIdx] : '';
-
-      var key = String(sheetRow);
-      var staff = preservedStaff[key];
-      var lcOut = '';
-      var notesOut = '';
-      if (staff) {
-        if (staff.lastContact != null && staff.lastContact !== '') {
-          lcOut =
-            staff.lastContact instanceof Date
-              ? volunteersSync_formatCell_(staff.lastContact)
-              : String(staff.lastContact);
-        }
-        if (staff.internalNotes != null) {
-          notesOut = String(staff.internalNotes);
-        }
-      }
-
-      var tsIdx = map.timestamp;
-      var ts = tsIdx >= 0 && tsIdx < row.length ? row[tsIdx] : '';
-      out.push([
-        volunteersSync_formatCell_(ts),
-        sheetRow,
-        name,
-        phone != null ? String(phone) : '',
-        email != null ? String(email) : '',
-        lcOut,
-        notesOut
-      ]);
-    }
-
     var tgt = volunteersSync_ensureTargetSheet_(ss);
     var numCols = VOLUNTEERS_HEADER_ROW.length;
     tgt.getRange(1, 1, 1, numCols).setValues([VOLUNTEERS_HEADER_ROW]);
+
+    if (lastRow < 2) {
+      var lrEmpty = tgt.getLastRow();
+      if (lrEmpty > 1) {
+        tgt.getRange(2, 1, lrEmpty - 1, numCols).clearContent();
+      }
+      applyRosterQuitConditionalFormatting_(tgt, VOLUNTEERS_INTERNAL_STATUS_COL, numCols);
+      return;
+    }
+
+    var existing = rosterSync_readExistingOrder_(
+      VOLUNTEERS_SYNC_TARGET_SHEET,
+      VOLUNTEERS_SIGNUP_ROW_COL,
+      VOLUNTEERS_NOTES_COL,
+      VOLUNTEERS_COMPANION_ID_COL
+    );
+    var headers = src.getRange(1, 1, 1, lastCol).getValues()[0];
+    var map = volunteersSync_buildColumnMap_(headers);
+    var data = src.getRange(2, 1, lastRow - 1, lastCol).getValues();
+
+    var eligibleByKey = {};
+    var formOrder = [];
+    for (var i = 0; i < data.length; i++) {
+      var row = data[i];
+      if (!volunteersSync_isVolunteerTrue_(row[VOLUNTEER_COL_INDEX - 1])) continue;
+      var sheetRow = i + 2;
+      var built = rosterSync_buildPersonRow_(
+        row,
+        map,
+        sheetRow,
+        existing.staffByKey[
+          (map.companionId >= 0 && row[map.companionId] != null
+            ? String(row[map.companionId]).trim()
+            : '') || String(sheetRow)
+        ] || existing.staffByKey[String(sheetRow)] || null
+      );
+      if (!built.key || eligibleByKey[built.key]) continue;
+      eligibleByKey[built.key] = built.values;
+      formOrder.push(built.key);
+    }
+
+    var out = rosterSync_mergeStableOrder_(existing.entries, eligibleByKey, formOrder);
     if (out.length) {
       tgt.getRange(2, 1, out.length, numCols).setValues(out);
     }
     var clearFrom = out.length + 2;
     var prevLast = tgt.getLastRow();
     if (prevLast >= clearFrom) {
-      var numClearRows = prevLast - clearFrom + 1;
-      tgt.getRange(clearFrom, 1, numClearRows, numCols).clearContent();
+      tgt.getRange(clearFrom, 1, prevLast - clearFrom + 1, numCols).clearContent();
     }
+    applyRosterQuitConditionalFormatting_(tgt, VOLUNTEERS_INTERNAL_STATUS_COL, numCols);
   } finally {
     volunteersSync_endSheetWrite_();
   }
@@ -244,9 +434,10 @@ function onEditVolunteersStaffFields(e) {
   if (rLast < 2) return;
 
   for (var r = Math.max(2, r0); r <= rLast; r++) {
+    var cid = String(sh.getRange(r, VOLUNTEERS_COMPANION_ID_COL).getValue() || '').trim();
     var signup = sh.getRange(r, VOLUNTEERS_SIGNUP_ROW_COL).getValue();
-    var rn = parseInt(String(signup != null ? signup : '').trim(), 10);
-    if (isNaN(rn) || rn < 2) continue;
+    var ref = cid || String(signup != null ? signup : '').trim();
+    if (!ref) continue;
     var lcCell = sh.getRange(r, VOLUNTEERS_LAST_CONTACT_COL).getValue();
     var notesCell = sh.getRange(r, VOLUNTEERS_NOTES_COL).getValue();
     var isoOrEmpty = '';
@@ -256,10 +447,10 @@ function onEditVolunteersStaffFields(e) {
       isoOrEmpty = String(lcCell).trim();
     }
     if (typeof updateCompanionLastContactDate === 'function') {
-      updateCompanionLastContactDate(String(rn), isoOrEmpty);
+      updateCompanionLastContactDate(ref, isoOrEmpty);
     }
     if (typeof updateCompanionNote === 'function') {
-      updateCompanionNote(String(rn), notesCell != null ? String(notesCell) : '');
+      updateCompanionNote(ref, notesCell != null ? String(notesCell) : '');
     }
   }
 }
@@ -307,7 +498,8 @@ function onChangeVolunteersSync(e) {
  *    - Function: onEditVolunteersSync
  *    - Event source: From spreadsheet
  *    - Event type: On edit
- * 6. Volunteers staff fields (Last Contact + Internal Notes, columns F & G) → Sign Up Form:
+ * 6. Volunteers staff fields (Last Contact + Internal Notes, columns F & G) → Sign Up Form
+ *    (column H Internal Status is synced from Sign Up Form; Quit rows are light brown):
  *    - Function: onEditVolunteersStaffFields
  *    - Event source: From spreadsheet
  *    - Event type: On edit
