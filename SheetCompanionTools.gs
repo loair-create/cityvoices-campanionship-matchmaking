@@ -42,7 +42,8 @@ function applyCompanionSheetFormatting() {
   SpreadsheetApp.getUi().alert(
     'Sheet formatting applied.\n\n' +
       '• Matches column D: dropdown Just Matched / Active / Canceled\n' +
-      '• Volunteers & Companions: F = Last Contact Date, G = Internal Notes, H = Internal Status, I = Companion ID\n' +
+      '• Volunteers & Companions: F = Last Contact, G = Notes, H = Internal Status (dropdown), I = Companion ID\n' +
+      '• Edits to F, G, or H on those tabs write back to the Sign Up Form\n' +
       '• Existing roster order is kept; new sign-ups append at the bottom\n' +
       '• Rows with Internal Status "Quit" are highlighted light brown'
   );
