@@ -372,6 +372,9 @@ function formatDateMMDD_(value) {
   return Utilities.formatDate(d, Session.getScriptTimeZone(), 'MM/dd/yyyy');
 }
 
+/** Allowed values for Matches column D (Status). */
+var MATCH_STATUS_OPTIONS = ['Just Matched', 'Active', 'Canceled'];
+
 /** Matches sheet column I — ensure header exists for older spreadsheets. */
 function ensureMatchesLastContactColumn_(sheet) {
   if (!sheet) return;
@@ -379,6 +382,34 @@ function ensureMatchesLastContactColumn_(sheet) {
   if (lc < 9) {
     sheet.getRange(1, 9).setValue('Last Contact Date');
   }
+}
+
+/**
+ * Dropdown on Matches column D: Just Matched, Active, Canceled.
+ * Applied to all data rows plus spare blank rows for new matches.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ */
+function ensureMatchesStatusDropdown_(sheet) {
+  if (!sheet) return;
+  if (sheet.getRange(1, 4).getValue() !== 'Status') {
+    sheet.getRange(1, 4).setValue('Status');
+  }
+  var lastRow = Math.max(sheet.getLastRow(), 2);
+  var endRow = Math.max(lastRow + 50, 200);
+  var range = sheet.getRange(2, 4, endRow - 1, 1);
+  var rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(MATCH_STATUS_OPTIONS, true)
+    .setAllowInvalid(false)
+    .setHelpText('Choose Just Matched, Active, or Canceled.')
+    .build();
+  range.setDataValidation(rule);
+}
+
+/** Headers, last-contact column, and Status dropdown for the Matches tab. */
+function ensureMatchesSheetSetup_(sheet) {
+  if (!sheet) return;
+  ensureMatchesLastContactColumn_(sheet);
+  ensureMatchesStatusDropdown_(sheet);
 }
 
 function formatMatchSheetDateCell_(v) {
@@ -978,10 +1009,10 @@ function getData() {
     ]);
   }
   
+  ensureMatchesSheetSetup_(matchSheet);
   const lastMatchRow = matchSheet.getLastRow();
   let matches = [];
   if (lastMatchRow >= 2) {
-    ensureMatchesLastContactColumn_(matchSheet);
     const matchCols = Math.max(matchSheet.getLastColumn(), 9);
     const matchData = matchSheet.getRange(1, 1, lastMatchRow, matchCols).getValues();
     const matchRows = matchData.slice(1);
@@ -1056,7 +1087,7 @@ function createMatch(matchObj) {
       if ((x === a && y === b) || (x === b && y === a)) return false;
     }
 
-    ensureMatchesLastContactColumn_(sheet);
+    ensureMatchesSheetSetup_(sheet);
     sheet.appendRow([
       matchObj.id,
       a,
@@ -1155,7 +1186,7 @@ function createMatchesBatch(matchObjs) {
         continue;
       }
       existingKeys[k] = { row: 0, names: '', status: '' };
-      ensureMatchesLastContactColumn_(sheet);
+      ensureMatchesSheetSetup_(sheet);
       sheet.appendRow([
         matchObj.id,
         a,
@@ -1213,7 +1244,7 @@ function updateMatchData(matchId, field, value) {
 function updateMatchLastContactDate(matchId, isoDateOrEmpty) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Matches');
   if (!sheet) return false;
-  ensureMatchesLastContactColumn_(sheet);
+  ensureMatchesSheetSetup_(sheet);
   var data = sheet.getDataRange().getValues();
   var mid = String(matchId != null ? matchId : '').trim();
   if (!mid) return false;
