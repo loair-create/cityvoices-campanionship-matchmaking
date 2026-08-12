@@ -309,11 +309,26 @@ function dispatchApiAction_(action, params) {
 }
 
 function onOpen() {
-  // Menus only — do not run sheet formatting here (simple onOpen can fail/time out and hide menus).
+  // Build menus here so they still appear if SheetCompanionTools.gs is missing/out of date.
   try {
-    if (typeof sheetCompanionMenuOnOpen === 'function') {
-      sheetCompanionMenuOnOpen();
-    }
+    var ui = SpreadsheetApp.getUi();
+    ui.createMenu('Companion tools')
+      .addItem('Open sidebar', 'showCompanionToolsSidebar')
+      .addItem('Open matching dashboard…', 'openApp')
+      .addItem('Send test new-signup email', 'sendSignUpNotificationTestForLastRow')
+      .addToUi();
+    ui.createMenu('Admin')
+      .addItem('Prepare Match Queue sheet', 'ensureMatchQueueSheet')
+      .addItem('Process Match Queue', 'processMatchQueueFromSheet')
+      .addSeparator()
+      .addItem('Check match IDs (report only)', 'previewMatchIdMigration')
+      .addItem('Repair match IDs…', 'migrateMatchesToStableIds')
+      .addSeparator()
+      .addItem('Sync Volunteers & Companions tabs', 'syncVolunteersAndCompanionsFromSignUpForm')
+      .addItem('Apply Matches dropdown & Quit highlighting', 'applyCompanionSheetFormatting')
+      .addSeparator()
+      .addItem('Install new-signup email alert', 'installSignUpNotificationTrigger')
+      .addToUi();
   } catch (e) {
     // No UI (e.g. headless) — ignore.
   }
