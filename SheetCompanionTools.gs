@@ -1,29 +1,12 @@
 /**
  * Spreadsheet-first UI: custom menu + sidebar for public links and PDFs.
  * Match Queue actions live in MatchQueue.gs; menu entries call those globals.
+ *
+ * Note: Code.gs onOpen() also creates these menus (so they appear even if this
+ * file is missing). Keep both in sync if you change menu items.
  */
-
 function sheetCompanionMenuOnOpen() {
-  var ui = SpreadsheetApp.getUi();
-
-  ui.createMenu('Companion tools')
-    .addItem('Open sidebar', 'showCompanionToolsSidebar')
-    .addItem('Open matching dashboard…', 'openApp')
-    .addItem('Send test new-signup email', 'sendSignUpNotificationTestForLastRow')
-    .addToUi();
-
-  ui.createMenu('Admin')
-    .addItem('Prepare Match Queue sheet', 'ensureMatchQueueSheet')
-    .addItem('Process Match Queue', 'processMatchQueueFromSheet')
-    .addSeparator()
-    .addItem('Check match IDs (report only)', 'previewMatchIdMigration')
-    .addItem('Repair match IDs…', 'migrateMatchesToStableIds')
-    .addSeparator()
-    .addItem('Sync Volunteers & Companions tabs', 'syncVolunteersAndCompanionsFromSignUpForm')
-    .addItem('Apply Matches dropdown & Quit highlighting', 'applyCompanionSheetFormatting')
-    .addSeparator()
-    .addItem('Install new-signup email alert', 'installSignUpNotificationTrigger')
-    .addToUi();
+  // Menus are created in Code.gs onOpen(). Kept for older docs / manual calls.
 }
 
 /**
