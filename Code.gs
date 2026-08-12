@@ -309,20 +309,13 @@ function dispatchApiAction_(action, params) {
 }
 
 function onOpen() {
+  // Menus only — do not run sheet formatting here (simple onOpen can fail/time out and hide menus).
   try {
     if (typeof sheetCompanionMenuOnOpen === 'function') {
       sheetCompanionMenuOnOpen();
     }
   } catch (e) {
     // No UI (e.g. headless) — ignore.
-  }
-  // Refresh Matches Status dropdown (incl. Dismissed) whenever the sheet is opened.
-  try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var matches = ss.getSheetByName('Matches');
-    if (matches) ensureMatchesSheetSetup_(matches);
-  } catch (e2) {
-    // Ignore — formatting can still be applied from Admin menu.
   }
 }
 
