@@ -285,8 +285,9 @@ var ROSTER_INTERNAL_STATUS_OPTIONS = ['Active', 'Quit', 'Unresponsive', 'Dismiss
 function applyRosterInternalStatusDropdown_(sheet, statusCol) {
   if (!sheet) return;
   var col = statusCol != null ? statusCol : VOLUNTEERS_INTERNAL_STATUS_COL;
-  var maxRows = Math.max(sheet.getMaxRows(), 2);
-  var range = sheet.getRange(2, col, maxRows - 1, 1);
+  var lastRow = Math.max(sheet.getLastRow(), 2);
+  var endRow = Math.max(lastRow + 50, 100);
+  var range = sheet.getRange(2, col, endRow - 1, 1);
   range.clearDataValidations();
   var rule = SpreadsheetApp.newDataValidation()
     .requireValueInList(ROSTER_INTERNAL_STATUS_OPTIONS, true)
@@ -329,7 +330,7 @@ function clearSheetBandings_(sheet) {
 }
 
 /**
- * Paint one data row from its Internal Status cell.
+ * Paint one data row from its Internal Status cell (for on-edit only).
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @param {number} row 1-based
  * @param {number} statusCol 1-based
@@ -339,13 +340,11 @@ function paintRosterStatusRow_(sheet, row, statusCol, numCols) {
   if (!sheet || row < 2) return;
   var width = numCols != null ? numCols : Math.max(sheet.getLastColumn(), statusCol, VOLUNTEERS_HEADER_ROW.length);
   var status = sheet.getRange(row, statusCol).getValue();
-  var color = rosterStatusHighlightColor_(status);
-  // setBackground(null) clears; hex string paints.
-  sheet.getRange(row, 1, 1, width).setBackground(color);
+  sheet.getRange(row, 1, 1, width).setBackground(rosterStatusHighlightColor_(status));
 }
 
 /**
- * Paint all data rows from Internal Status (row-by-row — most reliable in Sheets).
+ * Fast batch paint (one read + one write). Prefer conditional formatting for bulk apply.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @param {number} statusCol 1-based
  * @param {number} [numCols]
@@ -356,14 +355,21 @@ function paintRosterStatusRows_(sheet, statusCol, numCols) {
   if (lastRow < 2) return;
   clearSheetBandings_(sheet);
   var width = numCols != null ? numCols : Math.max(sheet.getLastColumn(), statusCol, VOLUNTEERS_HEADER_ROW.length);
-  for (var row = 2; row <= lastRow; row++) {
-    paintRosterStatusRow_(sheet, row, statusCol, width);
+  var n = lastRow - 1;
+  var statuses = sheet.getRange(2, statusCol, n, 1).getValues();
+  var backgrounds = [];
+  for (var i = 0; i < statuses.length; i++) {
+    var color = rosterStatusHighlightColor_(statuses[i][0]);
+    var rowBg = [];
+    for (var c = 0; c < width; c++) rowBg.push(color);
+    backgrounds.push(rowBg);
   }
+  sheet.getRange(2, 1, n, width).setBackgrounds(backgrounds);
 }
 
 /**
- * Entire-row highlight by Internal Status: Quit (brown), Unresponsive (orange), Dismissed (red).
- * Uses direct paint + conditional formatting (case-insensitive formulas).
+ * Entire-row highlight by Internal Status via conditional formatting (fast).
+ * Also refreshes the Internal Status dropdown. Does not row-paint (that was too slow).
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @param {number} [statusCol] 1-based Internal Status column (default H = 8)
  * @param {number} [numCols] columns to paint across the row
@@ -373,11 +379,11 @@ function applyRosterQuitConditionalFormatting_(sheet, statusCol, numCols) {
   var col = statusCol != null ? statusCol : VOLUNTEERS_INTERNAL_STATUS_COL;
   var width = numCols != null ? numCols : Math.max(sheet.getLastColumn(), col, VOLUNTEERS_HEADER_ROW.length);
   var lastRow = Math.max(sheet.getLastRow(), 2);
-  var endRow = Math.max(lastRow + 50, 200);
-  // getRange(row, column, numRows, numColumns)
+  var endRow = Math.max(lastRow + 50, 100);
   var range = sheet.getRange(2, 1, endRow - 1, width);
   var colLetter = sheet.getRange(1, col).getA1Notation().replace(/\d/g, '');
-  var rules = [
+  clearSheetBandings_(sheet);
+  sheet.setConditionalFormatRules([
     SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="quit"')
       .setBackground(ROSTER_QUIT_HIGHLIGHT_COLOR)
@@ -393,10 +399,7 @@ function applyRosterQuitConditionalFormatting_(sheet, statusCol, numCols) {
       .setBackground(ROSTER_DISMISSED_HIGHLIGHT_COLOR)
       .setRanges([range])
       .build()
-  ];
-  clearSheetBandings_(sheet);
-  sheet.setConditionalFormatRules(rules);
-  paintRosterStatusRows_(sheet, col, width);
+  ]);
   applyRosterInternalStatusDropdown_(sheet, col);
 }
 
