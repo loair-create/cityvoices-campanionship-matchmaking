@@ -385,8 +385,9 @@ function ensureMatchesLastContactColumn_(sheet) {
 }
 
 /**
- * Dropdown on Matches column D: Just Matched, Active, Canceled.
+ * Dropdown on Matches column D: Just Matched, Active, Canceled, Dismissed.
  * Applied to all data rows plus spare blank rows for new matches.
+ * Also paints Dismissed rows light red.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  */
 function ensureMatchesStatusDropdown_(sheet) {
@@ -397,12 +398,114 @@ function ensureMatchesStatusDropdown_(sheet) {
   var lastRow = Math.max(sheet.getLastRow(), 2);
   var endRow = Math.max(lastRow + 50, 200);
   var range = sheet.getRange(2, 4, endRow - 1, 1);
+  range.clearDataValidations();
   var rule = SpreadsheetApp.newDataValidation()
     .requireValueInList(MATCH_STATUS_OPTIONS, true)
     .setAllowInvalid(false)
-    .setHelpText('Choose Just Matched, Active, or Canceled.')
+    .setHelpText('Choose Just Matched, Active, Canceled, or Dismissed.')
     .build();
   range.setDataValidation(rule);
+
+  var width = Math.max(sheet.getLastColumn(), 9);
+  var rowRange = sheet.getRange(2, 1, endRow - 1, width);
+  sheet.setConditionalFormatRules([
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$D2="Dismissed"')
+      .setBackground('#FECACA')
+      .setRanges([rowRange])
+      .build()
+  ]);
+
+  // Direct paint so color shows immediately (CF alone can lag / miss after old rules).
+  if (lastRow >= 2) {
+    var n = lastRow - 1;
+    var statuses = sheet.getRange(2, 4, n, 1).getValues();
+    var backgrounds = [];
+    for (var i = 0; i < statuses.length; i++) {
+      var color = String(statuses[i][0] || '').trim() === 'Dismissed' ? '#FECACA' : null;
+      var rowBg = [];
+      for (var c = 0; c < width; c++) rowBg.push(color);
+      backgrounds.push(rowBg);
+    }
+    sheet.getRange(2, 1, n, width).setBackgrounds(backgrounds);
+  }
+}
+
+/**
+ * Sign Up Form: dropdown + row colors on the Internal Status column.
+ * Does not replace other conditional-format rules on that sheet.
+ */
+function applySignUpFormInternalStatusFormatting_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(FORM_SHEET_NAME);
+  if (!sheet) return;
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return;
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var c = buildCompanionColumnIndices(headers);
+  if (c.internalStatus == null || c.internalStatus < 0) return;
+  var statusCol = c.internalStatus + 1;
+  var lastRow = Math.max(sheet.getLastRow(), 2);
+  var endRow = Math.max(lastRow + 50, 200);
+  var statusRange = sheet.getRange(2, statusCol, endRow - 1, 1);
+  statusRange.clearDataValidations();
+  statusRange.setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireValueInList(['Active', 'Quit', 'Unresponsive', 'Dismissed'], true)
+      .setAllowInvalid(true)
+      .setHelpText('Choose Active, Quit, Unresponsive, or Dismissed (or leave blank).')
+      .build()
+  );
+  if (typeof paintRosterStatusRows_ === 'function') {
+    paintRosterStatusRows_(sheet, statusCol, lastCol);
+  }
+  // Append status color rules without wiping existing Sign Up Form rules.
+  var colLetter = sheet.getRange(1, statusCol).getA1Notation().replace(/\d/g, '');
+  var rowRange = sheet.getRange(2, 1, endRow - 1, lastCol);
+  var existing = sheet.getConditionalFormatRules() || [];
+  var kept = [];
+  for (var i = 0; i < existing.length; i++) {
+    var f = existing[i].getBooleanCondition();
+    var formula = f && f.getCriteriaValues && f.getCriteriaValues()[0]
+      ? String(f.getCriteriaValues()[0])
+      : '';
+    if (
+      formula.indexOf('"Quit"') >= 0 ||
+      formula.indexOf('"Unresponsive"') >= 0 ||
+      formula.indexOf('"Dismissed"') >= 0
+    ) {
+      continue;
+    }
+    kept.push(existing[i]);
+  }
+  var quitColor =
+    typeof ROSTER_QUIT_HIGHLIGHT_COLOR !== 'undefined' ? ROSTER_QUIT_HIGHLIGHT_COLOR : '#E8D4C4';
+  var unColor =
+    typeof ROSTER_UNRESPONSIVE_HIGHLIGHT_COLOR !== 'undefined'
+      ? ROSTER_UNRESPONSIVE_HIGHLIGHT_COLOR
+      : '#FED7AA';
+  var disColor =
+    typeof ROSTER_DISMISSED_HIGHLIGHT_COLOR !== 'undefined'
+      ? ROSTER_DISMISSED_HIGHLIGHT_COLOR
+      : '#FECACA';
+  kept.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$' + colLetter + '2="Quit"')
+      .setBackground(quitColor)
+      .setRanges([rowRange])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$' + colLetter + '2="Unresponsive"')
+      .setBackground(unColor)
+      .setRanges([rowRange])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=$' + colLetter + '2="Dismissed"')
+      .setBackground(disColor)
+      .setRanges([rowRange])
+      .build()
+  );
+  sheet.setConditionalFormatRules(kept);
 }
 
 /** Headers, last-contact column, and Status dropdown for the Matches tab. */
@@ -411,6 +514,7 @@ function ensureMatchesSheetSetup_(sheet) {
   ensureMatchesLastContactColumn_(sheet);
   ensureMatchesStatusDropdown_(sheet);
 }
+
 
 function formatMatchSheetDateCell_(v) {
   if (v == null || v === '') return '';
