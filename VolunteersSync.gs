@@ -6,7 +6,7 @@
  * Col A: Timestamp from Sign Up Form; Col B: sign-up row; Col C–E: name, phone, email;
  * Col F: Last Contact Date — staff manual; edits push to Sign Up Form "Last Contact Date" column;
  * Col G: Internal Notes — staff manual; edits push to Sign Up Form INTERNAL NOTES;
- * Col H: Internal Status — editable (Active / Quit / Unresponsive); edits push to Sign Up Form; Quit rows highlight light brown;
+ * Col H: Internal Status — editable (Active / Quit / Unresponsive / Dismissed); edits push to Sign Up Form; status rows highlight (Quit brown, Unresponsive orange, Dismissed red);
  * Col I: Companion ID — stable person key (list order is preserved; new people append at the bottom).
  */
 
@@ -31,8 +31,10 @@ var VOLUNTEERS_INTERNAL_STATUS_COL = 8;
 /** Volunteers sheet: column I = Companion ID (1-based index 9). */
 var VOLUNTEERS_COMPANION_ID_COL = 9;
 
-/** Light brown row highlight when Internal Status is Quit. */
+/** Light brown / orange / red row highlights by Internal Status. */
 var ROSTER_QUIT_HIGHLIGHT_COLOR = '#E8D4C4';
+var ROSTER_UNRESPONSIVE_HIGHLIGHT_COLOR = '#FED7AA';
+var ROSTER_DISMISSED_HIGHLIGHT_COLOR = '#FECACA';
 
 var VOLUNTEERS_HEADER_ROW = [
   'Timestamp',
@@ -273,10 +275,10 @@ function rosterSync_mergeStableOrder_(existingEntries, eligibleByKey, formOrder)
 }
 
 /** Allowed values for Volunteers / Companions Internal Status (column H). */
-var ROSTER_INTERNAL_STATUS_OPTIONS = ['Active', 'Quit', 'Unresponsive'];
+var ROSTER_INTERNAL_STATUS_OPTIONS = ['Active', 'Quit', 'Unresponsive', 'Dismissed'];
 
 /**
- * Dropdown on Internal Status (column H): Active / Quit / Unresponsive.
+ * Dropdown on Internal Status (column H): Active / Quit / Unresponsive / Dismissed.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @param {number} [statusCol] 1-based column (default H = 8)
  */
@@ -285,17 +287,83 @@ function applyRosterInternalStatusDropdown_(sheet, statusCol) {
   var col = statusCol != null ? statusCol : VOLUNTEERS_INTERNAL_STATUS_COL;
   var maxRows = Math.max(sheet.getMaxRows(), 2);
   var range = sheet.getRange(2, col, maxRows - 1, 1);
+  range.clearDataValidations();
   var rule = SpreadsheetApp.newDataValidation()
     .requireValueInList(ROSTER_INTERNAL_STATUS_OPTIONS, true)
     .setAllowInvalid(true)
-    .setHelpText('Choose Active, Quit, or Unresponsive (or leave blank).')
+    .setHelpText('Choose Active, Quit, Unresponsive, or Dismissed (or leave blank).')
     .build();
   range.setDataValidation(rule);
 }
 
 /**
- * Entire-row light brown when Internal Status is Quit.
- * These roster tabs are script-managed, so rules are replaced on each sync.
+ * Background color for an Internal Status value (or null to clear).
+ * Case-insensitive match.
+ * @param {*} status
+ * @return {string|null}
+ */
+function rosterStatusHighlightColor_(status) {
+  var s = String(status != null ? status : '')
+    .trim()
+    .toLowerCase();
+  if (s === 'quit') return ROSTER_QUIT_HIGHLIGHT_COLOR;
+  if (s === 'unresponsive') return ROSTER_UNRESPONSIVE_HIGHLIGHT_COLOR;
+  if (s === 'dismissed') return ROSTER_DISMISSED_HIGHLIGHT_COLOR;
+  return null;
+}
+
+/**
+ * Remove alternating row colors so status highlights are visible.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ */
+function clearSheetBandings_(sheet) {
+  if (!sheet) return;
+  try {
+    var bandings = sheet.getBandings();
+    for (var i = 0; i < bandings.length; i++) {
+      bandings[i].remove();
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+/**
+ * Paint one data row from its Internal Status cell.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} row 1-based
+ * @param {number} statusCol 1-based
+ * @param {number} [numCols]
+ */
+function paintRosterStatusRow_(sheet, row, statusCol, numCols) {
+  if (!sheet || row < 2) return;
+  var width = numCols != null ? numCols : Math.max(sheet.getLastColumn(), statusCol, VOLUNTEERS_HEADER_ROW.length);
+  var status = sheet.getRange(row, statusCol).getValue();
+  var color = rosterStatusHighlightColor_(status);
+  // setBackground(null) clears; hex string paints.
+  sheet.getRange(row, 1, 1, width).setBackground(color);
+}
+
+/**
+ * Paint all data rows from Internal Status (row-by-row — most reliable in Sheets).
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} statusCol 1-based
+ * @param {number} [numCols]
+ */
+function paintRosterStatusRows_(sheet, statusCol, numCols) {
+  if (!sheet) return;
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  clearSheetBandings_(sheet);
+  var width = numCols != null ? numCols : Math.max(sheet.getLastColumn(), statusCol, VOLUNTEERS_HEADER_ROW.length);
+  for (var row = 2; row <= lastRow; row++) {
+    paintRosterStatusRow_(sheet, row, statusCol, width);
+  }
+}
+
+/**
+ * Entire-row highlight by Internal Status: Quit (brown), Unresponsive (orange), Dismissed (red).
+ * Uses direct paint + conditional formatting (case-insensitive formulas).
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @param {number} [statusCol] 1-based Internal Status column (default H = 8)
  * @param {number} [numCols] columns to paint across the row
@@ -304,15 +372,31 @@ function applyRosterQuitConditionalFormatting_(sheet, statusCol, numCols) {
   if (!sheet) return;
   var col = statusCol != null ? statusCol : VOLUNTEERS_INTERNAL_STATUS_COL;
   var width = numCols != null ? numCols : Math.max(sheet.getLastColumn(), col, VOLUNTEERS_HEADER_ROW.length);
-  var maxRows = Math.max(sheet.getMaxRows(), 2);
-  var range = sheet.getRange(2, 1, maxRows - 1, width);
+  var lastRow = Math.max(sheet.getLastRow(), 2);
+  var endRow = Math.max(lastRow + 50, 200);
+  // getRange(row, column, numRows, numColumns)
+  var range = sheet.getRange(2, 1, endRow - 1, width);
   var colLetter = sheet.getRange(1, col).getA1Notation().replace(/\d/g, '');
-  var quitRule = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied('=$' + colLetter + '2="Quit"')
-    .setBackground(ROSTER_QUIT_HIGHLIGHT_COLOR)
-    .setRanges([range])
-    .build();
-  sheet.setConditionalFormatRules([quitRule]);
+  var rules = [
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="quit"')
+      .setBackground(ROSTER_QUIT_HIGHLIGHT_COLOR)
+      .setRanges([range])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="unresponsive"')
+      .setBackground(ROSTER_UNRESPONSIVE_HIGHLIGHT_COLOR)
+      .setRanges([range])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="dismissed"')
+      .setBackground(ROSTER_DISMISSED_HIGHLIGHT_COLOR)
+      .setRanges([range])
+      .build()
+  ];
+  clearSheetBandings_(sheet);
+  sheet.setConditionalFormatRules(rules);
+  paintRosterStatusRows_(sheet, col, width);
   applyRosterInternalStatusDropdown_(sheet, col);
 }
 
@@ -487,6 +571,9 @@ function onEditVolunteersStaffFields(e) {
     }
     if (typeof updateCompanionInternalStatus === 'function') {
       updateCompanionInternalStatus(ref, statusCell != null ? String(statusCell).trim() : '');
+    }
+    if (c0 <= VOLUNTEERS_INTERNAL_STATUS_COL && cLast >= VOLUNTEERS_INTERNAL_STATUS_COL) {
+      paintRosterStatusRow_(sh, r, VOLUNTEERS_INTERNAL_STATUS_COL, VOLUNTEERS_HEADER_ROW.length);
     }
   }
 }
