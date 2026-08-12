@@ -27,26 +27,43 @@ function sheetCompanionMenuOnOpen() {
 }
 
 /**
- * One-shot: Matches Status dropdown (Just Matched / Active / Canceled) +
- * Volunteers/Companions Quit row highlighting (and refreshed roster columns F/G/H).
+ * One-shot: Matches Status dropdown (incl. Dismissed) + row colors,
+ * Sign Up Form / Volunteers / Companions Internal Status dropdown + row colors.
  */
 function applyCompanionSheetFormatting() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var matches = ss.getSheetByName('Matches');
-  if (matches && typeof ensureMatchesSheetSetup_ === 'function') {
-    ensureMatchesSheetSetup_(matches);
+  var notes = [];
+  var errors = [];
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var matches = ss.getSheetByName('Matches');
+    if (matches && typeof ensureMatchesSheetSetup_ === 'function') {
+      ensureMatchesSheetSetup_(matches);
+      notes.push('Matches: Status dropdown + Dismissed colors');
+    }
+  } catch (e1) {
+    errors.push('Matches: ' + (e1.message || e1));
   }
-  if (typeof syncVolunteersAndCompanionsFromSignUpForm === 'function') {
-    syncVolunteersAndCompanionsFromSignUpForm();
+  try {
+    if (typeof applySignUpFormInternalStatusFormatting_ === 'function') {
+      applySignUpFormInternalStatusFormatting_();
+      notes.push('Sign Up Form: Internal Status dropdown + row colors');
+    }
+  } catch (e2) {
+    errors.push('Sign Up Form: ' + (e2.message || e2));
   }
-  SpreadsheetApp.getUi().alert(
-    'Sheet formatting applied.\n\n' +
-      '• Matches column D: dropdown Just Matched / Active / Canceled\n' +
-      '• Volunteers & Companions: F = Last Contact, G = Notes, H = Internal Status (dropdown), I = Companion ID\n' +
-      '• Edits to F, G, or H on those tabs write back to the Sign Up Form\n' +
-      '• Existing roster order is kept; new sign-ups append at the bottom\n' +
-      '• Rows with Internal Status "Quit" are highlighted light brown'
-  );
+  try {
+    if (typeof syncVolunteersAndCompanionsFromSignUpForm === 'function') {
+      syncVolunteersAndCompanionsFromSignUpForm();
+      notes.push('Volunteers & Companions: synced + row colors');
+    }
+  } catch (e3) {
+    errors.push('Volunteers/Companions: ' + (e3.message || e3));
+  }
+  var msg =
+    (notes.length ? 'Applied:\n• ' + notes.join('\n• ') : 'Nothing applied.') +
+    (errors.length ? '\n\nErrors:\n• ' + errors.join('\n• ') : '') +
+    '\n\nRow colors: Quit = light brown, Unresponsive = light orange, Dismissed = light red';
+  SpreadsheetApp.getUi().alert(msg);
 }
 
 function showCompanionToolsSidebar() {
