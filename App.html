@@ -186,7 +186,16 @@
       return false;
     };
 
-    const INTERNAL_STATUS_OPTIONS = ['Active', 'Quit', 'Unresponsive'];
+    const INTERNAL_STATUS_OPTIONS = ['Active', 'Quit', 'Unresponsive', 'Dismissed'];
+
+    /** Card / row tint from internal status (Dismissed = light red, Unresponsive = light orange). */
+    const internalStatusCardClass = (status) => {
+      const s = String(status || '').trim().toLowerCase();
+      if (s === 'dismissed') return 'bg-red-50 border-red-200';
+      if (s === 'unresponsive') return 'bg-orange-50 border-orange-200';
+      if (s === 'quit') return 'bg-amber-50 border-amber-200';
+      return 'bg-white border-gray-200';
+    };
 
     /** Convert sheet/display MM/DD/YYYY (or parseable date string) to yyyy-MM-dd for HTML date inputs. */
     const lastContactRawToDateInput = (raw) => {
@@ -1437,7 +1446,7 @@
                              <div
                                 key={c.id}
                                 onClick={() => { setSelectedCompanion(c); setIsMatchMode(false); setPendingMatchTargetIds([]); setMatchPickerQuery(''); }}
-                                className={`bg-white rounded-lg shadow cursor-pointer hover:shadow-md transition border group ${contactStale ? 'border-red-300 ring-1 ring-red-100' : 'border-gray-200'}`}
+                                className={`rounded-lg shadow cursor-pointer hover:shadow-md transition border group ${contactStale ? 'border-red-300 ring-1 ring-red-100' : ''} ${internalStatusCardClass(c.internalStatus)}`}
                                 title={contactStale ? 'Last contact was more than 2 weeks ago — open profile to update' : undefined}
                              >
                                 <div className="p-5 flex items-start gap-4">
@@ -1597,13 +1606,13 @@
                                           const s = String(selectedCompanion.internalStatus || '').trim();
                                           if (s && !INTERNAL_STATUS_OPTIONS.includes(s)) {
                                             return (
-                                              <option value={s}>{s} (from sheet — choose Active, Quit, or Unresponsive to replace)</option>
+                                              <option value={s}>{s} (from sheet — choose Active, Quit, Unresponsive, or Dismissed to replace)</option>
                                             );
                                           }
                                           return null;
                                         })()}
                                      </select>
-                                     <p className="text-[11px] text-amber-900/80 mt-2">Saved to your internal status column. Only <strong>Active</strong>, <strong>Quit</strong>, and <strong>Unresponsive</strong> are saved when selected from the list.</p>
+                                     <p className="text-[11px] text-amber-900/80 mt-2">Saved to your internal status column. Only <strong>Active</strong>, <strong>Quit</strong>, <strong>Unresponsive</strong>, and <strong>Dismissed</strong> are saved when selected from the list.</p>
                                   </div>
                                   <div>
                                      <label
