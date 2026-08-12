@@ -209,6 +209,13 @@ function onEditCompanionsStaffFields(e) {
     if (typeof updateCompanionInternalStatus === 'function') {
       updateCompanionInternalStatus(ref, statusCell != null ? String(statusCell).trim() : '');
     }
+    if (
+      c0 <= COMPANIONS_INTERNAL_STATUS_COL &&
+      cLast >= COMPANIONS_INTERNAL_STATUS_COL &&
+      typeof paintRosterStatusRow_ === 'function'
+    ) {
+      paintRosterStatusRow_(sh, r, COMPANIONS_INTERNAL_STATUS_COL, COMPANIONS_HEADER_ROW.length);
+    }
   }
 }
 
