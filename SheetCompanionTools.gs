@@ -10,42 +10,58 @@ function sheetCompanionMenuOnOpen() {
 }
 
 /**
- * One-shot: Matches Status dropdown (incl. Dismissed) + row colors,
- * Sign Up Form / Volunteers / Companions Internal Status dropdown + row colors.
+ * Fast one-shot: dropdowns + conditional-format row colors only.
+ * Does NOT run a full Volunteers/Companions sync (that was too slow).
  */
 function applyCompanionSheetFormatting() {
   var notes = [];
   var errors = [];
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
     var matches = ss.getSheetByName('Matches');
     if (matches && typeof ensureMatchesSheetSetup_ === 'function') {
       ensureMatchesSheetSetup_(matches);
-      notes.push('Matches: Status dropdown + Dismissed colors');
+      notes.push('Matches');
     }
   } catch (e1) {
     errors.push('Matches: ' + (e1.message || e1));
   }
+
   try {
     if (typeof applySignUpFormInternalStatusFormatting_ === 'function') {
       applySignUpFormInternalStatusFormatting_();
-      notes.push('Sign Up Form: Internal Status dropdown + row colors');
+      notes.push('Sign Up Form');
     }
   } catch (e2) {
     errors.push('Sign Up Form: ' + (e2.message || e2));
   }
+
   try {
-    if (typeof syncVolunteersAndCompanionsFromSignUpForm === 'function') {
-      syncVolunteersAndCompanionsFromSignUpForm();
-      notes.push('Volunteers & Companions: synced + row colors');
+    var vol = ss.getSheetByName('Volunteers');
+    if (vol && typeof applyRosterQuitConditionalFormatting_ === 'function') {
+      applyRosterQuitConditionalFormatting_(vol, 8, Math.max(vol.getLastColumn(), 9));
+      notes.push('Volunteers');
     }
   } catch (e3) {
-    errors.push('Volunteers/Companions: ' + (e3.message || e3));
+    errors.push('Volunteers: ' + (e3.message || e3));
   }
+
+  try {
+    var com = ss.getSheetByName('Companions');
+    if (com && typeof applyRosterQuitConditionalFormatting_ === 'function') {
+      applyRosterQuitConditionalFormatting_(com, 8, Math.max(com.getLastColumn(), 9));
+      notes.push('Companions');
+    }
+  } catch (e4) {
+    errors.push('Companions: ' + (e4.message || e4));
+  }
+
   var msg =
-    (notes.length ? 'Applied:\n• ' + notes.join('\n• ') : 'Nothing applied.') +
+    (notes.length ? 'Formatting applied to: ' + notes.join(', ') : 'Nothing applied.') +
     (errors.length ? '\n\nErrors:\n• ' + errors.join('\n• ') : '') +
-    '\n\nRow colors: Quit = light brown, Unresponsive = light orange, Dismissed = light red';
+    '\n\nColors via conditional formatting (Quit=brown, Unresponsive=orange, Dismissed=red).' +
+    '\nTo refresh roster data, use Admin → Sync Volunteers & Companions tabs.';
   SpreadsheetApp.getUi().alert(msg);
 }
 
