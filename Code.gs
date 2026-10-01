@@ -344,6 +344,17 @@ function openApp() {
   SpreadsheetApp.getUi().showModalDialog(html, 'Companionship Matching Dashboard');
 }
 
+/**
+ * Open the spreadsheet companion sidebar.
+ * Kept in Code.gs alongside onOpen() so the menu never points to a missing function.
+ */
+function showCompanionToolsSidebar() {
+  var html = HtmlService.createHtmlOutputFromFile('SheetCompanionSidebar')
+    .setTitle('Companion tools')
+    .setWidth(380);
+  SpreadsheetApp.getUi().showSidebar(html);
+}
+
 /** True if this form column header should be hidden on public profile / PDF (contact & internal). */
 function isContactOrSensitiveHeader_(header) {
   var s = String(header || '').toLowerCase();
