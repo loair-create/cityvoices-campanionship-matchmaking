@@ -192,21 +192,6 @@
     <button type="button" id="btnCopy">Copy public link</button>
     <button type="button" id="btnPdf" class="secondary">Download PDF</button>
     <p id="msg" class="err"></p>
-    <p id="webAppUrlStatus" class="url-status warn"></p>
-    <label for="webAppUrlInput">Web app URL (if copy link fails)</label>
-    <input
-      type="text"
-      id="webAppUrlInput"
-      placeholder="https://script.google.com/macros/s/…/exec"
-      autocomplete="off"
-    />
-    <button type="button" id="btnSaveWebAppUrl" class="secondary">Save URL on this spreadsheet</button>
-    <button type="button" id="btnClearWebAppUrl" class="secondary">Clear saved URL</button>
-    <p class="hint">
-      From <strong>Deploy → Manage deployments</strong>, copy the Web app URL ending in <strong>/exec</strong>, paste above,
-      and click Save. (The sidebar often cannot auto-detect the URL; saving here fixes that.) Script property
-      <strong>WEB_APP_PUBLIC_BASE_URL</strong> still overrides for everyone if set in Apps Script → Project Settings.
-    </p>
 
     <hr class="sep" />
 
@@ -231,6 +216,25 @@
     <p class="hint">
       Search and pick <strong>Person 1</strong>, then choose anyone else as <strong>Person 2</strong> (alphabetical list).
       Match % uses your dashboard <strong>Criteria</strong> settings. Duplicate pairs are skipped.
+    </p>
+
+    <hr class="sep" />
+
+    <h2 class="section">Web app URL</h2>
+    <p id="webAppUrlStatus" class="url-status warn"></p>
+    <label for="webAppUrlInput">Web app URL (if copy link fails)</label>
+    <input
+      type="text"
+      id="webAppUrlInput"
+      placeholder="https://script.google.com/macros/s/…/exec"
+      autocomplete="off"
+    />
+    <button type="button" id="btnSaveWebAppUrl" class="secondary">Save URL on this spreadsheet</button>
+    <button type="button" id="btnClearWebAppUrl" class="secondary">Clear saved URL</button>
+    <p class="hint">
+      From <strong>Deploy → Manage deployments</strong>, copy the Web app URL ending in <strong>/exec</strong>, paste above,
+      and click Save. (The sidebar often cannot auto-detect the URL; saving here fixes that.) Script property
+      <strong>WEB_APP_PUBLIC_BASE_URL</strong> still overrides for everyone if set in Apps Script → Project Settings.
     </p>
 
     <script>
