@@ -394,15 +394,29 @@ var MATCH_STATUS_OPTIONS = ['Just Matched', 'Active', 'Canceled', 'Dismissed'];
 /** Matches sheet column I — ensure header exists for older spreadsheets. */
 function ensureMatchesLastContactColumn_(sheet) {
   if (!sheet) return;
-  var lc = sheet.getLastColumn();
-  if (lc < 9) {
+  if (sheet.getRange(1, 9).getValue() !== 'Last Contact Date') {
     sheet.getRange(1, 9).setValue('Last Contact Date');
   }
 }
 
+/** Distinct row highlights for ended matches. */
+var MATCH_CANCELED_HIGHLIGHT_COLOR = '#E5E7EB';
+var MATCH_DISMISSED_HIGHLIGHT_COLOR = '#FECACA';
+var MATCH_ACTIVE_HIGHLIGHT_COLOR = '#FFFFFF';
+
+function matchStatusHighlightColor_(status) {
+  var s = String(status != null ? status : '')
+    .trim()
+    .toLowerCase();
+  if (s === 'dismissed') return MATCH_DISMISSED_HIGHLIGHT_COLOR;
+  if (s === 'canceled') return MATCH_CANCELED_HIGHLIGHT_COLOR;
+  if (s === 'active' || s === 'just matched') return MATCH_ACTIVE_HIGHLIGHT_COLOR;
+  return null;
+}
+
 /**
  * Dropdown on Matches column D: Just Matched, Active, Canceled, Dismissed.
- * Conditional formatting only for Dismissed (no per-row paint — that was too slow).
+ * Conditional formatting: Canceled = gray; Dismissed = red.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  */
 function ensureMatchesStatusDropdown_(sheet) {
@@ -427,8 +441,18 @@ function ensureMatchesStatusDropdown_(sheet) {
   if (typeof clearSheetBandings_ === 'function') clearSheetBandings_(sheet);
   sheet.setConditionalFormatRules([
     SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=OR(LOWER(TRIM($D2))="active",LOWER(TRIM($D2))="just matched")')
+      .setBackground(MATCH_ACTIVE_HIGHLIGHT_COLOR)
+      .setRanges([rowRange])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied('=LOWER(TRIM($D2))="dismissed"')
-      .setBackground('#FECACA')
+      .setBackground(MATCH_DISMISSED_HIGHLIGHT_COLOR)
+      .setRanges([rowRange])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=LOWER(TRIM($D2))="canceled"')
+      .setBackground(MATCH_CANCELED_HIGHLIGHT_COLOR)
       .setRanges([rowRange])
       .build()
   ]);
@@ -457,9 +481,14 @@ function applySignUpFormInternalStatusFormatting_() {
   statusRange.clearDataValidations();
   statusRange.setDataValidation(
     SpreadsheetApp.newDataValidation()
-      .requireValueInList(['Active', 'Quit', 'Unresponsive', 'Dismissed'], true)
+      .requireValueInList(
+        typeof ROSTER_INTERNAL_STATUS_OPTIONS !== 'undefined'
+          ? ROSTER_INTERNAL_STATUS_OPTIONS
+          : ['Active', 'Quit', 'Unresponsive', 'Dismissed', 'Unmatched'],
+        true
+      )
       .setAllowInvalid(true)
-      .setHelpText('Choose Active, Quit, Unresponsive, or Dismissed (or leave blank).')
+      .setHelpText('Choose Active, Quit, Unresponsive, Dismissed, or Unmatched (or leave blank).')
       .build()
   );
 
@@ -475,6 +504,14 @@ function applySignUpFormInternalStatusFormatting_() {
     typeof ROSTER_DISMISSED_HIGHLIGHT_COLOR !== 'undefined'
       ? ROSTER_DISMISSED_HIGHLIGHT_COLOR
       : '#FECACA';
+  var unmatchedColor =
+    typeof ROSTER_UNMATCHED_HIGHLIGHT_COLOR !== 'undefined'
+      ? ROSTER_UNMATCHED_HIGHLIGHT_COLOR
+      : '#DBEAFE';
+  var activeColor =
+    typeof ROSTER_ACTIVE_HIGHLIGHT_COLOR !== 'undefined'
+      ? ROSTER_ACTIVE_HIGHLIGHT_COLOR
+      : '#FFFFFF';
 
   if (typeof clearSheetBandings_ === 'function') clearSheetBandings_(sheet);
 
@@ -490,9 +527,11 @@ function applySignUpFormInternalStatusFormatting_() {
             ? String(f.getCriteriaValues()[0]).toLowerCase()
             : '';
         if (
+          formula.indexOf('active') >= 0 ||
           formula.indexOf('quit') >= 0 ||
           formula.indexOf('unresponsive') >= 0 ||
-          formula.indexOf('dismissed') >= 0
+          formula.indexOf('dismissed') >= 0 ||
+          formula.indexOf('unmatched') >= 0
         ) {
           continue;
         }
@@ -503,6 +542,11 @@ function applySignUpFormInternalStatusFormatting_() {
     }
     kept.push(
       SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="active"')
+        .setBackground(activeColor)
+        .setRanges([rowRange])
+        .build(),
+      SpreadsheetApp.newConditionalFormatRule()
         .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="quit"')
         .setBackground(quitColor)
         .setRanges([rowRange])
@@ -515,6 +559,11 @@ function applySignUpFormInternalStatusFormatting_() {
       SpreadsheetApp.newConditionalFormatRule()
         .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="dismissed"')
         .setBackground(disColor)
+        .setRanges([rowRange])
+        .build(),
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="unmatched"')
+        .setBackground(unmatchedColor)
         .setRanges([rowRange])
         .build()
     );
@@ -522,6 +571,11 @@ function applySignUpFormInternalStatusFormatting_() {
   } catch (cfErr) {
     sheet.setConditionalFormatRules([
       SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="active"')
+        .setBackground(activeColor)
+        .setRanges([rowRange])
+        .build(),
+      SpreadsheetApp.newConditionalFormatRule()
         .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="quit"')
         .setBackground(quitColor)
         .setRanges([rowRange])
@@ -534,6 +588,11 @@ function applySignUpFormInternalStatusFormatting_() {
       SpreadsheetApp.newConditionalFormatRule()
         .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="dismissed"')
         .setBackground(disColor)
+        .setRanges([rowRange])
+        .build(),
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="unmatched"')
+        .setBackground(unmatchedColor)
         .setRanges([rowRange])
         .build()
     ]);
@@ -545,6 +604,26 @@ function ensureMatchesSheetSetup_(sheet) {
   if (!sheet) return;
   ensureMatchesLastContactColumn_(sheet);
   ensureMatchesStatusDropdown_(sheet);
+}
+
+/**
+ * Simple spreadsheet trigger for direct status edits on Matches.
+ * Programmatic status updates use the same helpers in updateMatchData/batch update.
+ */
+function onEdit(e) {
+  if (!e || !e.range) return;
+  var sheet = e.range.getSheet();
+  if (sheet.getName() !== 'Matches') return;
+  if (e.range.getLastColumn() < 4 || e.range.getColumn() > 4) return;
+
+  ensureMatchesLastContactColumn_(sheet);
+  var firstRow = Math.max(2, e.range.getRow());
+  var lastRow = e.range.getLastRow();
+  var width = Math.max(sheet.getLastColumn(), 9);
+  for (var row = firstRow; row <= lastRow; row++) {
+    var status = sheet.getRange(row, 4).getValue();
+    sheet.getRange(row, 1, 1, width).setBackground(matchStatusHighlightColor_(status));
+  }
 }
 
 function formatMatchSheetDateCell_(v) {
@@ -742,8 +821,7 @@ function ensureCompanionIds_() {
     headers = lastCol >= 1 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
     idx = companionIdColumnIndex_(headers);
     if (idx < 0) {
-      // Append at the end; every existing column keeps its position, which VolunteersSync relies on
-      // because it pins the volunteer flag to column AQ.
+      // Append at the end so existing columns keep their position.
       idx = lastCol;
       sheet.getRange(1, idx + 1).setValue(COMPANION_ID_HEADER);
     }
@@ -1365,8 +1443,9 @@ function updateMatchData(matchId, field, value) {
     if (String(data[i][0]) === matchId) {
       sheet.getRange(i + 1, colIndex + 1).setValue(value);
       if (field === 'status') {
+        ensureMatchesSheetSetup_(sheet);
         var width = Math.max(sheet.getLastColumn(), 9);
-        var color = String(value || '').trim() === 'Dismissed' ? '#FECACA' : null;
+        var color = matchStatusHighlightColor_(value);
         sheet.getRange(i + 1, 1, 1, width).setBackground(color);
       }
       return true;
@@ -1480,8 +1559,9 @@ function updateMatchesStatusBatch(matchIds, status) {
     want[String(matchIds[k])] = true;
   }
   let n = 0;
+  ensureMatchesSheetSetup_(sheet);
   var width = Math.max(sheet.getLastColumn(), 9);
-  var color = String(status || '').trim() === 'Dismissed' ? '#FECACA' : null;
+  var color = matchStatusHighlightColor_(status);
   for (let i = 1; i < data.length; i++) {
     if (want[String(data[i][0])]) {
       sheet.getRange(i + 1, 4).setValue(status);
@@ -1515,10 +1595,35 @@ function updateCompanionNote(companionRef, note) {
 }
 
 /** Allowed internal status values for the directory dropdown (empty = clear cell). */
-var INTERNAL_STATUS_ALLOWED_ = { Active: true, Quit: true, Unresponsive: true, Dismissed: true };
+var INTERNAL_STATUS_ALLOWED_ = { Active: true, Quit: true, Unresponsive: true, Dismissed: true, Unmatched: true };
+
+/** Immediately mirror a status update into the generated Volunteers/Companions roster row. */
+function updateRosterStatusCopies_(companionId, signupRow, value) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var tabNames = ['Volunteers', 'Companions'];
+  var cid = String(companionId != null ? companionId : '').trim();
+  var rowRef = String(signupRow != null ? signupRow : '').trim();
+  for (var t = 0; t < tabNames.length; t++) {
+    var roster = ss.getSheetByName(tabNames[t]);
+    if (!roster || roster.getLastRow() < 2) continue;
+    var data = roster.getRange(2, 1, roster.getLastRow() - 1, 9).getValues();
+    for (var i = 0; i < data.length; i++) {
+      var rosterSignupRow = String(data[i][1] != null ? data[i][1] : '').trim();
+      var rosterCid = String(data[i][8] != null ? data[i][8] : '').trim();
+      if ((cid && rosterCid === cid) || (!cid && rowRef && rosterSignupRow === rowRef)) {
+        var sheetRow = i + 2;
+        roster.getRange(sheetRow, 8).setValue(value);
+        if (typeof paintRosterStatusRow_ === 'function') {
+          paintRosterStatusRow_(roster, sheetRow, 8, 9);
+        }
+        break;
+      }
+    }
+  }
+}
 
 /**
- * Update internal status. Only Active, Quit, Unresponsive, Dismissed, or blank are written.
+ * Update internal status. Only Active, Quit, Unresponsive, Dismissed, Unmatched, or blank are written.
  * @return {boolean}
  */
 function updateCompanionInternalStatus(companionRef, value) {
@@ -1540,9 +1645,14 @@ function updateCompanionInternalStatus(companionRef, value) {
   var v = String(value != null ? value : '').trim();
   if (v && !INTERNAL_STATUS_ALLOWED_[v]) return false;
   sheet.getRange(r, colIdx + 1).setValue(v);
+  var companionId =
+    c.companionId != null && c.companionId >= 0
+      ? sheet.getRange(r, c.companionId + 1).getValue()
+      : '';
   if (typeof paintRosterStatusRow_ === 'function') {
     paintRosterStatusRow_(sheet, r, colIdx + 1, lastCol);
   }
+  updateRosterStatusCopies_(companionId, r, v);
   return true;
 }
 
