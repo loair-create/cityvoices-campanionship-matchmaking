@@ -186,12 +186,13 @@
       return false;
     };
 
-    const INTERNAL_STATUS_OPTIONS = ['Active', 'Quit', 'Unresponsive', 'Dismissed'];
+    const INTERNAL_STATUS_OPTIONS = ['Active', 'Quit', 'Unresponsive', 'Dismissed', 'Unmatched'];
 
-    /** Card / row tint from internal status (Dismissed = light red, Unresponsive = light orange). */
+    /** Card / row tint from internal status (Dismissed = red, Unmatched = blue). */
     const internalStatusCardClass = (status) => {
       const s = String(status || '').trim().toLowerCase();
       if (s === 'dismissed') return 'bg-red-50 border-red-200';
+      if (s === 'unmatched') return 'bg-blue-50 border-blue-200';
       if (s === 'unresponsive') return 'bg-orange-50 border-orange-200';
       if (s === 'quit') return 'bg-amber-50 border-amber-200';
       return 'bg-white border-gray-200';
@@ -1606,13 +1607,13 @@
                                           const s = String(selectedCompanion.internalStatus || '').trim();
                                           if (s && !INTERNAL_STATUS_OPTIONS.includes(s)) {
                                             return (
-                                              <option value={s}>{s} (from sheet — choose Active, Quit, Unresponsive, or Dismissed to replace)</option>
+                                              <option value={s}>{s} (from sheet — choose Active, Quit, Unresponsive, Dismissed, or Unmatched to replace)</option>
                                             );
                                           }
                                           return null;
                                         })()}
                                      </select>
-                                     <p className="text-[11px] text-amber-900/80 mt-2">Saved to your internal status column. Only <strong>Active</strong>, <strong>Quit</strong>, <strong>Unresponsive</strong>, and <strong>Dismissed</strong> are saved when selected from the list.</p>
+                                     <p className="text-[11px] text-amber-900/80 mt-2">Saved to your internal status column. Only <strong>Active</strong>, <strong>Quit</strong>, <strong>Unresponsive</strong>, <strong>Dismissed</strong>, and <strong>Unmatched</strong> are saved when selected from the list.</p>
                                   </div>
                                   <div>
                                      <label
