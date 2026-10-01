@@ -60,7 +60,7 @@ function applyCompanionSheetFormatting() {
   var msg =
     (notes.length ? 'Formatting applied to: ' + notes.join(', ') : 'Nothing applied.') +
     (errors.length ? '\n\nErrors:\n• ' + errors.join('\n• ') : '') +
-    '\n\nColors via conditional formatting (Quit=brown, Unresponsive=orange, Dismissed=red).' +
+    '\n\nColors via conditional formatting (Quit=brown, Unresponsive=orange, Dismissed & Unmatched=red; Matches Canceled/Dismissed=brown).' +
     '\nTo refresh roster data, use Admin → Sync Volunteers & Companions tabs.';
   SpreadsheetApp.getUi().alert(msg);
 }
