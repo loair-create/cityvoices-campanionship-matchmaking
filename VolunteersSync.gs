@@ -2,19 +2,74 @@
  * Volunteers tab sync (standalone — add this file alongside Code.gs or in a separate Apps Script project
  * bound to the same spreadsheet).
  *
- * When column AQ on "Sign Up Form" is TRUE, that row is listed on the "Volunteers" tab:
+ * When the Volunteer column on "Sign Up Form" is TRUE, that row is listed on the "Volunteers" tab:
  * Col A: Timestamp from Sign Up Form; Col B: sign-up row; Col C–E: name, phone, email;
  * Col F: Last Contact Date — staff manual; edits push to Sign Up Form "Last Contact Date" column;
  * Col G: Internal Notes — staff manual; edits push to Sign Up Form INTERNAL NOTES;
- * Col H: Internal Status — editable (Active / Quit / Unresponsive / Dismissed); edits push to Sign Up Form; status rows highlight (Quit brown, Unresponsive orange, Dismissed red);
+ * Col H: Internal Status — editable (Active / Quit / Unresponsive / Dismissed / Unmatched); edits push to Sign Up Form; status rows highlight (Quit brown, Unresponsive orange, Dismissed red, Unmatched blue);
  * Col I: Companion ID — stable person key (list order is preserved; new people append at the bottom).
  */
 
 var VOLUNTEERS_SYNC_SOURCE_SHEET = 'Sign Up Form';
 var VOLUNTEERS_SYNC_TARGET_SHEET = 'Volunteers';
 
-/** Column AQ — volunteer flag (TRUE = volunteer). */
-var VOLUNTEER_COL_INDEX = 43;
+/**
+ * Volunteer flag column on Sign Up Form (TRUE = volunteer).
+ * Found by header text, so it keeps working when columns are added, removed,
+ * or shifted by a paste. Column AQ is only a fallback if no header matches.
+ * If your header is worded differently, add it to this list (lowercase).
+ */
+var VOLUNTEER_COL_HEADERS = [
+  'are you a volunteer',
+  'is volunteer',
+  'volunteer?',
+  'volunteer'
+];
+
+/** Used only when no header above matches. Column AQ = 43. */
+var VOLUNTEER_COL_FALLBACK_INDEX = 43;
+
+/**
+ * 1-based column number of the volunteer flag, from the Sign Up Form header row.
+ * Returns -1 when it cannot be identified, so callers stop instead of rebuilding
+ * the roster tabs from the wrong column.
+ * @param {Array} headers row 1 of Sign Up Form
+ * @return {number}
+ */
+function volunteersSync_findVolunteerCol_(headers) {
+  var lower = [];
+  for (var i = 0; i < headers.length; i++) {
+    var h = String(headers[i] != null ? headers[i] : '').trim().toLowerCase();
+    // Volunteer status and notes columns are staff fields, never the flag.
+    if (h.indexOf('status') !== -1 || h.indexOf('notes') !== -1) {
+      h = '';
+    }
+    lower.push(h);
+  }
+  for (var n = 0; n < VOLUNTEER_COL_HEADERS.length; n++) {
+    for (var j = 0; j < lower.length; j++) {
+      if (lower[j] && lower[j].indexOf(VOLUNTEER_COL_HEADERS[n]) !== -1) {
+        return j + 1;
+      }
+    }
+  }
+  if (headers.length >= VOLUNTEER_COL_FALLBACK_INDEX) {
+    return VOLUNTEER_COL_FALLBACK_INDEX;
+  }
+  return -1;
+}
+
+/** Column letter for error messages, for example AQ. */
+function volunteersSync_colLetter_(colIndex) {
+  var s = '';
+  var n = colIndex;
+  while (n > 0) {
+    var r = (n - 1) % 26;
+    s = String.fromCharCode(65 + r) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
 
 /** Volunteers sheet: column B = Sign-up row (1-based index 2). */
 var VOLUNTEERS_SIGNUP_ROW_COL = 2;
@@ -31,10 +86,12 @@ var VOLUNTEERS_INTERNAL_STATUS_COL = 8;
 /** Volunteers sheet: column I = Companion ID (1-based index 9). */
 var VOLUNTEERS_COMPANION_ID_COL = 9;
 
-/** Light brown / orange / red row highlights by Internal Status. */
+/** Row highlights by Internal Status. */
 var ROSTER_QUIT_HIGHLIGHT_COLOR = '#E8D4C4';
 var ROSTER_UNRESPONSIVE_HIGHLIGHT_COLOR = '#FED7AA';
 var ROSTER_DISMISSED_HIGHLIGHT_COLOR = '#FECACA';
+var ROSTER_UNMATCHED_HIGHLIGHT_COLOR = '#DBEAFE';
+var ROSTER_ACTIVE_HIGHLIGHT_COLOR = '#FFFFFF';
 
 var VOLUNTEERS_HEADER_ROW = [
   'Timestamp',
@@ -275,10 +332,10 @@ function rosterSync_mergeStableOrder_(existingEntries, eligibleByKey, formOrder)
 }
 
 /** Allowed values for Volunteers / Companions Internal Status (column H). */
-var ROSTER_INTERNAL_STATUS_OPTIONS = ['Active', 'Quit', 'Unresponsive', 'Dismissed'];
+var ROSTER_INTERNAL_STATUS_OPTIONS = ['Active', 'Quit', 'Unresponsive', 'Dismissed', 'Unmatched'];
 
 /**
- * Dropdown on Internal Status (column H): Active / Quit / Unresponsive / Dismissed.
+ * Dropdown on Internal Status (column H): Active / Quit / Unresponsive / Dismissed / Unmatched.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @param {number} [statusCol] 1-based column (default H = 8)
  */
@@ -292,7 +349,7 @@ function applyRosterInternalStatusDropdown_(sheet, statusCol) {
   var rule = SpreadsheetApp.newDataValidation()
     .requireValueInList(ROSTER_INTERNAL_STATUS_OPTIONS, true)
     .setAllowInvalid(true)
-    .setHelpText('Choose Active, Quit, Unresponsive, or Dismissed (or leave blank).')
+    .setHelpText('Choose Active, Quit, Unresponsive, Dismissed, or Unmatched (or leave blank).')
     .build();
   range.setDataValidation(rule);
 }
@@ -310,6 +367,8 @@ function rosterStatusHighlightColor_(status) {
   if (s === 'quit') return ROSTER_QUIT_HIGHLIGHT_COLOR;
   if (s === 'unresponsive') return ROSTER_UNRESPONSIVE_HIGHLIGHT_COLOR;
   if (s === 'dismissed') return ROSTER_DISMISSED_HIGHLIGHT_COLOR;
+  if (s === 'unmatched') return ROSTER_UNMATCHED_HIGHLIGHT_COLOR;
+  if (s === 'active') return ROSTER_ACTIVE_HIGHLIGHT_COLOR;
   return null;
 }
 
@@ -385,6 +444,11 @@ function applyRosterQuitConditionalFormatting_(sheet, statusCol, numCols) {
   clearSheetBandings_(sheet);
   sheet.setConditionalFormatRules([
     SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="active"')
+      .setBackground(ROSTER_ACTIVE_HIGHLIGHT_COLOR)
+      .setRanges([range])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="quit"')
       .setBackground(ROSTER_QUIT_HIGHLIGHT_COLOR)
       .setRanges([range])
@@ -398,15 +462,94 @@ function applyRosterQuitConditionalFormatting_(sheet, statusCol, numCols) {
       .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="dismissed"')
       .setBackground(ROSTER_DISMISSED_HIGHLIGHT_COLOR)
       .setRanges([range])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="unmatched"')
+      .setBackground(ROSTER_UNMATCHED_HIGHLIGHT_COLOR)
+      .setRanges([range])
       .build()
   ]);
   applyRosterInternalStatusDropdown_(sheet, col);
 }
 
+/**
+ * Run this from the Apps Script editor (function dropdown → debugVolunteersSync → Run).
+ * Tells you which column the script is reading as the volunteer flag, and what it sees there.
+ */
+function debugVolunteersSync() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var names = ss.getSheets().map(function (s) {
+    return s.getName();
+  });
+  var src = ss.getSheetByName('Sign Up Form');
+  if (!src) {
+    SpreadsheetApp.getUi().alert(
+      'No tab named exactly "Sign Up Form".\n\nTabs found:\n' + names.join('\n')
+    );
+    return;
+  }
+  var lastRow = src.getLastRow();
+  var lastCol = src.getLastColumn();
+  var headers = lastCol >= 1 ? src.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  var volCol = volunteersSync_findVolunteerCol_(headers);
+  var lines = [
+    'Tab name OK: Sign Up Form',
+    'lastRow=' + lastRow + '  lastCol=' + lastCol
+  ];
+  if (volCol < 0) {
+    lines.push('Volunteer column: NOT FOUND — row 1 needs a header containing "Volunteer".');
+    SpreadsheetApp.getUi().alert(lines.join('\n'));
+    return;
+  }
+  lines.push(
+    'Volunteer column: ' +
+      volunteersSync_colLetter_(volCol) +
+      ' (column ' + volCol + ')  header: [' + headers[volCol - 1] + ']'
+  );
+  if (lastRow < 2) {
+    lines.push('Script sees NO data rows — that path clears Volunteers.');
+  } else {
+    var n = lastRow - 1;
+    var vals = src.getRange(2, volCol, n, 1).getValues();
+    var nTrue = 0;
+    var samples = [];
+    for (var i = 0; i < vals.length; i++) {
+      var v = vals[i][0];
+      if (volunteersSync_isVolunteerTrue_(v)) nTrue++;
+      if (samples.length < 6) {
+        samples.push(
+          '  row ' + (i + 2) + ': value=[' + v + '] type=' + typeof v
+        );
+      }
+    }
+    lines.push('Values the script counts as volunteer: ' + nTrue + ' of ' + n);
+    lines.push('First cells in that column:');
+    lines = lines.concat(samples);
+  }
+  SpreadsheetApp.getUi().alert(lines.join('\n'));
+}
+
 function volunteersSync_isVolunteerTrue_(cellValue) {
   if (cellValue === true) return true;
-  var s = String(cellValue != null ? cellValue : '').trim();
-  return s.toUpperCase() === 'TRUE';
+  var s = String(cellValue != null ? cellValue : '').trim().toUpperCase();
+  return s === 'TRUE' || s === 'YES' || s === 'Y' || s === '1' || s === 'VOLUNTEER';
+}
+
+/**
+ * Do not erase an existing roster when sync finds 0 people (usually the Volunteer flag is not TRUE).
+ * @return {boolean} true = source is also empty, caller may finish without writing rows
+ */
+function rosterSync_refuseEmptyWipe_(out, existingCount, tabName) {
+  if (out && out.length) return false;
+  if (existingCount > 0) {
+    throw new Error(
+      'Sync found 0 people for the "' +
+        tabName +
+        '" tab, so it left your list unchanged. ' +
+        'On Sign Up Form, the Volunteer column must be TRUE (or Yes) for volunteers.'
+    );
+  }
+  return true;
 }
 
 function volunteersSync_formatCell_(v) {
@@ -442,15 +585,16 @@ function syncVolunteersFromSignUpForm() {
     }
 
     var lastRow = src.getLastRow();
-    var lastCol = Math.max(src.getLastColumn(), VOLUNTEER_COL_INDEX);
+    var lastCol = Math.max(src.getLastColumn(), VOLUNTEER_COL_FALLBACK_INDEX);
     var tgt = volunteersSync_ensureTargetSheet_(ss);
     var numCols = VOLUNTEERS_HEADER_ROW.length;
     tgt.getRange(1, 1, 1, numCols).setValues([VOLUNTEERS_HEADER_ROW]);
 
     if (lastRow < 2) {
-      var lrEmpty = tgt.getLastRow();
-      if (lrEmpty > 1) {
-        tgt.getRange(2, 1, lrEmpty - 1, numCols).clearContent();
+      if (tgt.getLastRow() > 1) {
+        throw new Error(
+          'Sign Up Form has no data rows. Volunteers tab was left unchanged so your list is not erased.'
+        );
       }
       applyRosterQuitConditionalFormatting_(tgt, VOLUNTEERS_INTERNAL_STATUS_COL, numCols);
       return;
@@ -464,13 +608,20 @@ function syncVolunteersFromSignUpForm() {
     );
     var headers = src.getRange(1, 1, 1, lastCol).getValues()[0];
     var map = volunteersSync_buildColumnMap_(headers);
+    var volCol = volunteersSync_findVolunteerCol_(headers);
+    if (volCol < 0) {
+      throw new Error(
+        'Could not find the volunteer column on Sign Up Form, so the Volunteers tab was left ' +
+          'unchanged. Row 1 needs a header containing the word "Volunteer".'
+      );
+    }
     var data = src.getRange(2, 1, lastRow - 1, lastCol).getValues();
 
     var eligibleByKey = {};
     var formOrder = [];
     for (var i = 0; i < data.length; i++) {
       var row = data[i];
-      if (!volunteersSync_isVolunteerTrue_(row[VOLUNTEER_COL_INDEX - 1])) continue;
+      if (!volunteersSync_isVolunteerTrue_(row[volCol - 1])) continue;
       var sheetRow = i + 2;
       var built = rosterSync_buildPersonRow_(
         row,
@@ -488,9 +639,11 @@ function syncVolunteersFromSignUpForm() {
     }
 
     var out = rosterSync_mergeStableOrder_(existing.entries, eligibleByKey, formOrder);
-    if (out.length) {
-      tgt.getRange(2, 1, out.length, numCols).setValues(out);
+    if (rosterSync_refuseEmptyWipe_(out, existing.entries.length, 'Volunteers')) {
+      applyRosterQuitConditionalFormatting_(tgt, VOLUNTEERS_INTERNAL_STATUS_COL, numCols);
+      return;
     }
+    tgt.getRange(2, 1, out.length, numCols).setValues(out);
     var clearFrom = out.length + 2;
     var prevLast = tgt.getLastRow();
     if (prevLast >= clearFrom) {
@@ -601,6 +754,15 @@ function onEditVolunteersSync(e) {
 function onChangeVolunteersSync(e) {
   if (!e) return;
   if (e.changeType === SpreadsheetApp.ChangeType.FORMAT) return;
+  // Paste/edit on Volunteers or Companions must not rebuild those tabs from Sign Up Form
+  // (that was wiping restored data the moment it was pasted).
+  try {
+    var active = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var n = active ? active.getName() : '';
+    if (n === VOLUNTEERS_SYNC_TARGET_SHEET || n === 'Companions') return;
+  } catch (skipErr) {
+    // ignore
+  }
   // New form rows need a Companion ID before anything keyed to it (matches, links) is created.
   if (typeof ensureCompanionIds_ === 'function') {
     ensureCompanionIds_();
