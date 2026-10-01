@@ -1,17 +1,17 @@
 /**
- * Companions tab sync — mirrors VolunteersSync but lists Sign Up Form rows where column AQ is NOT TRUE (participants / non-volunteers).
+ * Companions tab sync — mirrors VolunteersSync but lists Sign Up Form rows where the Volunteer column is NOT TRUE (participants / non-volunteers).
  * Col A: Timestamp from Sign Up Form; Col B: sign-up row; Col C–E: name, phone, email;
  * Col F: Last Contact Date — staff manual on Companions; edits push to Sign Up Form;
  * Col G: Internal Notes — staff manual; edits push to Sign Up Form INTERNAL NOTES;
- * Col H: Internal Status — editable (Active / Quit / Unresponsive); edits push to Sign Up Form; Quit rows highlight light brown;
+ * Col H: Internal Status — editable (Active / Quit / Unresponsive / Dismissed / Unmatched); edits push to Sign Up Form; status rows use distinct colors;
  * Col I: Companion ID — stable person key (list order is preserved; new people append at the bottom).
  */
 
 var COMPANIONS_SYNC_SOURCE_SHEET = 'Sign Up Form';
 var COMPANIONS_SYNC_TARGET_SHEET = 'Companions';
 
-/** Same as VolunteersSync: AQ = volunteer flag; we INCLUDE rows where this is not TRUE. */
-var COMPANIONS_VOLUNTEER_COL_INDEX = 43;
+// Volunteer flag column: found by header text via volunteersSync_findVolunteerCol_ (VolunteersSync.gs).
+// Companions INCLUDES rows where that flag is not TRUE.
 
 /** Companions sheet: column B = Sign-up row (1-based index 2). */
 var COMPANIONS_SIGNUP_ROW_COL = 2;
@@ -72,15 +72,16 @@ function syncCompanionsFromSignUpForm() {
     }
 
     var lastRow = src.getLastRow();
-    var lastCol = Math.max(src.getLastColumn(), COMPANIONS_VOLUNTEER_COL_INDEX);
+    var lastCol = Math.max(src.getLastColumn(), VOLUNTEER_COL_FALLBACK_INDEX);
     var tgt = companionsSync_ensureTargetSheet_(ss);
     var numCols = COMPANIONS_HEADER_ROW.length;
     tgt.getRange(1, 1, 1, numCols).setValues([COMPANIONS_HEADER_ROW]);
 
     if (lastRow < 2) {
-      var lrEmpty = tgt.getLastRow();
-      if (lrEmpty > 1) {
-        tgt.getRange(2, 1, lrEmpty - 1, numCols).clearContent();
+      if (tgt.getLastRow() > 1) {
+        throw new Error(
+          'Sign Up Form has no data rows. Companions tab was left unchanged so your list is not erased.'
+        );
       }
       if (typeof applyRosterQuitConditionalFormatting_ === 'function') {
         applyRosterQuitConditionalFormatting_(tgt, COMPANIONS_INTERNAL_STATUS_COL, numCols);
@@ -96,13 +97,24 @@ function syncCompanionsFromSignUpForm() {
     );
     var headers = src.getRange(1, 1, 1, lastCol).getValues()[0];
     var map = volunteersSync_buildColumnMap_(headers);
+    var volCol = volunteersSync_findVolunteerCol_(headers);
+    if (volCol < 0) {
+      throw new Error(
+        'Could not find the volunteer column on Sign Up Form, so the Companions tab was left ' +
+          'unchanged. Row 1 needs a header containing the word "Volunteer".'
+      );
+    }
     var data = src.getRange(2, 1, lastRow - 1, lastCol).getValues();
 
     var eligibleByKey = {};
     var formOrder = [];
+    var volunteerCount = 0;
     for (var i = 0; i < data.length; i++) {
       var row = data[i];
-      if (volunteersSync_isVolunteerTrue_(row[COMPANIONS_VOLUNTEER_COL_INDEX - 1])) continue;
+      if (volunteersSync_isVolunteerTrue_(row[volCol - 1])) {
+        volunteerCount++;
+        continue;
+      }
       var sheetRow = i + 2;
       var cidHint =
         map.companionId >= 0 && row[map.companionId] != null
@@ -119,10 +131,30 @@ function syncCompanionsFromSignUpForm() {
       formOrder.push(built.key);
     }
 
-    var out = rosterSync_mergeStableOrder_(existing.entries, eligibleByKey, formOrder);
-    if (out.length) {
-      tgt.getRange(2, 1, out.length, numCols).setValues(out);
+    // Nobody flagged as a volunteer means the flag column is being misread — otherwise every
+    // volunteer would get pulled into Companions and the Volunteers tab would empty out.
+    var volTab = ss.getSheetByName('Volunteers');
+    if (!volunteerCount && volTab && volTab.getLastRow() > 1) {
+      throw new Error(
+        'No one on Sign Up Form is marked as a volunteer, so the Companions tab was left ' +
+          'unchanged. Check column ' +
+          volunteersSync_colLetter_(volCol) +
+          ' ("' + headers[volCol - 1] + '") — it should be TRUE for volunteers.'
+      );
     }
+
+    var out = rosterSync_mergeStableOrder_(existing.entries, eligibleByKey, formOrder);
+    if (typeof rosterSync_refuseEmptyWipe_ === 'function' &&
+        rosterSync_refuseEmptyWipe_(out, existing.entries.length, 'Companions')) {
+      if (typeof applyRosterQuitConditionalFormatting_ === 'function') {
+        applyRosterQuitConditionalFormatting_(tgt, COMPANIONS_INTERNAL_STATUS_COL, numCols);
+      }
+      return;
+    }
+    if (!out.length) {
+      return;
+    }
+    tgt.getRange(2, 1, out.length, numCols).setValues(out);
     var clearFrom = out.length + 2;
     var prevLast = tgt.getLastRow();
     if (prevLast >= clearFrom) {
@@ -223,12 +255,22 @@ function onEditCompanionsStaffFields(e) {
  * Run Volunteers sync then Companions sync (one menu/trigger for both roster tabs).
  */
 function syncVolunteersAndCompanionsFromSignUpForm() {
-  syncVolunteersFromSignUpForm();
-  syncCompanionsFromSignUpForm();
+  try {
+    syncVolunteersFromSignUpForm();
+    syncCompanionsFromSignUpForm();
+    SpreadsheetApp.getActiveSpreadsheet().toast(
+      'Volunteers and Companions tabs updated.',
+      'Sync complete',
+      8
+    );
+  } catch (err) {
+    SpreadsheetApp.getUi().alert('Sync failed: ' + (err && err.message ? err.message : err));
+    throw err;
+  }
 }
 
 /**
  * TRIGGER: On edit → onEditCompanionsStaffFields (same pattern as onEditVolunteersStaffFields in VolunteersSync.gs).
  * Pushes Companions columns F (Last Contact Date), G (Internal Notes), and H (Internal Status)
- * to the Sign Up Form. Quit in H highlights the row light brown.
+ * to the Sign Up Form. Status colors match the Volunteers tab.
  */
