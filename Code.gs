@@ -325,7 +325,7 @@ function onOpen() {
       .addItem('Repair match IDs…', 'migrateMatchesToStableIds')
       .addSeparator()
       .addItem('Sync Volunteers & Companions tabs', 'syncVolunteersAndCompanionsFromSignUpForm')
-      .addItem('Apply Matches dropdown & Quit highlighting', 'applyCompanionSheetFormatting')
+      .addItem('Apply status dropdowns & colors', 'applyCompanionSheetFormatting')
       .addSeparator()
       .addItem('Install new-signup email alert', 'installSignUpNotificationTrigger')
       .addToUi();
@@ -422,6 +422,35 @@ function matchStatusHighlightColor_(status) {
   if (s === 'dismissed') return MATCH_DISMISSED_HIGHLIGHT_COLOR;
   if (s === 'canceled') return MATCH_CANCELED_HIGHLIGHT_COLOR;
   if (s === 'active' || s === 'just matched') return MATCH_ACTIVE_HIGHLIGHT_COLOR;
+  return null;
+}
+
+/** Sign Up Form row color, matching Volunteers and Companions. */
+function signUpFormStatusHighlightColor_(status) {
+  var s = String(status != null ? status : '')
+    .trim()
+    .toLowerCase();
+  if (s === 'quit') {
+    return typeof ROSTER_QUIT_HIGHLIGHT_COLOR !== 'undefined'
+      ? ROSTER_QUIT_HIGHLIGHT_COLOR
+      : '#E8D4C4';
+  }
+  if (s === 'unresponsive') {
+    return typeof ROSTER_UNRESPONSIVE_HIGHLIGHT_COLOR !== 'undefined'
+      ? ROSTER_UNRESPONSIVE_HIGHLIGHT_COLOR
+      : '#FED7AA';
+  }
+  if (s === 'dismissed') {
+    return typeof ROSTER_DISMISSED_HIGHLIGHT_COLOR !== 'undefined'
+      ? ROSTER_DISMISSED_HIGHLIGHT_COLOR
+      : '#FECACA';
+  }
+  if (s === 'unmatched') {
+    return typeof ROSTER_UNMATCHED_HIGHLIGHT_COLOR !== 'undefined'
+      ? ROSTER_UNMATCHED_HIGHLIGHT_COLOR
+      : '#DBEAFE';
+  }
+  if (s === 'active') return '#FFFFFF';
   return null;
 }
 
@@ -617,23 +646,43 @@ function ensureMatchesSheetSetup_(sheet) {
   ensureMatchesStatusDropdown_(sheet);
 }
 
-/**
- * Simple spreadsheet trigger for direct status edits on Matches.
- * Programmatic status updates use the same helpers in updateMatchData/batch update.
- */
+/** Simple spreadsheet trigger for immediate row colors after direct status edits. */
 function onEdit(e) {
   if (!e || !e.range) return;
   var sheet = e.range.getSheet();
-  if (sheet.getName() !== 'Matches') return;
-  if (e.range.getLastColumn() < 4 || e.range.getColumn() > 4) return;
+  var firstRow;
+  var lastRow;
+  var row;
 
-  ensureMatchesLastContactColumn_(sheet);
-  var firstRow = Math.max(2, e.range.getRow());
-  var lastRow = e.range.getLastRow();
-  var width = Math.max(sheet.getLastColumn(), 9);
-  for (var row = firstRow; row <= lastRow; row++) {
-    var status = sheet.getRange(row, 4).getValue();
-    sheet.getRange(row, 1, 1, width).setBackground(matchStatusHighlightColor_(status));
+  if (sheet.getName() === 'Matches') {
+    if (e.range.getLastColumn() < 4 || e.range.getColumn() > 4) return;
+    ensureMatchesLastContactColumn_(sheet);
+    firstRow = Math.max(2, e.range.getRow());
+    lastRow = e.range.getLastRow();
+    var matchWidth = Math.max(sheet.getLastColumn(), 9);
+    for (row = firstRow; row <= lastRow; row++) {
+      var matchStatus = sheet.getRange(row, 4).getValue();
+      sheet.getRange(row, 1, 1, matchWidth).setBackground(matchStatusHighlightColor_(matchStatus));
+    }
+    return;
+  }
+
+  if (sheet.getName() === FORM_SHEET_NAME) {
+    var lastCol = sheet.getLastColumn();
+    if (lastCol < 1) return;
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var columns = buildCompanionColumnIndices(headers);
+    if (columns.internalStatus == null || columns.internalStatus < 0) return;
+    var statusCol = columns.internalStatus + 1;
+    if (e.range.getLastColumn() < statusCol || e.range.getColumn() > statusCol) return;
+    firstRow = Math.max(2, e.range.getRow());
+    lastRow = e.range.getLastRow();
+    for (row = firstRow; row <= lastRow; row++) {
+      var formStatus = sheet.getRange(row, statusCol).getValue();
+      sheet
+        .getRange(row, 1, 1, lastCol)
+        .setBackground(signUpFormStatusHighlightColor_(formStatus));
+    }
   }
 }
 
