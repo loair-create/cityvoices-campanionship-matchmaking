@@ -355,6 +355,60 @@ function showCompanionToolsSidebar() {
   SpreadsheetApp.getUi().showSidebar(html);
 }
 
+/**
+ * Apply dropdowns and conditional-format colors without running a full roster sync.
+ * Kept in Code.gs alongside the Admin menu so the menu target is always available.
+ */
+function applyCompanionSheetFormatting() {
+  var notes = [];
+  var errors = [];
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  try {
+    var matches = ss.getSheetByName('Matches');
+    if (matches) {
+      ensureMatchesSheetSetup_(matches);
+      notes.push('Matches');
+    }
+  } catch (e1) {
+    errors.push('Matches: ' + (e1.message || e1));
+  }
+
+  try {
+    applySignUpFormInternalStatusFormatting_();
+    notes.push('Sign Up Form');
+  } catch (e2) {
+    errors.push('Sign Up Form: ' + (e2.message || e2));
+  }
+
+  try {
+    var vol = ss.getSheetByName('Volunteers');
+    if (vol && typeof applyRosterQuitConditionalFormatting_ === 'function') {
+      applyRosterQuitConditionalFormatting_(vol, 8, Math.max(vol.getLastColumn(), 9));
+      notes.push('Volunteers');
+    }
+  } catch (e3) {
+    errors.push('Volunteers: ' + (e3.message || e3));
+  }
+
+  try {
+    var com = ss.getSheetByName('Companions');
+    if (com && typeof applyRosterQuitConditionalFormatting_ === 'function') {
+      applyRosterQuitConditionalFormatting_(com, 8, Math.max(com.getLastColumn(), 9));
+      notes.push('Companions');
+    }
+  } catch (e4) {
+    errors.push('Companions: ' + (e4.message || e4));
+  }
+
+  var msg =
+    (notes.length ? 'Formatting applied to: ' + notes.join(', ') : 'Nothing applied.') +
+    (errors.length ? '\n\nErrors:\n• ' + errors.join('\n• ') : '') +
+    '\n\nColors: Active=white, Quit=brown, Unresponsive=orange, Dismissed=red, Unmatched=blue; Matches Dismissed=red and Canceled=gray.' +
+    '\nTo refresh roster data, use Admin → Sync Volunteers & Companions tabs.';
+  SpreadsheetApp.getUi().alert(msg);
+}
+
 /** True if this form column header should be hidden on public profile / PDF (contact & internal). */
 function isContactOrSensitiveHeader_(header) {
   var s = String(header || '').toLowerCase();
