@@ -324,7 +324,7 @@ function onOpen() {
   } catch (structureErr) {
     // Menus should still load even if a protected sheet prevents structural repair.
   }
-  // Build menus here so they still appear if SheetCompanionTools.gs is missing/out of date.
+  // Build all spreadsheet menus from this single source of truth.
   try {
     var ui = SpreadsheetApp.getUi();
     ui.createMenu('Companion tools')
@@ -347,6 +347,14 @@ function onOpen() {
   } catch (e) {
     // No UI (e.g. headless) — ignore.
   }
+}
+
+/**
+ * Backward-compatible target for any existing installable trigger or old documentation.
+ * SheetCompanionTools.gs was removed; keeping this function prevents trigger failures.
+ */
+function sheetCompanionMenuOnOpen() {
+  return onOpen();
 }
 
 function openApp() {
