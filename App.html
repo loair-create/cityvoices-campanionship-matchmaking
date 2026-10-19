@@ -186,12 +186,13 @@
       return false;
     };
 
-    const INTERNAL_STATUS_OPTIONS = ['Active', 'Quit', 'Unresponsive', 'Dismissed', 'Unmatched'];
+    const INTERNAL_STATUS_OPTIONS = ['Active', 'Quit', 'Unresponsive', 'Dismissed', 'Expired', 'Unmatched'];
 
-    /** Card / row tint from internal status (Dismissed = red, Unmatched = blue). */
+    /** Card / row tint from internal status. */
     const internalStatusCardClass = (status) => {
       const s = String(status || '').trim().toLowerCase();
       if (s === 'dismissed') return 'bg-red-50 border-red-200';
+      if (s === 'expired') return 'bg-gray-100 border-gray-300';
       if (s === 'unmatched') return 'bg-blue-50 border-blue-200';
       if (s === 'unresponsive') return 'bg-orange-50 border-orange-200';
       if (s === 'quit') return 'bg-amber-50 border-amber-200';
@@ -992,7 +993,7 @@
               <ICONS.Mail className="w-8 h-8 text-brand-600"/> 6-month reminder (Post survey)
             </h1>
             <p className="text-sm text-gray-600 max-w-3xl break-words">
-              When a match is <strong>about six months</strong> old (and not canceled), the app can email <strong>Dan</strong> (or whoever you put in <strong>To</strong>) as a nudge to <strong>reach out to that companionship pair and send them the Post survey</strong>. One email per eligible match. Canceled matches are skipped. Edit the <strong>subject</strong> and <strong>body</strong> below, then click <strong>Save email settings</strong>. Use <strong>Send test</strong> to preview without logging a real send.
+              When an active match is <strong>about six months</strong> old, the app can email <strong>Dan</strong> (or whoever you put in <strong>To</strong>) as a nudge to <strong>reach out to that companionship pair and send them the Post survey</strong>. One email per eligible match. Dismissed and expired matches are skipped. Edit the <strong>subject</strong> and <strong>body</strong> below, then click <strong>Save email settings</strong>. Use <strong>Send test</strong> to preview without logging a real send.
             </p>
           </div>
 
@@ -1039,7 +1040,7 @@
                 placeholder="Leave blank to use “Reminder recipient (To)” above"
               />
               <p className="text-xs text-gray-500 mt-2">
-                Sends one message with subject prefix <strong>[TEST]</strong>, using your saved subject/body (or defaults) and the <strong>first non-canceled match</strong> for sample names (or placeholders if none). Does not update the reminder log.
+                Sends one message with subject prefix <strong>[TEST]</strong>, using your saved subject/body (or defaults) and the <strong>first active match</strong> for sample names (or placeholders if none). Does not update the reminder log.
               </p>
             </div>
             <div className="flex flex-wrap gap-2 mb-6">
@@ -1066,7 +1067,7 @@
             {preview && (
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm">
                 <h4 className="font-bold mb-2">Eligible for Post survey reminder ({preview.length})</h4>
-                <p className="text-xs text-gray-500 mb-2">Matches at least 180 days old (non-canceled). “Would email” = staff reminder not logged yet.</p>
+                <p className="text-xs text-gray-500 mb-2">Active matches at least 180 days old. “Would email” = staff reminder not logged yet.</p>
                 <div className="max-h-56 overflow-y-auto space-y-1">
                   {preview.map((row, i) => (
                     <div key={i} className="flex flex-wrap justify-between gap-2 border-b border-gray-200 py-1.5">
@@ -1303,11 +1304,11 @@
         });
       }, [companions, search, filters]);
 
-      /** Companion appears in at least one non-canceled match. */
+      /** Companion appears in at least one active match. */
       const idsWithActiveMatch = useMemo(() => {
         const s = new Set();
         matches.forEach(m => {
-          if (String(m.status || '').trim() === 'Canceled') return;
+          if (['dismissed', 'expired', 'canceled', 'cancelled'].includes(String(m.status || '').trim().toLowerCase())) return;
           s.add(String(m.companion1Id));
           s.add(String(m.companion2Id));
         });
@@ -1607,13 +1608,13 @@
                                           const s = String(selectedCompanion.internalStatus || '').trim();
                                           if (s && !INTERNAL_STATUS_OPTIONS.includes(s)) {
                                             return (
-                                              <option value={s}>{s} (from sheet — choose Active, Quit, Unresponsive, Dismissed, or Unmatched to replace)</option>
+                                              <option value={s}>{s} (from sheet — choose Active, Quit, Unresponsive, Dismissed, Expired, or Unmatched to replace)</option>
                                             );
                                           }
                                           return null;
                                         })()}
                                      </select>
-                                     <p className="text-[11px] text-amber-900/80 mt-2">Saved to your internal status column. Only <strong>Active</strong>, <strong>Quit</strong>, <strong>Unresponsive</strong>, <strong>Dismissed</strong>, and <strong>Unmatched</strong> are saved when selected from the list.</p>
+                                     <p className="text-[11px] text-amber-900/80 mt-2">Saved to your internal status column. Only <strong>Active</strong>, <strong>Quit</strong>, <strong>Unresponsive</strong>, <strong>Dismissed</strong>, <strong>Expired</strong>, and <strong>Unmatched</strong> are saved when selected from the list.</p>
                                   </div>
                                   <div>
                                      <label
