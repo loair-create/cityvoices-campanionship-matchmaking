@@ -3,8 +3,8 @@
  * Col A: Timestamp from Sign Up Form; Col B: sign-up row; Col C–E: name, phone, email;
  * Col F: Last Contact Date — staff manual on Companions; edits push to Sign Up Form;
  * Col G: Internal Notes — staff manual; edits push to Sign Up Form INTERNAL NOTES;
- * Col H: Internal Status — editable (Active / Quit / Unresponsive / Dismissed / Unmatched); edits push to Sign Up Form; status rows use distinct colors;
- * Col I: Companion ID — stable person key (list order is preserved; new people append at the bottom).
+ * Col H: Internal Status — editable (Active / Quit / Unresponsive / Dismissed / Expired / Unmatched); edits push to Sign Up Form; status rows use distinct colors;
+ * Col I: Companion ID — stable person key; Col J: Dismissed Date; Col K: Expired Date.
  */
 
 var COMPANIONS_SYNC_SOURCE_SHEET = 'Sign Up Form';
@@ -28,6 +28,9 @@ var COMPANIONS_INTERNAL_STATUS_COL = 8;
 /** Companions sheet: column I = Companion ID (1-based index 9). */
 var COMPANIONS_COMPANION_ID_COL = 9;
 
+var COMPANIONS_DISMISSED_DATE_COL = 10;
+var COMPANIONS_EXPIRED_DATE_COL = 11;
+
 var COMPANIONS_HEADER_ROW = [
   'Timestamp',
   'Sign-up row',
@@ -37,7 +40,9 @@ var COMPANIONS_HEADER_ROW = [
   'Last Contact Date',
   'Internal Notes',
   'Internal Status',
-  'Companion ID'
+  'Companion ID',
+  'Dismissed Date',
+  'Expired Date'
 ];
 
 /** Prevents onEditCompanionsStaffFields from firing while this script is rewriting the Companions tab. */
@@ -72,9 +77,10 @@ function syncCompanionsFromSignUpForm() {
     }
 
     var lastRow = src.getLastRow();
-    var lastCol = Math.max(src.getLastColumn(), VOLUNTEER_COL_FALLBACK_INDEX);
+    var lastCol = src.getLastColumn();
     var tgt = companionsSync_ensureTargetSheet_(ss);
     var numCols = COMPANIONS_HEADER_ROW.length;
+    if (typeof ensureRosterDateColumns_ === 'function') ensureRosterDateColumns_(tgt);
     tgt.getRange(1, 1, 1, numCols).setValues([COMPANIONS_HEADER_ROW]);
 
     if (lastRow < 2) {
@@ -155,6 +161,9 @@ function syncCompanionsFromSignUpForm() {
       return;
     }
     tgt.getRange(2, 1, out.length, numCols).setValues(out);
+    tgt
+      .getRange(2, COMPANIONS_DISMISSED_DATE_COL, out.length, 2)
+      .setNumberFormat('MM/dd/yyyy');
     var clearFrom = out.length + 2;
     var prevLast = tgt.getLastRow();
     if (prevLast >= clearFrom) {
@@ -213,7 +222,18 @@ function onEditCompanionsStaffFields(e) {
   if (sh.getName() !== COMPANIONS_SYNC_TARGET_SHEET) return;
   var c0 = e.range.getColumn();
   var cLast = e.range.getLastColumn();
-  if (cLast < COMPANIONS_LAST_CONTACT_COL || c0 > COMPANIONS_INTERNAL_STATUS_COL) return;
+  var editedHeaders = sh.getRange(1, c0, 1, e.range.getNumColumns()).getValues()[0];
+  var touchedLastContact = false;
+  var touchedNotes = false;
+  var touchedStatus = false;
+  for (var h = 0; h < editedHeaders.length; h++) {
+    var header = String(editedHeaders[h] != null ? editedHeaders[h] : '').trim().toLowerCase();
+    if (header === 'last contact date') touchedLastContact = true;
+    if (header === 'internal notes') touchedNotes = true;
+    if (header === 'internal status') touchedStatus = true;
+  }
+  if (!touchedLastContact && !touchedNotes && !touchedStatus) return;
+  if (typeof ensureRosterDateColumns_ === 'function') ensureRosterDateColumns_(sh);
   var r0 = e.range.getRow();
   var rLast = e.range.getLastRow();
   if (rLast < 2) return;
@@ -232,18 +252,26 @@ function onEditCompanionsStaffFields(e) {
     } else if (lcCell != null && String(lcCell).trim() !== '') {
       isoOrEmpty = String(lcCell).trim();
     }
-    if (typeof updateCompanionLastContactDate === 'function') {
+    if (
+      touchedLastContact &&
+      typeof updateCompanionLastContactDate === 'function'
+    ) {
       updateCompanionLastContactDate(ref, isoOrEmpty);
     }
-    if (typeof updateCompanionNote === 'function') {
+    if (
+      touchedNotes &&
+      typeof updateCompanionNote === 'function'
+    ) {
       updateCompanionNote(ref, notesCell != null ? String(notesCell) : '');
     }
-    if (typeof updateCompanionInternalStatus === 'function') {
+    if (
+      touchedStatus &&
+      typeof updateCompanionInternalStatus === 'function'
+    ) {
       updateCompanionInternalStatus(ref, statusCell != null ? String(statusCell).trim() : '');
     }
     if (
-      c0 <= COMPANIONS_INTERNAL_STATUS_COL &&
-      cLast >= COMPANIONS_INTERNAL_STATUS_COL &&
+      touchedStatus &&
       typeof paintRosterStatusRow_ === 'function'
     ) {
       paintRosterStatusRow_(sh, r, COMPANIONS_INTERNAL_STATUS_COL, COMPANIONS_HEADER_ROW.length);
