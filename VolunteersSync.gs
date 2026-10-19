@@ -6,8 +6,8 @@
  * Col A: Timestamp from Sign Up Form; Col B: sign-up row; Col C–E: name, phone, email;
  * Col F: Last Contact Date — staff manual; edits push to Sign Up Form "Last Contact Date" column;
  * Col G: Internal Notes — staff manual; edits push to Sign Up Form INTERNAL NOTES;
- * Col H: Internal Status — editable (Active / Quit / Unresponsive / Dismissed / Unmatched); edits push to Sign Up Form; status rows highlight (Quit brown, Unresponsive orange, Dismissed red, Unmatched blue);
- * Col I: Companion ID — stable person key (list order is preserved; new people append at the bottom).
+ * Col H: Internal Status — editable (Active / Quit / Unresponsive / Dismissed / Expired / Unmatched); edits push to Sign Up Form; status rows highlight;
+ * Col I: Companion ID — stable person key; Col J: Dismissed Date; Col K: Expired Date.
  */
 
 var VOLUNTEERS_SYNC_SOURCE_SHEET = 'Sign Up Form';
@@ -16,7 +16,7 @@ var VOLUNTEERS_SYNC_TARGET_SHEET = 'Volunteers';
 /**
  * Volunteer flag column on Sign Up Form (TRUE = volunteer).
  * Found by header text, so it keeps working when columns are added, removed,
- * or shifted by a paste. Column AQ is only a fallback if no header matches.
+ * or shifted by a paste.
  * If your header is worded differently, add it to this list (lowercase).
  */
 var VOLUNTEER_COL_HEADERS = [
@@ -25,9 +25,6 @@ var VOLUNTEER_COL_HEADERS = [
   'volunteer?',
   'volunteer'
 ];
-
-/** Used only when no header above matches. Column AQ = 43. */
-var VOLUNTEER_COL_FALLBACK_INDEX = 43;
 
 /**
  * 1-based column number of the volunteer flag, from the Sign Up Form header row.
@@ -53,9 +50,8 @@ function volunteersSync_findVolunteerCol_(headers) {
       }
     }
   }
-  if (headers.length >= VOLUNTEER_COL_FALLBACK_INDEX) {
-    return VOLUNTEER_COL_FALLBACK_INDEX;
-  }
+  // Never guess after columns have moved or been deleted; a wrong flag column can
+  // silently move people between Volunteers and Companions.
   return -1;
 }
 
@@ -86,10 +82,14 @@ var VOLUNTEERS_INTERNAL_STATUS_COL = 8;
 /** Volunteers sheet: column I = Companion ID (1-based index 9). */
 var VOLUNTEERS_COMPANION_ID_COL = 9;
 
+var VOLUNTEERS_DISMISSED_DATE_COL = 10;
+var VOLUNTEERS_EXPIRED_DATE_COL = 11;
+
 /** Row highlights by Internal Status. */
 var ROSTER_QUIT_HIGHLIGHT_COLOR = '#E8D4C4';
 var ROSTER_UNRESPONSIVE_HIGHLIGHT_COLOR = '#FED7AA';
 var ROSTER_DISMISSED_HIGHLIGHT_COLOR = '#FECACA';
+var ROSTER_EXPIRED_HIGHLIGHT_COLOR = '#E5E7EB';
 var ROSTER_UNMATCHED_HIGHLIGHT_COLOR = '#DBEAFE';
 var ROSTER_ACTIVE_HIGHLIGHT_COLOR = '#FFFFFF';
 
@@ -102,8 +102,26 @@ var VOLUNTEERS_HEADER_ROW = [
   'Last Contact Date',
   'Internal Notes',
   'Internal Status',
-  'Companion ID'
+  'Companion ID',
+  'Dismissed Date',
+  'Expired Date'
 ];
+
+function ensureRosterDateColumns_(sheet) {
+  if (!sheet) return;
+  if (typeof ensureNamedColumnAt_ === 'function') {
+    for (var i = 0; i < VOLUNTEERS_HEADER_ROW.length; i++) {
+      ensureNamedColumnAt_(sheet, VOLUNTEERS_HEADER_ROW[i], i + 1);
+    }
+    return;
+  }
+  if (!String(sheet.getRange(1, VOLUNTEERS_DISMISSED_DATE_COL).getValue() || '').trim()) {
+    sheet.getRange(1, VOLUNTEERS_DISMISSED_DATE_COL).setValue('Dismissed Date');
+  }
+  if (!String(sheet.getRange(1, VOLUNTEERS_EXPIRED_DATE_COL).getValue() || '').trim()) {
+    sheet.getRange(1, VOLUNTEERS_EXPIRED_DATE_COL).setValue('Expired Date');
+  }
+}
 
 /** Prevents onEditVolunteersStaffFields from firing while this script is rewriting the Volunteers tab. */
 var VOLUNTEERS_SYNC_CACHE_GUARD_KEY = 'volunteers_sheet_sync_guard';
@@ -217,6 +235,23 @@ function rosterSync_buildPersonRow_(row, map, sheetRow, staff) {
   } else if (staff && staff.internalStatus != null && String(staff.internalStatus).trim() !== '') {
     statusOut = String(staff.internalStatus).trim();
   }
+  if (statusOut.toLowerCase() === 'canceled' || statusOut.toLowerCase() === 'cancelled') {
+    statusOut = 'Dismissed';
+  }
+  var dismissedDateOut = staff && staff.dismissedDate != null ? staff.dismissedDate : '';
+  var expiredDateOut = staff && staff.expiredDate != null ? staff.expiredDate : '';
+  if (
+    statusOut.toLowerCase() === 'dismissed' &&
+    (dismissedDateOut == null || String(dismissedDateOut).trim() === '')
+  ) {
+    dismissedDateOut = typeof statusDateValue_ === 'function' ? statusDateValue_() : new Date();
+  }
+  if (
+    statusOut.toLowerCase() === 'expired' &&
+    (expiredDateOut == null || String(expiredDateOut).trim() === '')
+  ) {
+    expiredDateOut = typeof statusDateValue_ === 'function' ? statusDateValue_() : new Date();
+  }
   var tsIdx = map.timestamp;
   var ts = tsIdx >= 0 && tsIdx < row.length ? row[tsIdx] : '';
 
@@ -231,7 +266,9 @@ function rosterSync_buildPersonRow_(row, map, sheetRow, staff) {
       lcOut,
       notesOut,
       statusOut,
-      personKey
+      personKey,
+      dismissedDateOut,
+      expiredDateOut
     ]
   };
 }
@@ -250,7 +287,7 @@ function rosterSync_readExistingOrder_(sheetName, signupRowCol, notesCol, compan
   if (!sh || sh.getLastRow() < 2) return { entries: entries, staffByKey: staffByKey };
 
   var lr = sh.getLastRow();
-  var width = Math.max(sh.getLastColumn(), companionIdCol || notesCol, 5);
+  var width = Math.max(sh.getLastColumn(), companionIdCol || notesCol, VOLUNTEERS_EXPIRED_DATE_COL);
   var rows = sh.getRange(2, 1, lr - 1, width).getValues();
   for (var i = 0; i < rows.length; i++) {
     var cid =
@@ -278,7 +315,11 @@ function rosterSync_readExistingOrder_(sheetName, signupRowCol, notesCol, compan
       internalStatus:
         VOLUNTEERS_INTERNAL_STATUS_COL - 1 < rows[i].length && rows[i][VOLUNTEERS_INTERNAL_STATUS_COL - 1] != null
           ? String(rows[i][VOLUNTEERS_INTERNAL_STATUS_COL - 1]).trim()
-          : ''
+          : '',
+      dismissedDate:
+        VOLUNTEERS_DISMISSED_DATE_COL - 1 < rows[i].length ? rows[i][VOLUNTEERS_DISMISSED_DATE_COL - 1] : '',
+      expiredDate:
+        VOLUNTEERS_EXPIRED_DATE_COL - 1 < rows[i].length ? rows[i][VOLUNTEERS_EXPIRED_DATE_COL - 1] : ''
     };
   }
   return { entries: entries, staffByKey: staffByKey };
@@ -332,10 +373,10 @@ function rosterSync_mergeStableOrder_(existingEntries, eligibleByKey, formOrder)
 }
 
 /** Allowed values for Volunteers / Companions Internal Status (column H). */
-var ROSTER_INTERNAL_STATUS_OPTIONS = ['Active', 'Quit', 'Unresponsive', 'Dismissed', 'Unmatched'];
+var ROSTER_INTERNAL_STATUS_OPTIONS = ['Active', 'Quit', 'Unresponsive', 'Dismissed', 'Expired', 'Unmatched'];
 
 /**
- * Dropdown on Internal Status (column H): Active / Quit / Unresponsive / Dismissed / Unmatched.
+ * Dropdown on Internal Status (column H): Active / Quit / Unresponsive / Dismissed / Expired / Unmatched.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @param {number} [statusCol] 1-based column (default H = 8)
  */
@@ -349,7 +390,7 @@ function applyRosterInternalStatusDropdown_(sheet, statusCol) {
   var rule = SpreadsheetApp.newDataValidation()
     .requireValueInList(ROSTER_INTERNAL_STATUS_OPTIONS, true)
     .setAllowInvalid(true)
-    .setHelpText('Choose Active, Quit, Unresponsive, Dismissed, or Unmatched (or leave blank).')
+    .setHelpText('Choose Active, Quit, Unresponsive, Dismissed, Expired, or Unmatched (or leave blank).')
     .build();
   range.setDataValidation(rule);
 }
@@ -367,6 +408,7 @@ function rosterStatusHighlightColor_(status) {
   if (s === 'quit') return ROSTER_QUIT_HIGHLIGHT_COLOR;
   if (s === 'unresponsive') return ROSTER_UNRESPONSIVE_HIGHLIGHT_COLOR;
   if (s === 'dismissed') return ROSTER_DISMISSED_HIGHLIGHT_COLOR;
+  if (s === 'expired') return ROSTER_EXPIRED_HIGHLIGHT_COLOR;
   if (s === 'unmatched') return ROSTER_UNMATCHED_HIGHLIGHT_COLOR;
   if (s === 'active') return ROSTER_ACTIVE_HIGHLIGHT_COLOR;
   return null;
@@ -399,6 +441,19 @@ function paintRosterStatusRow_(sheet, row, statusCol, numCols) {
   if (!sheet || row < 2) return;
   var width = numCols != null ? numCols : Math.max(sheet.getLastColumn(), statusCol, VOLUNTEERS_HEADER_ROW.length);
   var status = sheet.getRange(row, statusCol).getValue();
+  var sheetName = sheet.getName();
+  if (
+    typeof stampStatusDate_ === 'function' &&
+    (sheetName === VOLUNTEERS_SYNC_TARGET_SHEET || sheetName === 'Companions')
+  ) {
+    stampStatusDate_(
+      sheet,
+      row,
+      status,
+      VOLUNTEERS_DISMISSED_DATE_COL,
+      VOLUNTEERS_EXPIRED_DATE_COL
+    );
+  }
   sheet.getRange(row, 1, 1, width).setBackground(rosterStatusHighlightColor_(status));
 }
 
@@ -412,7 +467,6 @@ function paintRosterStatusRows_(sheet, statusCol, numCols) {
   if (!sheet) return;
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return;
-  clearSheetBandings_(sheet);
   var width = numCols != null ? numCols : Math.max(sheet.getLastColumn(), statusCol, VOLUNTEERS_HEADER_ROW.length);
   var n = lastRow - 1;
   var statuses = sheet.getRange(2, statusCol, n, 1).getValues();
@@ -435,14 +489,34 @@ function paintRosterStatusRows_(sheet, statusCol, numCols) {
  */
 function applyRosterQuitConditionalFormatting_(sheet, statusCol, numCols) {
   if (!sheet) return;
+  ensureRosterDateColumns_(sheet);
   var col = statusCol != null ? statusCol : VOLUNTEERS_INTERNAL_STATUS_COL;
+  if (typeof migrateCanceledStatuses_ === 'function') migrateCanceledStatuses_(sheet, col);
+  if (typeof stampMissingStatusDates_ === 'function') {
+    stampMissingStatusDates_(
+      sheet,
+      col,
+      VOLUNTEERS_DISMISSED_DATE_COL,
+      VOLUNTEERS_EXPIRED_DATE_COL
+    );
+  }
   var width = numCols != null ? numCols : Math.max(sheet.getLastColumn(), col, VOLUNTEERS_HEADER_ROW.length);
   var lastRow = Math.max(sheet.getLastRow(), 2);
   var endRow = Math.max(lastRow + 50, 100);
   var range = sheet.getRange(2, 1, endRow - 1, width);
   var colLetter = sheet.getRange(1, col).getA1Notation().replace(/\d/g, '');
-  clearSheetBandings_(sheet);
-  sheet.setConditionalFormatRules([
+  var existing = sheet.getConditionalFormatRules() || [];
+  var rules = [];
+  var managedStatuses = ['active', 'quit', 'unresponsive', 'dismissed', 'expired', 'unmatched', 'canceled'];
+  for (var i = 0; i < existing.length; i++) {
+    if (
+      typeof isManagedStatusRule_ !== 'function' ||
+      !isManagedStatusRule_(existing[i], colLetter, managedStatuses)
+    ) {
+      rules.push(existing[i]);
+    }
+  }
+  rules.push(
     SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="active"')
       .setBackground(ROSTER_ACTIVE_HIGHLIGHT_COLOR)
@@ -464,11 +538,17 @@ function applyRosterQuitConditionalFormatting_(sheet, statusCol, numCols) {
       .setRanges([range])
       .build(),
     SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="expired"')
+      .setBackground(ROSTER_EXPIRED_HIGHLIGHT_COLOR)
+      .setRanges([range])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="unmatched"')
       .setBackground(ROSTER_UNMATCHED_HIGHLIGHT_COLOR)
       .setRanges([range])
       .build()
-  ]);
+  );
+  sheet.setConditionalFormatRules(rules);
   applyRosterInternalStatusDropdown_(sheet, col);
 }
 
@@ -585,9 +665,10 @@ function syncVolunteersFromSignUpForm() {
     }
 
     var lastRow = src.getLastRow();
-    var lastCol = Math.max(src.getLastColumn(), VOLUNTEER_COL_FALLBACK_INDEX);
+    var lastCol = src.getLastColumn();
     var tgt = volunteersSync_ensureTargetSheet_(ss);
     var numCols = VOLUNTEERS_HEADER_ROW.length;
+    ensureRosterDateColumns_(tgt);
     tgt.getRange(1, 1, 1, numCols).setValues([VOLUNTEERS_HEADER_ROW]);
 
     if (lastRow < 2) {
@@ -644,6 +725,9 @@ function syncVolunteersFromSignUpForm() {
       return;
     }
     tgt.getRange(2, 1, out.length, numCols).setValues(out);
+    tgt
+      .getRange(2, VOLUNTEERS_DISMISSED_DATE_COL, out.length, 2)
+      .setNumberFormat('MM/dd/yyyy');
     var clearFrom = out.length + 2;
     var prevLast = tgt.getLastRow();
     if (prevLast >= clearFrom) {
@@ -700,7 +784,18 @@ function onEditVolunteersStaffFields(e) {
   if (sh.getName() !== VOLUNTEERS_SYNC_TARGET_SHEET) return;
   var c0 = e.range.getColumn();
   var cLast = e.range.getLastColumn();
-  if (cLast < VOLUNTEERS_LAST_CONTACT_COL || c0 > VOLUNTEERS_INTERNAL_STATUS_COL) return;
+  var editedHeaders = sh.getRange(1, c0, 1, e.range.getNumColumns()).getValues()[0];
+  var touchedLastContact = false;
+  var touchedNotes = false;
+  var touchedStatus = false;
+  for (var h = 0; h < editedHeaders.length; h++) {
+    var header = String(editedHeaders[h] != null ? editedHeaders[h] : '').trim().toLowerCase();
+    if (header === 'last contact date') touchedLastContact = true;
+    if (header === 'internal notes') touchedNotes = true;
+    if (header === 'internal status') touchedStatus = true;
+  }
+  if (!touchedLastContact && !touchedNotes && !touchedStatus) return;
+  ensureRosterDateColumns_(sh);
   var r0 = e.range.getRow();
   var rLast = e.range.getLastRow();
   if (rLast < 2) return;
@@ -719,16 +814,25 @@ function onEditVolunteersStaffFields(e) {
     } else if (lcCell != null && String(lcCell).trim() !== '') {
       isoOrEmpty = String(lcCell).trim();
     }
-    if (typeof updateCompanionLastContactDate === 'function') {
+    if (
+      touchedLastContact &&
+      typeof updateCompanionLastContactDate === 'function'
+    ) {
       updateCompanionLastContactDate(ref, isoOrEmpty);
     }
-    if (typeof updateCompanionNote === 'function') {
+    if (
+      touchedNotes &&
+      typeof updateCompanionNote === 'function'
+    ) {
       updateCompanionNote(ref, notesCell != null ? String(notesCell) : '');
     }
-    if (typeof updateCompanionInternalStatus === 'function') {
+    if (
+      touchedStatus &&
+      typeof updateCompanionInternalStatus === 'function'
+    ) {
       updateCompanionInternalStatus(ref, statusCell != null ? String(statusCell).trim() : '');
     }
-    if (c0 <= VOLUNTEERS_INTERNAL_STATUS_COL && cLast >= VOLUNTEERS_INTERNAL_STATUS_COL) {
+    if (touchedStatus) {
       paintRosterStatusRow_(sh, r, VOLUNTEERS_INTERNAL_STATUS_COL, VOLUNTEERS_HEADER_ROW.length);
     }
   }
@@ -759,7 +863,16 @@ function onChangeVolunteersSync(e) {
   try {
     var active = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     var n = active ? active.getName() : '';
-    if (n === VOLUNTEERS_SYNC_TARGET_SHEET || n === 'Companions') return;
+    var changeType = String(e.changeType || '');
+    var isColumnChange = changeType === 'INSERT_COLUMN' || changeType === 'REMOVE_COLUMN';
+    if (n === VOLUNTEERS_SYNC_TARGET_SHEET || n === 'Companions') {
+      if (isColumnChange) ensureRosterDateColumns_(active);
+      return;
+    }
+    if (n === 'Matches' && isColumnChange) {
+      if (typeof ensureMatchesSheetStructure_ === 'function') ensureMatchesSheetStructure_(active);
+      return;
+    }
   } catch (skipErr) {
     // ignore
   }
