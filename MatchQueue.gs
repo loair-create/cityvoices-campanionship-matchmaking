@@ -4,6 +4,18 @@
  */
 
 var MATCH_QUEUE_SHEET_NAME = 'Match Queue';
+var MATCH_QUEUE_HEADERS_ = ['Companion 1 (ID or row)', 'Companion 2 (ID or row)', 'Status', 'Notes', 'Processed'];
+
+function ensureMatchQueueStructure_(sheet) {
+  if (!sheet) return;
+  if (typeof ensureNamedColumnAt_ === 'function') {
+    for (var i = 0; i < MATCH_QUEUE_HEADERS_.length; i++) {
+      ensureNamedColumnAt_(sheet, MATCH_QUEUE_HEADERS_[i], i + 1);
+    }
+  } else {
+    sheet.getRange(1, 1, 1, MATCH_QUEUE_HEADERS_.length).setValues([MATCH_QUEUE_HEADERS_]);
+  }
+}
 
 function ensureMatchQueueSheet() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -11,8 +23,7 @@ function ensureMatchQueueSheet() {
   if (!sh) {
     sh = ss.insertSheet(MATCH_QUEUE_SHEET_NAME);
   }
-  var headers = ['Companion 1 (ID or row)', 'Companion 2 (ID or row)', 'Status', 'Notes', 'Processed'];
-  sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+  ensureMatchQueueStructure_(sh);
   sh.setFrozenRows(1);
   SpreadsheetApp.getUi().alert(
     'Match Queue is ready.\n\n' +
@@ -36,6 +47,7 @@ function processMatchQueueFromSheet() {
     ui.alert('Match Queue sheet not found. Use Companion tools → Prepare Match Queue sheet.');
     return;
   }
+  ensureMatchQueueStructure_(q);
 
   var formSheet = ss.getSheetByName(FORM_SHEET_NAME);
   if (!formSheet) {
