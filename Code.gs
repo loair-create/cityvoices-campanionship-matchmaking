@@ -309,6 +309,21 @@ function dispatchApiAction_(action, params) {
 }
 
 function onOpen() {
+  try {
+    var structureSs = SpreadsheetApp.getActiveSpreadsheet();
+    var structureMatches = structureSs.getSheetByName('Matches');
+    if (structureMatches) ensureMatchesSheetStructure_(structureMatches);
+    var structureVolunteers = structureSs.getSheetByName('Volunteers');
+    if (structureVolunteers && typeof ensureRosterDateColumns_ === 'function') {
+      ensureRosterDateColumns_(structureVolunteers);
+    }
+    var structureCompanions = structureSs.getSheetByName('Companions');
+    if (structureCompanions && typeof ensureRosterDateColumns_ === 'function') {
+      ensureRosterDateColumns_(structureCompanions);
+    }
+  } catch (structureErr) {
+    // Menus should still load even if a protected sheet prevents structural repair.
+  }
   // Build menus here so they still appear if SheetCompanionTools.gs is missing/out of date.
   try {
     var ui = SpreadsheetApp.getUi();
@@ -384,7 +399,7 @@ function applyCompanionSheetFormatting() {
   try {
     var vol = ss.getSheetByName('Volunteers');
     if (vol && typeof applyRosterQuitConditionalFormatting_ === 'function') {
-      applyRosterQuitConditionalFormatting_(vol, 8, Math.max(vol.getLastColumn(), 9));
+      applyRosterQuitConditionalFormatting_(vol, 8, Math.max(vol.getLastColumn(), 11));
       notes.push('Volunteers');
     }
   } catch (e3) {
@@ -394,7 +409,7 @@ function applyCompanionSheetFormatting() {
   try {
     var com = ss.getSheetByName('Companions');
     if (com && typeof applyRosterQuitConditionalFormatting_ === 'function') {
-      applyRosterQuitConditionalFormatting_(com, 8, Math.max(com.getLastColumn(), 9));
+      applyRosterQuitConditionalFormatting_(com, 8, Math.max(com.getLastColumn(), 11));
       notes.push('Companions');
     }
   } catch (e4) {
@@ -404,7 +419,7 @@ function applyCompanionSheetFormatting() {
   var msg =
     (notes.length ? 'Formatting applied to: ' + notes.join(', ') : 'Nothing applied.') +
     (errors.length ? '\n\nErrors:\n• ' + errors.join('\n• ') : '') +
-    '\n\nColors: Active=white, Quit=brown, Unresponsive=orange, Dismissed=red, Unmatched=blue; Matches Dismissed=red and Canceled=gray.' +
+    '\n\nColors: Active=white, Quit=brown, Unresponsive=orange, Dismissed=red, Expired=gray, Unmatched=blue.' +
     '\nTo refresh roster data, use Admin → Sync Volunteers & Companions tabs.';
   SpreadsheetApp.getUi().alert(msg);
 }
@@ -454,18 +469,91 @@ function formatDateMMDD_(value) {
 }
 
 /** Allowed values for Matches column D (Status). */
-var MATCH_STATUS_OPTIONS = ['Just Matched', 'Active', 'Canceled', 'Dismissed'];
+var MATCH_STATUS_OPTIONS = ['Just Matched', 'Active', 'Dismissed', 'Expired'];
 
-/** Matches sheet column I — ensure header exists for older spreadsheets. */
-function ensureMatchesLastContactColumn_(sheet) {
+var MATCHES_HEADER_ROW_ = [
+  'Match ID',
+  'Companion 1 ID',
+  'Companion 2 ID',
+  'Status',
+  'Notes',
+  'Created At',
+  'C1 Name',
+  'C2 Name',
+  'Last Contact Date',
+  'Dismissed Date',
+  'Expired Date'
+];
+
+/**
+ * Put a named column at a required position without overwriting an existing custom column.
+ * Existing named columns are moved; occupied target columns are shifted right.
+ */
+function ensureNamedColumnAt_(sheet, header, targetCol) {
+  if (!sheet) return targetCol;
+  var lastCol = Math.max(sheet.getLastColumn(), targetCol);
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var wanted = String(header).trim().toLowerCase();
+  var found = -1;
+  var matches = 0;
+  for (var i = 0; i < headers.length; i++) {
+    if (String(headers[i] != null ? headers[i] : '').trim().toLowerCase() === wanted) {
+      matches++;
+      if (found < 0) found = i + 1;
+    }
+  }
+  if (matches > 1) {
+    throw new Error(
+      'Sheet "' + sheet.getName() + '" has more than one "' + header + '" column. Remove or rename the duplicate before continuing.'
+    );
+  }
+  if (found === targetCol) return targetCol;
+  if (found > 0) {
+    sheet.moveColumns(sheet.getRange(1, found, sheet.getMaxRows(), 1), targetCol);
+    return targetCol;
+  }
+  var targetValue = sheet.getRange(1, targetCol).getValue();
+  if (targetValue != null && String(targetValue).trim() !== '') {
+    sheet.insertColumnBefore(targetCol);
+  }
+  sheet.getRange(1, targetCol).setValue(header);
+  return targetCol;
+}
+
+/** Ensure the complete Matches layout while preserving custom columns. */
+function ensureMatchesSheetStructure_(sheet) {
   if (!sheet) return;
-  if (sheet.getRange(1, 9).getValue() !== 'Last Contact Date') {
-    sheet.getRange(1, 9).setValue('Last Contact Date');
+  for (var i = 0; i < MATCHES_HEADER_ROW_.length; i++) {
+    ensureNamedColumnAt_(sheet, MATCHES_HEADER_ROW_[i], i + 1);
   }
 }
 
+/** Matches sheet staff date columns — ensure headers exist for older spreadsheets. */
+function ensureMatchesDateColumns_(sheet) {
+  if (!sheet) return;
+  ensureNamedColumnAt_(sheet, 'Last Contact Date', 9);
+  ensureNamedColumnAt_(sheet, 'Dismissed Date', 10);
+  ensureNamedColumnAt_(sheet, 'Expired Date', 11);
+}
+
+/** Convert literal retired Canceled cells to Dismissed without replacing formulas. */
+function migrateCanceledStatuses_(sheet, statusCol) {
+  if (!sheet || sheet.getLastRow() < 2) return;
+  var range = sheet.getRange(2, statusCol, sheet.getLastRow() - 1, 1);
+  var values = range.getValues();
+  var formulas = range.getFormulas();
+  var cells = [];
+  for (var i = 0; i < values.length; i++) {
+    var s = String(values[i][0] != null ? values[i][0] : '').trim().toLowerCase();
+    if (!formulas[i][0] && (s === 'canceled' || s === 'cancelled')) {
+      cells.push(sheet.getRange(i + 2, statusCol).getA1Notation());
+    }
+  }
+  if (cells.length) sheet.getRangeList(cells).setValue('Dismissed');
+}
+
 /** Distinct row highlights for ended matches. */
-var MATCH_CANCELED_HIGHLIGHT_COLOR = '#E5E7EB';
+var MATCH_EXPIRED_HIGHLIGHT_COLOR = '#E5E7EB';
 var MATCH_DISMISSED_HIGHLIGHT_COLOR = '#FECACA';
 var MATCH_ACTIVE_HIGHLIGHT_COLOR = '#FFFFFF';
 
@@ -474,9 +562,73 @@ function matchStatusHighlightColor_(status) {
     .trim()
     .toLowerCase();
   if (s === 'dismissed') return MATCH_DISMISSED_HIGHLIGHT_COLOR;
-  if (s === 'canceled') return MATCH_CANCELED_HIGHLIGHT_COLOR;
+  if (s === 'expired') return MATCH_EXPIRED_HIGHLIGHT_COLOR;
   if (s === 'active' || s === 'just matched') return MATCH_ACTIVE_HIGHLIGHT_COLOR;
   return null;
+}
+
+function matchIsEnded_(status) {
+  var s = String(status != null ? status : '').trim().toLowerCase();
+  return s === 'dismissed' || s === 'expired' || s === 'canceled' || s === 'cancelled';
+}
+
+function canonicalMatchStatus_(status) {
+  var s = String(status != null ? status : '').trim();
+  if (s.toLowerCase() === 'canceled' || s.toLowerCase() === 'cancelled') return 'Dismissed';
+  return MATCH_STATUS_OPTIONS.indexOf(s) >= 0 ? s : 'Just Matched';
+}
+
+function statusDateValue_() {
+  var now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+/** Stamp the relevant date once; retain both dates as status history. */
+function stampStatusDate_(sheet, row, status, dismissedCol, expiredCol) {
+  if (!sheet || row < 2) return;
+  var s = String(status != null ? status : '').trim().toLowerCase();
+  var col = s === 'dismissed' ? dismissedCol : s === 'expired' ? expiredCol : 0;
+  if (!col) return;
+  var cell = sheet.getRange(row, col);
+  if (cell.getValue() == null || String(cell.getValue()).trim() === '') {
+    cell.setValue(statusDateValue_()).setNumberFormat('MM/dd/yyyy');
+  }
+}
+
+function stampMissingStatusDates_(sheet, statusCol, dismissedCol, expiredCol) {
+  if (!sheet || sheet.getLastRow() < 2) return;
+  var n = sheet.getLastRow() - 1;
+  var statuses = sheet.getRange(2, statusCol, n, 1).getValues();
+  var dismissed = sheet.getRange(2, dismissedCol, n, 1).getValues();
+  var expired = sheet.getRange(2, expiredCol, n, 1).getValues();
+  for (var i = 0; i < n; i++) {
+    var s = String(statuses[i][0] != null ? statuses[i][0] : '').trim().toLowerCase();
+    if (
+      (s === 'dismissed' || s === 'canceled' || s === 'cancelled') &&
+      (dismissed[i][0] == null || String(dismissed[i][0]).trim() === '')
+    ) {
+      stampStatusDate_(sheet, i + 2, 'dismissed', dismissedCol, expiredCol);
+    } else if (s === 'expired' && (expired[i][0] == null || String(expired[i][0]).trim() === '')) {
+      stampStatusDate_(sheet, i + 2, s, dismissedCol, expiredCol);
+    }
+  }
+}
+
+function isManagedStatusRule_(rule, colLetter, statusWords) {
+  try {
+    var condition = rule.getBooleanCondition();
+    var formula =
+      condition && condition.getCriteriaValues && condition.getCriteriaValues()[0]
+        ? String(condition.getCriteriaValues()[0]).toLowerCase()
+        : '';
+    if (formula.indexOf('$' + String(colLetter).toLowerCase() + '2') < 0) return false;
+    for (var i = 0; i < statusWords.length; i++) {
+      if (formula.indexOf(statusWords[i]) >= 0) return true;
+    }
+  } catch (e) {
+    return false;
+  }
+  return false;
 }
 
 /** Sign Up Form row color, matching Volunteers and Companions. */
@@ -499,6 +651,11 @@ function signUpFormStatusHighlightColor_(status) {
       ? ROSTER_DISMISSED_HIGHLIGHT_COLOR
       : '#FECACA';
   }
+  if (s === 'expired') {
+    return typeof ROSTER_EXPIRED_HIGHLIGHT_COLOR !== 'undefined'
+      ? ROSTER_EXPIRED_HIGHLIGHT_COLOR
+      : '#E5E7EB';
+  }
   if (s === 'unmatched') {
     return typeof ROSTER_UNMATCHED_HIGHLIGHT_COLOR !== 'undefined'
       ? ROSTER_UNMATCHED_HIGHLIGHT_COLOR
@@ -509,8 +666,8 @@ function signUpFormStatusHighlightColor_(status) {
 }
 
 /**
- * Dropdown on Matches column D: Just Matched, Active, Canceled, Dismissed.
- * Conditional formatting: Canceled = gray; Dismissed = red.
+ * Dropdown on Matches column D: Just Matched, Active, Dismissed, Expired.
+ * Conditional formatting: Expired = gray; Dismissed = red.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  */
 function ensureMatchesStatusDropdown_(sheet) {
@@ -526,14 +683,20 @@ function ensureMatchesStatusDropdown_(sheet) {
     SpreadsheetApp.newDataValidation()
       .requireValueInList(MATCH_STATUS_OPTIONS, true)
       .setAllowInvalid(false)
-      .setHelpText('Choose Just Matched, Active, Canceled, or Dismissed.')
+      .setHelpText('Choose Just Matched, Active, Dismissed, or Expired.')
       .build()
   );
 
-  var width = Math.max(sheet.getLastColumn(), 9);
+  var width = Math.max(sheet.getLastColumn(), 11);
   var rowRange = sheet.getRange(2, 1, endRow - 1, width);
-  if (typeof clearSheetBandings_ === 'function') clearSheetBandings_(sheet);
-  sheet.setConditionalFormatRules([
+  var existingRules = sheet.getConditionalFormatRules() || [];
+  var rules = [];
+  for (var i = 0; i < existingRules.length; i++) {
+    if (!isManagedStatusRule_(existingRules[i], 'D', ['active', 'just matched', 'dismissed', 'expired', 'canceled'])) {
+      rules.push(existingRules[i]);
+    }
+  }
+  rules.push(
     SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied('=OR(LOWER(TRIM($D2))="active",LOWER(TRIM($D2))="just matched")')
       .setBackground(MATCH_ACTIVE_HIGHLIGHT_COLOR)
@@ -545,30 +708,106 @@ function ensureMatchesStatusDropdown_(sheet) {
       .setRanges([rowRange])
       .build(),
     SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=LOWER(TRIM($D2))="canceled"')
-      .setBackground(MATCH_CANCELED_HIGHLIGHT_COLOR)
+      .whenFormulaSatisfied('=LOWER(TRIM($D2))="expired"')
+      .setBackground(MATCH_EXPIRED_HIGHLIGHT_COLOR)
       .setRanges([rowRange])
       .build()
-  ]);
+  );
+  sheet.setConditionalFormatRules(rules);
 }
 
 /**
  * Sign Up Form: Internal Status dropdown + conditional-format row colors (fast).
  */
+function signUpStatusValueColumnIndex_(sheet, headers, excludeIndex) {
+  if (!sheet || sheet.getLastRow() < 2) return -1;
+  var allowed = {
+    active: true,
+    quit: true,
+    unresponsive: true,
+    dismissed: true,
+    expired: true,
+    unmatched: true,
+    canceled: true,
+    cancelled: true
+  };
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  var best = -1;
+  var bestScore = 0;
+  var tied = false;
+  for (var c = 0; c < headers.length; c++) {
+    if (c === excludeIndex) continue;
+    var valid = 0;
+    var nonempty = 0;
+    for (var r = 0; r < rows.length; r++) {
+      var value = String(rows[r][c] != null ? rows[r][c] : '').trim().toLowerCase();
+      if (!value) continue;
+      nonempty++;
+      if (allowed[value]) valid++;
+    }
+    if (!valid || valid / nonempty < 0.8) continue;
+    var header = String(headers[c] != null ? headers[c] : '').toLowerCase();
+    var score = valid + (header.indexOf('status') >= 0 ? 10000 : 0);
+    if (score > bestScore) {
+      best = c;
+      bestScore = score;
+      tied = false;
+    } else if (score === bestScore) {
+      tied = true;
+    }
+  }
+  return tied ? -1 : best;
+}
+
+function ensureSignUpInternalStatusColumn_(sheet) {
+  if (!sheet) return -1;
+  var lastCol = sheet.getLastColumn();
+  var headers = lastCol >= 1 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  var columns = buildCompanionColumnIndices(headers);
+  var currentIdx = columns.internalStatus != null ? columns.internalStatus : -1;
+  var recoveredIdx = signUpStatusValueColumnIndex_(sheet, headers, currentIdx);
+  if (currentIdx >= 0) {
+    if (recoveredIdx >= 0 && sheet.getLastRow() >= 2) {
+      var n = sheet.getLastRow() - 1;
+      var currentValues = sheet.getRange(2, currentIdx + 1, n, 1).getValues();
+      var recoveredValues = sheet.getRange(2, recoveredIdx + 1, n, 1).getValues();
+      var changed = false;
+      for (var i = 0; i < n; i++) {
+        var existing = String(currentValues[i][0] != null ? currentValues[i][0] : '').trim();
+        var recovered = String(recoveredValues[i][0] != null ? recoveredValues[i][0] : '').trim();
+        if (!existing && recovered) {
+          var lowerRecovered = recovered.toLowerCase();
+          currentValues[i][0] =
+            lowerRecovered === 'canceled' || lowerRecovered === 'cancelled'
+              ? 'Dismissed'
+              : recovered;
+          changed = true;
+        }
+      }
+      if (changed) sheet.getRange(2, currentIdx + 1, n, 1).setValues(currentValues);
+    }
+    return currentIdx;
+  }
+  if (recoveredIdx >= 0) {
+    sheet.getRange(1, recoveredIdx + 1).setValue('Internal Status');
+    return recoveredIdx;
+  }
+  var newCol = Math.max(lastCol + 1, 1);
+  sheet.getRange(1, newCol).setValue('Internal Status');
+  return newCol - 1;
+}
+
 function applySignUpFormInternalStatusFormatting_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(FORM_SHEET_NAME);
   if (!sheet) return;
+  ensureSignUpInternalStatusColumn_(sheet);
   var lastCol = sheet.getLastColumn();
   if (lastCol < 1) return;
   var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   var c = buildCompanionColumnIndices(headers);
-  if (c.internalStatus == null || c.internalStatus < 0) {
-    throw new Error(
-      'Sign Up Form has no Internal Status column (header must contain "Internal Status", "Staff Status", "Companion Status", or "Program Status").'
-    );
-  }
   var statusCol = c.internalStatus + 1;
+  migrateCanceledStatuses_(sheet, statusCol);
   var lastRow = Math.max(sheet.getLastRow(), 2);
   var endRow = Math.max(lastRow + 50, 100);
   var statusRange = sheet.getRange(2, statusCol, endRow - 1, 1);
@@ -578,11 +817,11 @@ function applySignUpFormInternalStatusFormatting_() {
       .requireValueInList(
         typeof ROSTER_INTERNAL_STATUS_OPTIONS !== 'undefined'
           ? ROSTER_INTERNAL_STATUS_OPTIONS
-          : ['Active', 'Quit', 'Unresponsive', 'Dismissed', 'Unmatched'],
+          : ['Active', 'Quit', 'Unresponsive', 'Dismissed', 'Expired', 'Unmatched'],
         true
       )
       .setAllowInvalid(true)
-      .setHelpText('Choose Active, Quit, Unresponsive, Dismissed, or Unmatched (or leave blank).')
+      .setHelpText('Choose Active, Quit, Unresponsive, Dismissed, Expired, or Unmatched (or leave blank).')
       .build()
   );
 
@@ -602,101 +841,62 @@ function applySignUpFormInternalStatusFormatting_() {
     typeof ROSTER_UNMATCHED_HIGHLIGHT_COLOR !== 'undefined'
       ? ROSTER_UNMATCHED_HIGHLIGHT_COLOR
       : '#DBEAFE';
+  var expiredColor =
+    typeof ROSTER_EXPIRED_HIGHLIGHT_COLOR !== 'undefined'
+      ? ROSTER_EXPIRED_HIGHLIGHT_COLOR
+      : '#E5E7EB';
   var activeColor =
     typeof ROSTER_ACTIVE_HIGHLIGHT_COLOR !== 'undefined'
       ? ROSTER_ACTIVE_HIGHLIGHT_COLOR
       : '#FFFFFF';
 
-  if (typeof clearSheetBandings_ === 'function') clearSheetBandings_(sheet);
-
-  // Replace only our status rules; keep other CF when possible (best-effort, fast path = replace all if merge fails).
-  try {
-    var existing = sheet.getConditionalFormatRules() || [];
-    var kept = [];
-    for (var i = 0; i < existing.length; i++) {
-      try {
-        var f = existing[i].getBooleanCondition();
-        var formula =
-          f && f.getCriteriaValues && f.getCriteriaValues()[0]
-            ? String(f.getCriteriaValues()[0]).toLowerCase()
-            : '';
-        if (
-          formula.indexOf('active') >= 0 ||
-          formula.indexOf('quit') >= 0 ||
-          formula.indexOf('unresponsive') >= 0 ||
-          formula.indexOf('dismissed') >= 0 ||
-          formula.indexOf('unmatched') >= 0
-        ) {
-          continue;
-        }
-      } catch (skipErr) {
-        // keep
-      }
-      kept.push(existing[i]);
-    }
-    kept.push(
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="active"')
-        .setBackground(activeColor)
-        .setRanges([rowRange])
-        .build(),
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="quit"')
-        .setBackground(quitColor)
-        .setRanges([rowRange])
-        .build(),
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="unresponsive"')
-        .setBackground(unColor)
-        .setRanges([rowRange])
-        .build(),
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="dismissed"')
-        .setBackground(disColor)
-        .setRanges([rowRange])
-        .build(),
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="unmatched"')
-        .setBackground(unmatchedColor)
-        .setRanges([rowRange])
-        .build()
-    );
-    sheet.setConditionalFormatRules(kept);
-  } catch (cfErr) {
-    sheet.setConditionalFormatRules([
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="active"')
-        .setBackground(activeColor)
-        .setRanges([rowRange])
-        .build(),
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="quit"')
-        .setBackground(quitColor)
-        .setRanges([rowRange])
-        .build(),
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="unresponsive"')
-        .setBackground(unColor)
-        .setRanges([rowRange])
-        .build(),
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="dismissed"')
-        .setBackground(disColor)
-        .setRanges([rowRange])
-        .build(),
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="unmatched"')
-        .setBackground(unmatchedColor)
-        .setRanges([rowRange])
-        .build()
-    ]);
+  var existing = sheet.getConditionalFormatRules() || [];
+  var kept = [];
+  var managedStatuses = ['active', 'quit', 'unresponsive', 'dismissed', 'expired', 'unmatched', 'canceled'];
+  for (var i = 0; i < existing.length; i++) {
+    if (!isManagedStatusRule_(existing[i], colLetter, managedStatuses)) kept.push(existing[i]);
   }
+  kept.push(
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="active"')
+        .setBackground(activeColor)
+        .setRanges([rowRange])
+        .build(),
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="quit"')
+        .setBackground(quitColor)
+        .setRanges([rowRange])
+        .build(),
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="unresponsive"')
+        .setBackground(unColor)
+        .setRanges([rowRange])
+        .build(),
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="dismissed"')
+        .setBackground(disColor)
+        .setRanges([rowRange])
+        .build(),
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="expired"')
+        .setBackground(expiredColor)
+        .setRanges([rowRange])
+        .build(),
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied('=LOWER(TRIM($' + colLetter + '2))="unmatched"')
+        .setBackground(unmatchedColor)
+        .setRanges([rowRange])
+        .build()
+  );
+  sheet.setConditionalFormatRules(kept);
 }
 
 /** Headers, last-contact column, and Status dropdown for the Matches tab. */
 function ensureMatchesSheetSetup_(sheet) {
   if (!sheet) return;
-  ensureMatchesLastContactColumn_(sheet);
+  ensureMatchesSheetStructure_(sheet);
+  migrateCanceledStatuses_(sheet, 4);
+  stampMissingStatusDates_(sheet, 4, 10, 11);
   ensureMatchesStatusDropdown_(sheet);
 }
 
@@ -709,13 +909,20 @@ function onEdit(e) {
   var row;
 
   if (sheet.getName() === 'Matches') {
-    if (e.range.getLastColumn() < 4 || e.range.getColumn() > 4) return;
-    ensureMatchesLastContactColumn_(sheet);
+    var editedMatchHeaders = sheet
+      .getRange(1, e.range.getColumn(), 1, e.range.getNumColumns())
+      .getValues()[0];
+    var touchedMatchStatus = editedMatchHeaders.some(function (header) {
+      return String(header != null ? header : '').trim().toLowerCase() === 'status';
+    });
+    if (!touchedMatchStatus) return;
+    ensureMatchesSheetStructure_(sheet);
     firstRow = Math.max(2, e.range.getRow());
     lastRow = e.range.getLastRow();
-    var matchWidth = Math.max(sheet.getLastColumn(), 9);
+    var matchWidth = Math.max(sheet.getLastColumn(), 11);
     for (row = firstRow; row <= lastRow; row++) {
       var matchStatus = sheet.getRange(row, 4).getValue();
+      stampStatusDate_(sheet, row, matchStatus, 10, 11);
       sheet.getRange(row, 1, 1, matchWidth).setBackground(matchStatusHighlightColor_(matchStatus));
     }
     return;
@@ -736,6 +943,11 @@ function onEdit(e) {
       sheet
         .getRange(row, 1, 1, lastCol)
         .setBackground(signUpFormStatusHighlightColor_(formStatus));
+      var formCompanionId =
+        columns.companionId != null && columns.companionId >= 0
+          ? sheet.getRange(row, columns.companionId + 1).getValue()
+          : '';
+      updateRosterStatusCopies_(formCompanionId, row, formStatus);
     }
   }
 }
@@ -883,10 +1095,67 @@ function buildPublicTemplateData_(companion, visibility) {
 function companionIdColumnIndex_(headers) {
   if (!headers) return -1;
   var want = COMPANION_ID_HEADER.toLowerCase();
+  var found = -1;
   for (var i = 0; i < headers.length; i++) {
-    if (String(headers[i] != null ? headers[i] : '').trim().toLowerCase() === want) return i;
+    if (String(headers[i] != null ? headers[i] : '').trim().toLowerCase() === want) {
+      if (found >= 0) throw new Error('Sign Up Form has more than one "' + COMPANION_ID_HEADER + '" column.');
+      found = i;
+    }
   }
-  return -1;
+  return found;
+}
+
+/** Find a renamed Companion ID column by its values; returns -1 when ambiguous. */
+function companionIdValueColumnIndex_(sheet, headers, lastRow, excludeIndex) {
+  if (!sheet || lastRow < 2 || !headers || !headers.length) return -1;
+  var data = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  var best = -1;
+  var bestCount = 0;
+  var tied = false;
+  for (var c = 0; c < headers.length; c++) {
+    if (c === excludeIndex) continue;
+    var count = 0;
+    for (var r = 0; r < data.length; r++) {
+      var value = String(data[r][c] != null ? data[r][c] : '').trim();
+      if (!value) continue;
+      if (/^C-\d+$/i.test(value)) count++;
+    }
+    if (!count) continue;
+    if (count > bestCount) {
+      best = c;
+      bestCount = count;
+      tied = false;
+    } else if (count === bestCount) {
+      tied = true;
+    }
+  }
+  return tied ? -1 : best;
+}
+
+/** Recover deleted Sign Up Form IDs from generated roster rows keyed by sign-up row. */
+function recoverCompanionIdsFromRosters_(ss) {
+  var recovered = {};
+  var names = ['Volunteers', 'Companions'];
+  for (var n = 0; n < names.length; n++) {
+    var sheet = ss.getSheetByName(names[n]);
+    if (!sheet || sheet.getLastRow() < 2 || sheet.getLastColumn() < 1) continue;
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var signupCol = -1;
+    var idCol = -1;
+    for (var c = 0; c < headers.length; c++) {
+      var header = String(headers[c] != null ? headers[c] : '').trim().toLowerCase();
+      if (header === 'sign-up row') signupCol = c;
+      if (header === COMPANION_ID_HEADER.toLowerCase()) idCol = c;
+    }
+    if (signupCol < 0 || idCol < 0) continue;
+    var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      var signupRow = String(rows[i][signupCol] != null ? rows[i][signupCol] : '').trim();
+      var id = String(rows[i][idCol] != null ? rows[i][idCol] : '').trim();
+      if (signupRow && /^C-\d+$/i.test(id)) recovered[signupRow] = id;
+    }
+  }
+  return recovered;
 }
 
 function formatCompanionId_(seq) {
@@ -934,16 +1203,44 @@ function ensureCompanionIds_() {
     lastCol = sheet.getLastColumn();
     headers = lastCol >= 1 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
     idx = companionIdColumnIndex_(headers);
+    var recoveredIds = recoverCompanionIdsFromRosters_(ss);
+    var alternateIdIdx = companionIdValueColumnIndex_(sheet, headers, sheet.getLastRow(), idx);
     if (idx < 0) {
-      // Append at the end so existing columns keep their position.
-      idx = lastCol;
-      sheet.getRange(1, idx + 1).setValue(COMPANION_ID_HEADER);
+      var renamedIdx = alternateIdIdx;
+      if (renamedIdx >= 0) {
+        idx = renamedIdx;
+        sheet.getRange(1, idx + 1).setValue(COMPANION_ID_HEADER);
+        alternateIdIdx = -1;
+      } else {
+        // Append at the end so existing columns keep their position, then recover IDs
+        // from Volunteers/Companions before assigning any new identities.
+        idx = lastCol;
+        sheet.getRange(1, idx + 1).setValue(COMPANION_ID_HEADER);
+      }
     }
     lastRow = sheet.getLastRow();
     if (lastRow < 2) return { colIndex: idx, assigned: 0 };
 
     var range = sheet.getRange(2, idx + 1, lastRow - 1, 1);
     var values = range.getValues();
+    var alternateIds =
+      alternateIdIdx >= 0
+        ? sheet.getRange(2, alternateIdIdx + 1, lastRow - 1, 1).getValues()
+        : [];
+    var recoveredCount = 0;
+    for (var recoveredRow = 0; recoveredRow < values.length; recoveredRow++) {
+      var alternateId =
+        alternateIds.length > recoveredRow
+          ? String(alternateIds[recoveredRow][0] != null ? alternateIds[recoveredRow][0] : '').trim()
+          : '';
+      var recoveredId =
+        (/^C-\d+$/i.test(alternateId) ? alternateId : '') ||
+        recoveredIds[String(recoveredRow + 2)];
+      if (!String(values[recoveredRow][0] != null ? values[recoveredRow][0] : '').trim() && recoveredId) {
+        values[recoveredRow][0] = recoveredId;
+        recoveredCount++;
+      }
+    }
     var maxSeq = 0;
     for (var r = 0; r < values.length; r++) {
       var m = /^C-(\d+)$/i.exec(String(values[r][0] != null ? values[r][0] : '').trim());
@@ -959,8 +1256,8 @@ function ensureCompanionIds_() {
       values[k][0] = formatCompanionId_(maxSeq);
       assigned++;
     }
-    if (assigned) range.setValues(values);
-    return { colIndex: idx, assigned: assigned };
+    if (assigned || recoveredCount) range.setValues(values);
+    return { colIndex: idx, assigned: assigned + recoveredCount };
   } finally {
     lock.releaseLock();
   }
@@ -1295,6 +1592,29 @@ function getProfilePdfBase64(rowId) {
 /**
  * FETCH DATA
  */
+function buildCompanionIdAliasMap_() {
+  var aliases = {};
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(FORM_SHEET_NAME);
+  if (!sheet || sheet.getLastRow() < 2 || sheet.getLastColumn() < 1) return aliases;
+  var lastCol = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var columns = buildCompanionColumnIndices(headers);
+  if (columns.companionId == null || columns.companionId < 0) return aliases;
+  var ids = sheet.getRange(2, columns.companionId + 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    var id = String(ids[i][0] != null ? ids[i][0] : '').trim();
+    if (!id) continue;
+    aliases[id] = id;
+    aliases[String(i + 2)] = id;
+  }
+  return aliases;
+}
+
+function normalizeMatchCompanionId_(value, aliases) {
+  var id = String(value != null ? value : '').trim();
+  return aliases && aliases[id] ? aliases[id] : id;
+}
+
 function getData() {
   ensureCompanionIds_();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -1322,37 +1642,31 @@ function getData() {
   let matchSheet = ss.getSheetByName('Matches');
   if (!matchSheet) {
     matchSheet = ss.insertSheet('Matches');
-    // Added Name columns for better spreadsheet readability
-    matchSheet.appendRow([
-      'Match ID',
-      'Companion 1 ID',
-      'Companion 2 ID',
-      'Status',
-      'Notes',
-      'Created At',
-      'C1 Name',
-      'C2 Name',
-      'Last Contact Date'
-    ]);
+    matchSheet.getRange(1, 1, 1, MATCHES_HEADER_ROW_.length).setValues([MATCHES_HEADER_ROW_]);
   }
   
-  ensureMatchesSheetSetup_(matchSheet);
+  ensureMatchesSheetStructure_(matchSheet);
+  migrateCanceledStatuses_(matchSheet, 4);
+  stampMissingStatusDates_(matchSheet, 4, 10, 11);
+  const companionIdAliases = buildCompanionIdAliasMap_();
   const lastMatchRow = matchSheet.getLastRow();
   let matches = [];
   if (lastMatchRow >= 2) {
-    const matchCols = Math.max(matchSheet.getLastColumn(), 9);
+    const matchCols = Math.max(matchSheet.getLastColumn(), 11);
     const matchData = matchSheet.getRange(1, 1, lastMatchRow, matchCols).getValues();
     const matchRows = matchData.slice(1);
     matches = matchRows
       .map(function (r) {
         return {
           id: String(r[0] != null ? r[0] : '').trim(),
-          companion1Id: String(r[1] != null ? r[1] : '').trim(),
-          companion2Id: String(r[2] != null ? r[2] : '').trim(),
+          companion1Id: normalizeMatchCompanionId_(r[1], companionIdAliases),
+          companion2Id: normalizeMatchCompanionId_(r[2], companionIdAliases),
           status: r[3],
           notes: r[4],
           createdAt: r[5],
-          lastContactDate: formatMatchSheetDateCell_(r[8])
+          lastContactDate: formatMatchSheetDateCell_(r[8]),
+          dismissedDate: formatMatchSheetDateCell_(r[9]),
+          expiredDate: formatMatchSheetDateCell_(r[10])
         };
       })
       .filter(function (m) {
@@ -1390,6 +1704,43 @@ function saveVisibilitySettings(settingsJson) {
 /**
  * SAVE A NEW MATCH
  */
+function availableMatchRows_(sheet, count) {
+  var needed = Math.max(Number(count) || 1, 1);
+  var lastRow = Math.max(sheet.getLastRow(), 1);
+  var out = [];
+  if (lastRow < 2) {
+    for (var n = 0; n < needed; n++) out.push(2 + n);
+    return out;
+  }
+  var width = Math.max(sheet.getLastColumn(), 11);
+  var range = sheet.getRange(2, 1, lastRow - 1, width);
+  var values = range.getValues();
+  var formulas = range.getFormulas();
+  for (var i = 0; i < values.length; i++) {
+    var empty = true;
+    for (var j = 0; j < width; j++) {
+      if (
+        (values[i][j] != null && String(values[i][j]).trim() !== '') ||
+        (formulas[i][j] != null && String(formulas[i][j]).trim() !== '')
+      ) {
+        empty = false;
+        break;
+      }
+    }
+    if (empty) {
+      out.push(i + 2);
+      if (out.length >= needed) return out;
+    }
+  }
+  var next = lastRow + 1;
+  while (out.length < needed) out.push(next++);
+  return out;
+}
+
+function firstEmptyMatchRow_(sheet) {
+  return availableMatchRows_(sheet, 1)[0];
+}
+
 function createMatch(matchObj) {
   const lock = LockService.getScriptLock();
   try {
@@ -1399,33 +1750,37 @@ function createMatch(matchObj) {
   }
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+    ensureCompanionIds_();
     let sheet = ss.getSheetByName('Matches');
     if (!sheet) sheet = ss.insertSheet('Matches');
+    ensureMatchesSheetStructure_(sheet);
 
     const a = String(matchObj.companion1Id != null ? matchObj.companion1Id : '').trim();
     const b = String(matchObj.companion2Id != null ? matchObj.companion2Id : '').trim();
     if (!a || !b || a === b) return false;
 
+    const aliases = buildCompanionIdAliasMap_();
     const data = sheet.getDataRange().getValues();
     for (let i = 1; i < data.length; i++) {
-      const x = String(data[i][1] != null ? data[i][1] : '').trim();
-      const y = String(data[i][2] != null ? data[i][2] : '').trim();
+      const x = normalizeMatchCompanionId_(data[i][1], aliases);
+      const y = normalizeMatchCompanionId_(data[i][2], aliases);
       if (!x || !y) continue;
-      if ((x === a && y === b) || (x === b && y === a)) return false;
+      if (((x === a && y === b) || (x === b && y === a)) && !matchIsEnded_(data[i][3])) return false;
     }
 
-    ensureMatchesSheetSetup_(sheet);
-    sheet.appendRow([
+    var targetRow = firstEmptyMatchRow_(sheet);
+    var newStatus = canonicalMatchStatus_(matchObj.status);
+    sheet.getRange(targetRow, 1, 1, 8).setValues([[
       matchObj.id,
       a,
       b,
-      matchObj.status,
+      newStatus,
       matchObj.notes,
       matchObj.createdAt,
       matchObj.c1Name,
-      matchObj.c2Name,
-      ''
-    ]);
+      matchObj.c2Name
+    ]]);
+    stampStatusDate_(sheet, targetRow, newStatus, 10, 11);
     return true;
   } finally {
     lock.releaseLock();
@@ -1460,18 +1815,22 @@ function createMatchesBatch(matchObjs) {
   }
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+    ensureCompanionIds_();
     let sheet = ss.getSheetByName('Matches');
     if (!sheet) sheet = ss.insertSheet('Matches');
 
+    ensureMatchesSheetStructure_(sheet);
     const data = sheet.getDataRange().getValues();
+    const aliases = buildCompanionIdAliasMap_();
     function pairKey(a, b) {
       return a < b ? a + '\t' + b : b + '\t' + a;
     }
     const existingKeys = {};
     for (let i = 1; i < data.length; i++) {
-      const x = String(data[i][1] != null ? data[i][1] : '').trim();
-      const y = String(data[i][2] != null ? data[i][2] : '').trim();
+      const x = normalizeMatchCompanionId_(data[i][1], aliases);
+      const y = normalizeMatchCompanionId_(data[i][2], aliases);
       if (!x || !y) continue;
+      if (matchIsEnded_(data[i][3])) continue;
       const names = [String(data[i][6] != null ? data[i][6] : '').trim(), String(data[i][7] != null ? data[i][7] : '').trim()]
         .filter(function (s) {
           return s;
@@ -1482,6 +1841,8 @@ function createMatchesBatch(matchObjs) {
 
     const created = [];
     const skippedDetails = [];
+    const availableRows = availableMatchRows_(sheet, matchObjs.length);
+    let availableRowIndex = 0;
     let skipped = 0;
     for (let i = 0; i < matchObjs.length; i++) {
       const matchObj = matchObjs[i];
@@ -1513,26 +1874,29 @@ function createMatchesBatch(matchObjs) {
         continue;
       }
       existingKeys[k] = { row: 0, names: '', status: '' };
-      ensureMatchesSheetSetup_(sheet);
-      sheet.appendRow([
+      var targetRow = availableRows[availableRowIndex++];
+      var newStatus = canonicalMatchStatus_(matchObj.status);
+      sheet.getRange(targetRow, 1, 1, 8).setValues([[
         matchObj.id,
         a,
         b,
-        matchObj.status,
+        newStatus,
         matchObj.notes,
         matchObj.createdAt,
         matchObj.c1Name,
-        matchObj.c2Name,
-        ''
-      ]);
+        matchObj.c2Name
+      ]]);
+      stampStatusDate_(sheet, targetRow, newStatus, 10, 11);
       created.push({
         id: String(matchObj.id),
         companion1Id: a,
         companion2Id: b,
-        status: matchObj.status,
+        status: newStatus,
         notes: matchObj.notes,
         createdAt: matchObj.createdAt,
-        lastContactDate: ''
+        lastContactDate: '',
+        dismissedDate: '',
+        expiredDate: ''
       });
     }
     return { created: created, skipped: skipped, reason: skipped ? 'skipped' : '', skippedDetails: skippedDetails };
@@ -1547,18 +1911,29 @@ function createMatchesBatch(matchObjs) {
 function updateMatchData(matchId, field, value) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Matches');
+  if (!sheet) return false;
+  ensureMatchesSheetStructure_(sheet);
   const data = sheet.getDataRange().getValues();
   
   // Determine Column Index
   // A=0, B=1, C=2, D=3(Status), E=4(Notes)
-  const colIndex = field === 'status' ? 3 : 4; 
+  const colIndex = field === 'status' ? 3 : 4;
+  if (field === 'status') {
+    var normalizedStatus = String(value != null ? value : '').trim();
+    if (normalizedStatus.toLowerCase() === 'canceled' || normalizedStatus.toLowerCase() === 'cancelled') {
+      normalizedStatus = 'Dismissed';
+    }
+    if (MATCH_STATUS_OPTIONS.indexOf(normalizedStatus) < 0) return false;
+    value = normalizedStatus;
+  }
   
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]) === matchId) {
       sheet.getRange(i + 1, colIndex + 1).setValue(value);
       if (field === 'status') {
-        ensureMatchesSheetSetup_(sheet);
-        var width = Math.max(sheet.getLastColumn(), 9);
+        ensureMatchesSheetStructure_(sheet);
+        stampStatusDate_(sheet, i + 1, value, 10, 11);
+        var width = Math.max(sheet.getLastColumn(), 11);
         var color = matchStatusHighlightColor_(value);
         sheet.getRange(i + 1, 1, 1, width).setBackground(color);
       }
@@ -1577,7 +1952,7 @@ function updateMatchData(matchId, field, value) {
 function updateMatchLastContactDate(matchId, isoDateOrEmpty) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Matches');
   if (!sheet) return false;
-  ensureMatchesSheetSetup_(sheet);
+  ensureMatchesSheetStructure_(sheet);
   var data = sheet.getDataRange().getValues();
   var mid = String(matchId != null ? matchId : '').trim();
   if (!mid) return false;
@@ -1620,6 +1995,8 @@ function updateMatchLastContactDate(matchId, isoDateOrEmpty) {
 function deleteMatch(matchId) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Matches');
+  if (!sheet) return false;
+  ensureMatchesSheetStructure_(sheet);
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]) === matchId) {
@@ -1639,6 +2016,7 @@ function deleteMatchesBatch(matchIds) {
   if (!matchIds || !matchIds.length) return { deleted: 0 };
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Matches');
   if (!sheet) return { deleted: 0 };
+  ensureMatchesSheetStructure_(sheet);
   const data = sheet.getDataRange().getValues();
   const want = {};
   for (let k = 0; k < matchIds.length; k++) {
@@ -1665,20 +2043,27 @@ function deleteMatchesBatch(matchIds) {
  */
 function updateMatchesStatusBatch(matchIds, status) {
   if (!matchIds || !matchIds.length) return { updated: 0 };
+  var normalizedStatus = String(status != null ? status : '').trim();
+  if (normalizedStatus.toLowerCase() === 'canceled' || normalizedStatus.toLowerCase() === 'cancelled') {
+    normalizedStatus = 'Dismissed';
+  }
+  if (MATCH_STATUS_OPTIONS.indexOf(normalizedStatus) < 0) return { updated: 0 };
+  status = normalizedStatus;
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Matches');
   if (!sheet) return { updated: 0 };
+  ensureMatchesSheetStructure_(sheet);
   const data = sheet.getDataRange().getValues();
   const want = {};
   for (let k = 0; k < matchIds.length; k++) {
     want[String(matchIds[k])] = true;
   }
   let n = 0;
-  ensureMatchesSheetSetup_(sheet);
-  var width = Math.max(sheet.getLastColumn(), 9);
+  var width = Math.max(sheet.getLastColumn(), 11);
   var color = matchStatusHighlightColor_(status);
   for (let i = 1; i < data.length; i++) {
     if (want[String(data[i][0])]) {
       sheet.getRange(i + 1, 4).setValue(status);
+      stampStatusDate_(sheet, i + 1, status, 10, 11);
       sheet.getRange(i + 1, 1, 1, width).setBackground(color);
       n++;
     }
@@ -1709,7 +2094,7 @@ function updateCompanionNote(companionRef, note) {
 }
 
 /** Allowed internal status values for the directory dropdown (empty = clear cell). */
-var INTERNAL_STATUS_ALLOWED_ = { Active: true, Quit: true, Unresponsive: true, Dismissed: true, Unmatched: true };
+var INTERNAL_STATUS_ALLOWED_ = { Active: true, Quit: true, Unresponsive: true, Dismissed: true, Expired: true, Unmatched: true };
 
 /** Immediately mirror a status update into the generated Volunteers/Companions roster row. */
 function updateRosterStatusCopies_(companionId, signupRow, value) {
@@ -1720,15 +2105,17 @@ function updateRosterStatusCopies_(companionId, signupRow, value) {
   for (var t = 0; t < tabNames.length; t++) {
     var roster = ss.getSheetByName(tabNames[t]);
     if (!roster || roster.getLastRow() < 2) continue;
-    var data = roster.getRange(2, 1, roster.getLastRow() - 1, 9).getValues();
+    if (typeof ensureRosterDateColumns_ === 'function') ensureRosterDateColumns_(roster);
+    var data = roster.getRange(2, 1, roster.getLastRow() - 1, 11).getValues();
     for (var i = 0; i < data.length; i++) {
       var rosterSignupRow = String(data[i][1] != null ? data[i][1] : '').trim();
       var rosterCid = String(data[i][8] != null ? data[i][8] : '').trim();
       if ((cid && rosterCid === cid) || (!cid && rowRef && rosterSignupRow === rowRef)) {
         var sheetRow = i + 2;
         roster.getRange(sheetRow, 8).setValue(value);
+        stampStatusDate_(roster, sheetRow, value, 10, 11);
         if (typeof paintRosterStatusRow_ === 'function') {
-          paintRosterStatusRow_(roster, sheetRow, 8, 9);
+          paintRosterStatusRow_(roster, sheetRow, 8, 11);
         }
         break;
       }
@@ -1737,13 +2124,14 @@ function updateRosterStatusCopies_(companionId, signupRow, value) {
 }
 
 /**
- * Update internal status. Only Active, Quit, Unresponsive, Dismissed, Unmatched, or blank are written.
+ * Update internal status. Only Active, Quit, Unresponsive, Dismissed, Expired, Unmatched, or blank are written.
  * @return {boolean}
  */
 function updateCompanionInternalStatus(companionRef, value) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(FORM_SHEET_NAME);
   if (!sheet) return false;
+  ensureSignUpInternalStatusColumn_(sheet);
   const lastCol = sheet.getLastColumn();
   if (lastCol < 1) return false;
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
@@ -1757,6 +2145,7 @@ function updateCompanionInternalStatus(companionRef, value) {
     return false;
   }
   var v = String(value != null ? value : '').trim();
+  if (v.toLowerCase() === 'canceled' || v.toLowerCase() === 'cancelled') v = 'Dismissed';
   if (v && !INTERNAL_STATUS_ALLOWED_[v]) return false;
   sheet.getRange(r, colIdx + 1).setValue(v);
   var companionId =
@@ -2101,7 +2490,7 @@ function buildSurveyAnalysis_(companions, matches) {
   var matchedIds = {};
   var activeMatches = 0;
   matches.forEach(function (m) {
-    if (String(m.status || '').trim() === 'Canceled') return;
+    if (matchIsEnded_(m.status)) return;
     activeMatches++;
     matchedIds[String(m.companion1Id)] = true;
     matchedIds[String(m.companion2Id)] = true;
@@ -2228,7 +2617,7 @@ function defaultReminderBody_(c1, c2) {
 }
 
 /**
- * Matches eligible for a 6-month staff reminder (non-canceled, past REMINDER_DAYS_AFTER_MATCH, not already logged as sent).
+ * Matches eligible for a 6-month staff reminder (active, past REMINDER_DAYS_AFTER_MATCH, not already logged as sent).
  */
 function previewSixMonthReminders() {
   var data = getData();
@@ -2241,7 +2630,7 @@ function previewSixMonthReminders() {
   var thresholdMs = REMINDER_DAYS_AFTER_MATCH * 86400000;
   var list = [];
   data.matches.forEach(function (m) {
-    if (String(m.status || '').trim() === 'Canceled') return;
+    if (matchIsEnded_(m.status)) return;
     var created = new Date(m.createdAt).getTime();
     if (isNaN(created) || now - created < thresholdMs) return;
     var sent = log[m.id];
@@ -2283,7 +2672,7 @@ function runSixMonthReminderJob() {
   var stats = { sent: 0, skipped: 0, errors: [] };
 
   data.matches.forEach(function (m) {
-    if (String(m.status || '').trim() === 'Canceled') return;
+    if (matchIsEnded_(m.status)) return;
     if (log[m.id]) return;
 
     var created = new Date(m.createdAt).getTime();
@@ -2360,7 +2749,7 @@ function sendSixMonthReminderTestEmail(testToEmail) {
   var c2 = null;
   for (var i = 0; i < data.matches.length; i++) {
     var m = data.matches[i];
-    if (String(m.status || '').trim() === 'Canceled') continue;
+    if (matchIsEnded_(m.status)) continue;
     var x1 = companionsById[String(m.companion1Id)];
     var x2 = companionsById[String(m.companion2Id)];
     if (x1 && x2) {
